@@ -997,7 +997,8 @@ struct CalendarDayCell: View {
     [CalendarDisplayEvent] {
         
         calendarDisplayEvents(
-            day: day,            flights: flights,
+            day: day,
+            flights: flights,
             workEvents:
                 workEvents,
             absences:
@@ -1996,7 +1997,8 @@ struct CalendarDayDetail: View {
                             .plain
                         )
                     }
-                }                
+                }
+                
                 
                 if !workEvents.isEmpty {
                     

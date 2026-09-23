@@ -997,7 +997,8 @@ struct GroundWorkBreakdown:
                     GroundWorkRow(
                         type:
                             type,
-                        minutes:                            minutes
+                        minutes:
+                            minutes
                     )
                     
                     

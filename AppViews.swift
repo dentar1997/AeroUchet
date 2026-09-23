@@ -997,7 +997,8 @@ struct AddFlightView: View {
     @State
     private var departure:
     String
-        
+    
+    
     @State
     private var arrival:
     String
@@ -1996,7 +1997,8 @@ struct AddWorkEventView: View {
     String
     
     
-    init(        event: WorkEvent? = nil,
+    init(
+        event: WorkEvent? = nil,
         onSave: @escaping (WorkEvent) -> Void
     ) {
         

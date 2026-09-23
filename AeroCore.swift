@@ -748,8 +748,7 @@ final class AppStore: ObservableObject {
         } catch {
             
             print(
-                "ÐÑÐ¸Ð±ÐºÐ° ÑÐ¾Ñ
-ÑÐ°Ð½ÐµÐ½Ð¸Ñ ÑÐµÐ¹ÑÐ¾Ð²:",
+                "ÐÑÐ¸Ð±ÐºÐ° ÑÐ¾ÑÑÐ°Ð½ÐµÐ½Ð¸Ñ ÑÐµÐ¹ÑÐ¾Ð²:",
                 error
             )
         }
@@ -776,8 +775,7 @@ final class AppStore: ObservableObject {
         } catch {
             
             print(
-                "ÐÑÐ¸Ð±ÐºÐ° ÑÐ¾Ñ
-ÑÐ°Ð½ÐµÐ½Ð¸Ñ Ð¿Ð»Ð°Ð½Ð° ÑÐ°Ð±Ð¾Ñ:",
+                "ÐÑÐ¸Ð±ÐºÐ° ÑÐ¾ÑÑÐ°Ð½ÐµÐ½Ð¸Ñ Ð¿Ð»Ð°Ð½Ð° ÑÐ°Ð±Ð¾Ñ:",
                 error
             )
         }
@@ -997,7 +995,8 @@ func makeTimeline(
             workStart,
         engineOn:
             engineOn,
-        takeoff:            takeoff,
+        takeoff:
+            takeoff,
         landing:
             landing,
         engineOff:
@@ -1996,7 +1995,8 @@ func timeText(
 }
 
 
-func formatDate(    _ date: Date
+func formatDate(
+    _ date: Date
 ) -> String {
     
     dateFormatter.string(

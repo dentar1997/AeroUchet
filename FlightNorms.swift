@@ -997,7 +997,8 @@ struct FlightNormsView: View {
                     if !$0 {
                         importError = nil
                     }
-                }            )
+                }
+            )
         ) {
             Button("OK") {
                 importError = nil
@@ -1688,3 +1689,4 @@ private func flightNormBestRouteName(
         $0.count < $1.count
     } ?? ""
 }
+

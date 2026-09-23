@@ -997,7 +997,8 @@ struct AbsencesListView: View {
             }
         }
         
-                .navigationTitle(
+        
+        .navigationTitle(
             "Отсутствия"
         )
         

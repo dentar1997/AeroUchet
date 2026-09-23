@@ -997,7 +997,8 @@ struct CalendarDatabaseStatusRow:
                 alignment:
                         .leading,
                 spacing: 5
-            ) {                
+            ) {
+                
                 Text(
                     statusTitle
                 )

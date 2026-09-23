@@ -997,7 +997,8 @@ private func downloadedProductionDayInfo(
                 title:
                     "Выходной",
                 isOfficial:
-                    true            )
+                    true
+            )
         }
         
         
