@@ -1,3 +1,4 @@
+// GitSync sync test
 import SwiftUI
 
 @main
