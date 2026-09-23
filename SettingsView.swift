@@ -401,7 +401,7 @@ struct SettingsRootView: View {
                         HStack {
                             
                             Label(
-                                "Расчётное время",
+                                "Расчётное время • GitHub",
                                 systemImage:
                                     "tablecells"
                             )
