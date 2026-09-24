@@ -1,12 +1,11 @@
 import SwiftUI
-import UIKit
 
-// MARK: - Универсальные элементы ввода для Swift Playgrounds
+// MARK: - Элементы выбора без Picker/DatePicker
 //
-// Обычные SwiftUI Picker/DatePicker на iPad в Swift Playgrounds
-// могут сбивать работу физической клавиатуры и не всегда реагируют
-// на нажатие трекпадом. Эти элементы используют обычную строку-кнопку
-// и UIKit-крутилку во всплывающем окне.
+// В Swift Playgrounds на iPad системные Picker/DatePicker могут
+// ломать работу физической клавиатуры. Поэтому здесь используются
+// обычные кнопки и ScrollView: они не становятся текстовым
+// first responder и нормально работают с пальцем и трекпадом.
 
 struct AeroYearPickerRow: View {
     let title: String
@@ -58,116 +57,51 @@ struct AeroYearPickerRow: View {
 
                 Divider()
 
-                UIKitYearWheel(
-                    selection: $selection,
-                    range: range
-                )
-                .frame(height: 180)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(
+                                Array(range),
+                                id: \.self
+                            ) { year in
+                                Button {
+                                    selection = year
+                                } label: {
+                                    Text(String(year))
+                                        .font(
+                                            year == selection
+                                            ? .title2.weight(.semibold)
+                                            : .body
+                                        )
+                                        .foregroundStyle(
+                                            year == selection
+                                            ? .primary
+                                            : .secondary
+                                        )
+                                        .frame(
+                                            maxWidth: .infinity,
+                                            minHeight: 38
+                                        )
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .id(year)
+                            }
+                        }
+                        .padding(.vertical, 68)
+                    }
+                    .onAppear {
+                        DispatchQueue.main.async {
+                            proxy.scrollTo(
+                                selection,
+                                anchor: .center
+                            )
+                        }
+                    }
+                }
             }
-            .frame(width: 280, height: 235)
+            .frame(width: 240, height: 260)
             .presentationCompactAdaptation(.sheet)
-        }
-    }
-}
-
-private struct UIKitYearWheel: UIViewRepresentable {
-    @Binding var selection: Int
-    let range: ClosedRange<Int>
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(
-            selection: $selection,
-            range: range
-        )
-    }
-
-    func makeUIView(context: Context) -> UIPickerView {
-        let picker = UIPickerView()
-        picker.dataSource = context.coordinator
-        picker.delegate = context.coordinator
-
-        let row = max(
-            0,
-            min(
-                selection - range.lowerBound,
-                range.count - 1
-            )
-        )
-
-        picker.selectRow(
-            row,
-            inComponent: 0,
-            animated: false
-        )
-
-        return picker
-    }
-
-    func updateUIView(
-        _ picker: UIPickerView,
-        context: Context
-    ) {
-        let row = max(
-            0,
-            min(
-                selection - range.lowerBound,
-                range.count - 1
-            )
-        )
-
-        if picker.selectedRow(inComponent: 0) != row {
-            picker.selectRow(
-                row,
-                inComponent: 0,
-                animated: false
-            )
-        }
-    }
-
-    final class Coordinator:
-        NSObject,
-        UIPickerViewDataSource,
-        UIPickerViewDelegate {
-
-        private var selection: Binding<Int>
-        private let range: ClosedRange<Int>
-
-        init(
-            selection: Binding<Int>,
-            range: ClosedRange<Int>
-        ) {
-            self.selection = selection
-            self.range = range
-        }
-
-        func numberOfComponents(
-            in pickerView: UIPickerView
-        ) -> Int {
-            1
-        }
-
-        func pickerView(
-            _ pickerView: UIPickerView,
-            numberOfRowsInComponent component: Int
-        ) -> Int {
-            range.count
-        }
-
-        func pickerView(
-            _ pickerView: UIPickerView,
-            titleForRow row: Int,
-            forComponent component: Int
-        ) -> String? {
-            String(range.lowerBound + row)
-        }
-
-        func pickerView(
-            _ pickerView: UIPickerView,
-            didSelectRow row: Int,
-            inComponent component: Int
-        ) {
-            selection.wrappedValue =
-            range.lowerBound + row
         }
     }
 }
@@ -178,6 +112,20 @@ struct AeroTimePickerRow: View {
     @Binding var selection: Date
 
     @State private var isPresented = false
+
+    private var selectedHour: Int {
+        moscowCalendar.component(
+            .hour,
+            from: selection
+        )
+    }
+
+    private var selectedMinute: Int {
+        moscowCalendar.component(
+            .minute,
+            from: selection
+        )
+    }
 
     var body: some View {
         Button {
@@ -213,67 +161,122 @@ struct AeroTimePickerRow: View {
 
                 Divider()
 
-                UIKitTimeWheel(
-                    selection: $selection
-                )
-                .frame(height: 200)
+                HStack(spacing: 0) {
+                    AeroNumberColumn(
+                        values: Array(0...23),
+                        selection: selectedHour
+                    ) { hour in
+                        setTime(
+                            hour: hour,
+                            minute: selectedMinute
+                        )
+                    }
+
+                    Text(":")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 4)
+
+                    AeroNumberColumn(
+                        values: Array(0...59),
+                        selection: selectedMinute
+                    ) { minute in
+                        setTime(
+                            hour: selectedHour,
+                            minute: minute
+                        )
+                    }
+                }
+                .padding(.horizontal, 20)
             }
-            .frame(width: 320, height: 255)
+            .frame(width: 300, height: 270)
             .presentationCompactAdaptation(.sheet)
+        }
+    }
+
+    private func setTime(
+        hour: Int,
+        minute: Int
+    ) {
+        var components =
+        moscowCalendar.dateComponents(
+            [
+                .year,
+                .month,
+                .day,
+                .second
+            ],
+            from: selection
+        )
+
+        components.hour = hour
+        components.minute = minute
+        components.timeZone = moscowTimeZone
+
+        if let updated =
+            moscowCalendar.date(
+                from: components
+            ) {
+            selection = updated
         }
     }
 }
 
-private struct UIKitTimeWheel: UIViewRepresentable {
-    @Binding var selection: Date
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(selection: $selection)
-    }
+private struct AeroNumberColumn: View {
+    let values: [Int]
+    let selection: Int
+    let onSelect: (Int) -> Void
 
-    func makeUIView(context: Context) -> UIDatePicker {
-        let picker = UIDatePicker()
-        picker.datePickerMode = .time
-        picker.preferredDatePickerStyle = .wheels
-        picker.minuteInterval = 1
-        picker.locale = Locale(identifier: "ru_RU")
-        picker.timeZone = moscowTimeZone
-        picker.date = selection
-
-        picker.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.valueChanged(_:)),
-            for: .valueChanged
-        )
-
-        return picker
-    }
-
-    func updateUIView(
-        _ picker: UIDatePicker,
-        context: Context
-    ) {
-        if abs(
-            picker.date.timeIntervalSince(selection)
-        ) > 0.5 {
-            picker.setDate(
-                selection,
-                animated: false
-            )
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(
+                        values,
+                        id: \.self
+                    ) { value in
+                        Button {
+                            onSelect(value)
+                        } label: {
+                            Text(
+                                String(
+                                    format: "%02d",
+                                    value
+                                )
+                            )
+                            .font(
+                                value == selection
+                                ? .title2.weight(.semibold)
+                                : .body
+                            )
+                            .monospacedDigit()
+                            .foregroundStyle(
+                                value == selection
+                                ? .primary
+                                : .secondary
+                            )
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: 38
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .id(value)
+                    }
+                }
+                .padding(.vertical, 72)
+            }
+            .onAppear {
+                DispatchQueue.main.async {
+                    proxy.scrollTo(
+                        selection,
+                        anchor: .center
+                    )
+                }
+            }
         }
-    }
-
-    final class Coordinator: NSObject {
-        private var selection: Binding<Date>
-
-        init(selection: Binding<Date>) {
-            self.selection = selection
-        }
-
-        @objc func valueChanged(
-            _ picker: UIDatePicker
-        ) {
-            selection.wrappedValue = picker.date
-        }
+        .frame(maxWidth: .infinity)
     }
 }
