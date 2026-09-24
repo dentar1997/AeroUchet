@@ -322,12 +322,15 @@ struct FlightDuty: Identifiable {
     
     init(
         id: UUID,
-        legs: [FlightLeg]
+        legs: [FlightLeg],
+        timelines: [FlightTimeline]? = nil
     ) {
         
         self.id = id
         self.legs = legs
         self.timelines =
+        timelines
+        ??
         legs.map {
             makeTimeline(
                 for: $0
@@ -529,12 +532,46 @@ struct DailyTimeTotals {
 }
 
 
+// MARK: - Подготовленные данные приложения
+
+private struct PreparedFlightLeg {
+    
+    let flight: FlightLeg
+    let timeline: FlightTimeline
+}
+
+
+private struct PreparedWorkEvent {
+    
+    let event: WorkEvent
+    let start: Date
+    let end: Date
+}
+
+
+private struct AppDerivedData {
+    
+    let duties: [FlightDuty]
+    let dailyIndex: [Int: DailyTimeTotals]
+    let flightsByDay: [Int: [FlightLeg]]
+    let workEventsByDay: [Int: [WorkEvent]]
+    let latestActivityDate: Date?
+}
+
+
 // MARK: - Хранилище приложения
 
 final class AppStore: ObservableObject {
     
+    private var isRestoring = true
+    
+    
     @Published var flights: [FlightLeg] = [] {
         didSet {
+            guard !isRestoring else {
+                return
+            }
+            
             rebuildDerivedData()
             saveFlights()
         }
@@ -543,6 +580,10 @@ final class AppStore: ObservableObject {
     
     @Published var workEvents: [WorkEvent] = [] {
         didSet {
+            guard !isRestoring else {
+                return
+            }
+            
             rebuildDerivedData()
             saveWorkEvents()
         }
@@ -572,6 +613,10 @@ final class AppStore: ObservableObject {
         
         _ =
         loadWorkEvents()
+        
+        
+        isRestoring =
+        false
         
         
         rebuildDerivedData()
@@ -711,51 +756,31 @@ final class AppStore: ObservableObject {
     
     private func rebuildDerivedData() {
         
-        let duties =
-        buildFlightDuties(
-            from: flights
-        )
-        
-        
-        cachedDuties =
-        duties
-        
-        
-        cachedDailyIndex =
-        buildDailyIndex(
+        let derived =
+        buildAppDerivedData(
             flights: flights,
-            duties: duties,
             workEvents: workEvents
         )
         
         
+        cachedDuties =
+        derived.duties
+        
+        
+        cachedDailyIndex =
+        derived.dailyIndex
+        
+        
         cachedFlightsByDay =
-        buildFlightsByDay(
-            flights: flights
-        )
+        derived.flightsByDay
         
         
         cachedWorkEventsByDay =
-        buildWorkEventsByDay(
-            events: workEvents
-        )
-        
-        
-        let flightDates =
-        flights.map {
-            $0.timeline.engineOff
-        }
-        
-        
-        let workDates =
-        workEvents.map {
-            $0.endDate
-        }
+        derived.workEventsByDay
         
         
         cachedLatestActivityDate =
-        (flightDates + workDates)
-            .max()
+        derived.latestActivityDate
     }
     
     
@@ -1315,7 +1340,373 @@ func nightMinutes(
 }
 
 
+// MARK: - Подготовка производных данных
+
+private func buildAppDerivedData(
+    flights: [FlightLeg],
+    workEvents: [WorkEvent]
+) -> AppDerivedData {
+    
+    let preparedFlights =
+    flights.map {
+        PreparedFlightLeg(
+            flight: $0,
+            timeline:
+                makeTimeline(
+                    for: $0
+                )
+        )
+    }
+    
+    
+    let preparedWorkEvents =
+    workEvents.map {
+        PreparedWorkEvent(
+            event: $0,
+            start: $0.startDate,
+            end: $0.endDate
+        )
+    }
+    
+    
+    let duties =
+    buildFlightDuties(
+        fromPrepared:
+            preparedFlights
+    )
+    
+    
+    var dailyIndex:
+    [Int: DailyTimeTotals] = [:]
+    
+    
+    var flightsByDay:
+    [Int: [FlightLeg]] = [:]
+    
+    
+    for item in preparedFlights {
+        
+        for day in touchedDays(
+            from:
+                item.timeline.engineOn,
+            to:
+                item.timeline.engineOff
+        ) {
+            
+            let key =
+            dayKey(day)
+            
+            
+            flightsByDay[
+                key,
+                default: []
+            ]
+                .append(
+                    item.flight
+                )
+            
+            
+            var totals =
+            dailyIndex[key]
+            ?? .zero
+            
+            
+            totals.flightMinutes +=
+            minutesInDay(
+                from:
+                    item.timeline.engineOn,
+                to:
+                    item.timeline.engineOff,
+                day:
+                    day
+            )
+            
+            
+            totals.airMinutes +=
+            minutesInDay(
+                from:
+                    item.timeline.takeoff,
+                to:
+                    item.timeline.landing,
+                day:
+                    day
+            )
+            
+            
+            totals.flightNightMinutes +=
+            nightMinutesInDay(
+                from:
+                    item.timeline.engineOn,
+                to:
+                    item.timeline.engineOff,
+                day:
+                    day
+            )
+            
+            
+            totals.airNightMinutes +=
+            nightMinutesInDay(
+                from:
+                    item.timeline.takeoff,
+                to:
+                    item.timeline.landing,
+                day:
+                    day
+            )
+            
+            
+            dailyIndex[key] =
+            totals
+        }
+    }
+    
+    
+    for duty in duties {
+        
+        for day in touchedDays(
+            from:
+                duty.start,
+            to:
+                duty.end
+        ) {
+            
+            let key =
+            dayKey(day)
+            
+            
+            var totals =
+            dailyIndex[key]
+            ?? .zero
+            
+            
+            totals.flightWorkMinutes +=
+            minutesInDay(
+                from:
+                    duty.start,
+                to:
+                    duty.end,
+                day:
+                    day
+            )
+            
+            
+            totals.flightWorkNightMinutes +=
+            nightMinutesInDay(
+                from:
+                    duty.start,
+                to:
+                    duty.end,
+                day:
+                    day
+            )
+            
+            
+            dailyIndex[key] =
+            totals
+        }
+    }
+    
+    
+    var workEventsByDay:
+    [Int: [WorkEvent]] = [:]
+    
+    
+    for item in preparedWorkEvents {
+        
+        for day in touchedDays(
+            from:
+                item.start,
+            to:
+                item.end
+        ) {
+            
+            let key =
+            dayKey(day)
+            
+            
+            workEventsByDay[
+                key,
+                default: []
+            ]
+                .append(
+                    item.event
+                )
+            
+            
+            var totals =
+            dailyIndex[key]
+            ?? .zero
+            
+            
+            totals.groundWorkMinutes +=
+            creditedWorkMinutes(
+                event:
+                    item.event,
+                day:
+                    day
+            )
+            
+            
+            totals.groundWorkNightMinutes +=
+            creditedNightMinutes(
+                event:
+                    item.event,
+                day:
+                    day
+            )
+            
+            
+            dailyIndex[key] =
+            totals
+        }
+    }
+    
+    
+    let flightDates =
+    preparedFlights.map {
+        $0.timeline.engineOff
+    }
+    
+    
+    let workDates =
+    preparedWorkEvents.map {
+        $0.end
+    }
+    
+    
+    return AppDerivedData(
+        duties:
+            duties,
+        dailyIndex:
+            dailyIndex,
+        flightsByDay:
+            flightsByDay,
+        workEventsByDay:
+            workEventsByDay,
+        latestActivityDate:
+            (flightDates + workDates)
+                .max()
+    )
+}
+
+
 // MARK: - Полётные смены
+
+private func buildFlightDuties(
+    fromPrepared flights:
+    [PreparedFlightLeg]
+) -> [FlightDuty] {
+    
+    let sorted =
+    flights.sorted {
+        $0.timeline.workStart
+        <
+        $1.timeline.workStart
+    }
+    
+    
+    guard !sorted.isEmpty
+    else {
+        return []
+    }
+    
+    
+    var result:
+    [FlightDuty] = []
+    
+    
+    var current:
+    [PreparedFlightLeg] = []
+    
+    
+    for item in sorted {
+        
+        if current.isEmpty {
+            
+            current =
+            [item]
+            
+            continue
+        }
+        
+        
+        let previous =
+        current.last!
+        
+        
+        let difference =
+        signedMinutesBetween(
+            previous.timeline.engineOff,
+            item.timeline.workStart
+        )
+        
+        
+        let routeContinues =
+        previous.flight.arrival
+        ==
+        item.flight.departure
+        
+        
+        if routeContinues
+            &&
+            difference >= -5
+            &&
+            difference <= 5 {
+            
+            current.append(
+                item
+            )
+            
+        } else {
+            
+            result.append(
+                FlightDuty(
+                    id:
+                        current.first!.flight.id,
+                    legs:
+                        current.map {
+                            $0.flight
+                        },
+                    timelines:
+                        current.map {
+                            $0.timeline
+                        }
+                )
+            )
+            
+            
+            current =
+            [item]
+        }
+    }
+    
+    
+    if !current.isEmpty {
+        
+        result.append(
+            FlightDuty(
+                id:
+                    current.first!.flight.id,
+                legs:
+                    current.map {
+                        $0.flight
+                    },
+                timelines:
+                    current.map {
+                        $0.timeline
+                    }
+            )
+        )
+    }
+    
+    
+    return result.sorted {
+        $0.start
+        >
+        $1.start
+    }
+}
+
 
 func buildFlightDuties(
     from flights: [FlightLeg]
