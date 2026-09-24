@@ -1358,60 +1358,42 @@ struct AddFlightView: View {
                     "Рабочее время"
                 ) {
                     
-                    DatePicker(
-                        "Плановое отправление",
-                        selection:
-                            $plannedDeparture,
-                        displayedComponents:
-                                .hourAndMinute
+                    AeroTimePickerRow(
+                        title: "Плановое отправление",
+                        selection: $plannedDeparture
                     )
                     
                     
-                    DatePicker(
-                        "Начало работы",
-                        selection:
-                            $workStart,
-                        displayedComponents:
-                                .hourAndMinute
+                    AeroTimePickerRow(
+                        title: "Начало работы",
+                        selection: $workStart
                     )
                 }
                 
                 
                 Section("Полёт") {
                     
-                    DatePicker(
-                        "Включение двигателей",
-                        selection:
-                            $engineOn,
-                        displayedComponents:
-                                .hourAndMinute
+                    AeroTimePickerRow(
+                        title: "Включение двигателей",
+                        selection: $engineOn
                     )
                     
                     
-                    DatePicker(
-                        "Взлёт",
-                        selection:
-                            $takeoff,
-                        displayedComponents:
-                                .hourAndMinute
+                    AeroTimePickerRow(
+                        title: "Взлёт",
+                        selection: $takeoff
                     )
                     
                     
-                    DatePicker(
-                        "Посадка",
-                        selection:
-                            $landing,
-                        displayedComponents:
-                                .hourAndMinute
+                    AeroTimePickerRow(
+                        title: "Посадка",
+                        selection: $landing
                     )
                     
                     
-                    DatePicker(
-                        "Выключение двигателей",
-                        selection:
-                            $engineOff,
-                        displayedComponents:
-                                .hourAndMinute
+                    AeroTimePickerRow(
+                        title: "Выключение двигателей",
+                        selection: $engineOff
                     )
                 }
             }
@@ -2195,21 +2177,15 @@ struct AddWorkEventView: View {
                     "Время"
                 ) {
                     
-                    DatePicker(
-                        "Начало",
-                        selection:
-                            $start,
-                        displayedComponents:
-                                .hourAndMinute
+                    AeroTimePickerRow(
+                        title: "Начало",
+                        selection: $start
                     )
                     
                     
-                    DatePicker(
-                        "Окончание",
-                        selection:
-                            $end,
-                        displayedComponents:
-                                .hourAndMinute
+                    AeroTimePickerRow(
+                        title: "Окончание",
+                        selection: $end
                     )
                 }
                 
