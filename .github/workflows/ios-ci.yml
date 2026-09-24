@@ -34,7 +34,9 @@ jobs:
           xcodebuild \
             -scheme "АэроУчёт" \
             -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
+            -showBuildTimingSummary \
             build
 
       - name: Static analyze
@@ -43,5 +45,33 @@ jobs:
           xcodebuild \
             -scheme "АэроУчёт" \
             -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             analyze
+
+      - name: Inspect simulator build products
+        run: |
+          find "$RUNNER_TEMP/AeroUchetDerivedData/Build/Products/Debug-iphonesimulator" -maxdepth 2 -print | sort
+
+      - name: Package simulator app when available
+        id: package_app
+        run: |
+          APP_PATH="$(find "$RUNNER_TEMP/AeroUchetDerivedData/Build/Products/Debug-iphonesimulator" -type d -name '*.app' -print -quit)"
+          if [ -n "$APP_PATH" ]; then
+            echo "Simulator app: $APP_PATH"
+            ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/AeroUchet-Simulator.zip"
+            echo "app_found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No .app wrapper was emitted by the Swift Playgrounds package build."
+            echo "The compile check still passed; simulator packaging will be handled separately."
+            echo "app_found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload simulator app
+        if: steps.package_app.outputs.app_found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: AeroUchet-Simulator
+          path: ${{ runner.temp }}/AeroUchet-Simulator.zip
+          if-no-files-found: error
+          retention-days: 7
