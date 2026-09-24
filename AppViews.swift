@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import UIKit
 
 
 // MARK: - Главная
@@ -968,6 +969,52 @@ struct FlightDetailView: View {
 
 // MARK: - Добавление / редактирование рейса
 
+
+// MARK: - Тест физической клавиатуры
+
+private struct HardwareKeyboardTextField: UIViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text)
+    }
+
+    func makeUIView(context: Context) -> UITextField {
+        let field = UITextField(frame: .zero)
+        field.placeholder = placeholder
+        field.borderStyle = .none
+        field.autocorrectionType = .no
+        field.autocapitalizationType = .allCharacters
+        field.clearButtonMode = .whileEditing
+        field.delegate = context.coordinator
+        field.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.textChanged(_:)),
+            for: .editingChanged
+        )
+        return field
+    }
+
+    func updateUIView(_ field: UITextField, context: Context) {
+        if field.text != text {
+            field.text = text
+        }
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        private var text: Binding<String>
+
+        init(text: Binding<String>) {
+            self.text = text
+        }
+
+        @objc func textChanged(_ field: UITextField) {
+            text.wrappedValue = field.text ?? ""
+        }
+    }
+}
+
 struct AddFlightView: View {
     
     @Environment(
@@ -1271,11 +1318,11 @@ struct AddFlightView: View {
                     )
                     
                     
-                    TextField(
-                        "Номер рейса",
-                        text:
-                            $flightNumber
+                    HardwareKeyboardTextField(
+                        text: $flightNumber,
+                        placeholder: "Номер рейса"
                     )
+                    .frame(minHeight: 22)
                     
                     
                     TextField(
