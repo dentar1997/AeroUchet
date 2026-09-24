@@ -1482,19 +1482,8 @@ private struct FlightNormSavedRouteCard: View {
             alignment: .leading,
             spacing: 8
         ) {
-            Text(group.routeName)
-                .font(.headline)
-            
-            Text(
-                "\(group.departureIATA) ↔ \(group.arrivalIATA)"
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            
-            Divider()
-            
             FlightNormAircraftColumnsHeader(
-                rows: group.rows
+                routeName: group.routeName
             )
             
             FlightNormDirectionTimesRow(
@@ -1527,20 +1516,24 @@ private struct FlightNormSavedRouteCard: View {
 }
 
 private struct FlightNormAircraftColumnsHeader: View {
-    let rows: [FlightNormRow]
+    let routeName: String
     
     var body: some View {
         HStack(spacing: 8) {
-            Text("Направление")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            Text(routeName)
+                .font(.headline)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
                 .frame(
                     width: 105,
                     alignment: .leading
                 )
             
-            ForEach(rows) { row in
-                Text(row.aircraftType)
+            ForEach(
+                flightNormSavedAircraftOrder,
+                id: \.self
+            ) { aircraftType in
+                Text(aircraftType)
                     .font(.caption)
                     .fontWeight(.semibold)
                     .lineLimit(1)
@@ -1569,10 +1562,14 @@ private struct FlightNormDirectionTimesRow: View {
                     alignment: .leading
                 )
             
-            ForEach(rows) { row in
+            ForEach(
+                flightNormSavedAircraftOrder,
+                id: \.self
+            ) { aircraftType in
                 Text(
                     flightNormTime(
-                        row: row,
+                        aircraftType: aircraftType,
+                        rows: rows,
                         from: from,
                         to: to
                     )
@@ -1605,6 +1602,27 @@ private struct FlightNormDifferentNotesView: View {
             }
         }
     }
+}
+
+private func flightNormTime(
+    aircraftType: String,
+    rows: [FlightNormRow],
+    from: String,
+    to: String
+) -> String {
+    guard let row = rows.first(
+        where: {
+            $0.aircraftType == aircraftType
+        }
+    ) else {
+        return "—"
+    }
+    
+    return flightNormTime(
+        row: row,
+        from: from,
+        to: to
+    )
 }
 
 private func flightNormTime(
