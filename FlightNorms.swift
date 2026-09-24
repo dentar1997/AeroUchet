@@ -1353,6 +1353,9 @@ private let flightNormSavedAircraftOrder = [
     "B777"
 ]
 
+private let flightNormSavedRouteColumnWidth: CGFloat = 190
+private let flightNormSavedColumnSpacing: CGFloat = 4
+
 private struct FlightNormSavedRouteGroup: Identifiable {
     let id: String
     let routeName: String
@@ -1509,13 +1512,15 @@ private struct FlightNormAircraftColumnsHeader: View {
     let rows: [FlightNormRow]
     
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(
+            spacing: flightNormSavedColumnSpacing
+        ) {
             Text(routeName)
                 .font(.headline)
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
                 .frame(
-                    width: 105,
+                    width: flightNormSavedRouteColumnWidth,
                     alignment: .leading
                 )
             
@@ -1548,14 +1553,16 @@ private struct FlightNormDirectionTimesRow: View {
     let rows: [FlightNormRow]
     
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(
+            spacing: flightNormSavedColumnSpacing
+        ) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(
-                    width: 105,
+                    width: flightNormSavedRouteColumnWidth,
                     alignment: .leading
                 )
             
@@ -1585,13 +1592,13 @@ private struct FlightNormAircraftNotesRow: View {
     var body: some View {
         HStack(
             alignment: .top,
-            spacing: 8
+            spacing: flightNormSavedColumnSpacing
         ) {
             Text("Примечание")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(
-                    width: 105,
+                    width: flightNormSavedRouteColumnWidth,
                     alignment: .leading
                 )
             
@@ -1612,13 +1619,14 @@ private struct FlightNormAircraftNotesRow: View {
                 )
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
                 .fixedSize(
                     horizontal: false,
                     vertical: true
                 )
                 .frame(
                     maxWidth: .infinity,
-                    alignment: .leading
+                    alignment: .center
                 )
             }
         }
