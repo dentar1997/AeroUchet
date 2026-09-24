@@ -1771,7 +1771,7 @@ private struct FlightNormSavedRouteCard: View {
         ) {
             VStack(
                 alignment: .leading,
-                spacing: 8
+                spacing: 4
             ) {
                 Text(
                     flightNormDisplayRouteName(
@@ -1788,7 +1788,7 @@ private struct FlightNormSavedRouteCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(
-                    minHeight: 28,
+                    minHeight: 22,
                     alignment: .leading
                 )
                 
@@ -1798,7 +1798,7 @@ private struct FlightNormSavedRouteCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(
-                    minHeight: 28,
+                    minHeight: 22,
                     alignment: .leading
                 )
                 
@@ -1860,8 +1860,8 @@ private struct FlightNormSavedRouteCard: View {
                         maxWidth: .infinity,
                         minHeight:
                             hasAnyNote
-                            ? 118
-                            : 94,
+                            ? 96
+                            : 72,
                         alignment: .center
                     )
                     .accessibilityLabel(
@@ -1899,13 +1899,13 @@ private struct FlightNormAircraftBlock: View {
     }
     
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 4) {
             HStack(spacing: 4) {
                 Text(row.aircraftType)
-                    .font(.caption)
+                    .font(.subheadline)
                     .fontWeight(.semibold)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.8)
                 
                 if isEditing {
                     Button(
@@ -1925,7 +1925,7 @@ private struct FlightNormAircraftBlock: View {
             }
             .frame(
                 maxWidth: .infinity,
-                minHeight: 18,
+                minHeight: 20,
                 alignment: .center
             )
             .foregroundStyle(
@@ -1945,7 +1945,7 @@ private struct FlightNormAircraftBlock: View {
                     isHighlighted:
                         isLowConfidence
                 )
-                .frame(minHeight: 28)
+                .frame(minHeight: 22)
                 
                 AeroMinutesPickerButton(
                     minutes:
@@ -1957,7 +1957,7 @@ private struct FlightNormAircraftBlock: View {
                     isHighlighted:
                         isLowConfidence
                 )
-                .frame(minHeight: 28)
+                .frame(minHeight: 22)
             } else {
                 Text(
                     flightNormTime(
@@ -1972,7 +1972,7 @@ private struct FlightNormAircraftBlock: View {
                 .monospacedDigit()
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: 28
+                    minHeight: 22
                 )
                 
                 Text(
@@ -1988,7 +1988,7 @@ private struct FlightNormAircraftBlock: View {
                 .monospacedDigit()
                 .frame(
                     maxWidth: .infinity,
-                    minHeight: 28
+                    minHeight: 22
                 )
             }
             
