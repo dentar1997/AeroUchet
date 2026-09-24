@@ -8,17 +8,17 @@ import PackageDescription
 import AppleProductTypes
 
 let package = Package(
-    name: "My App",
+    name: "АэроУчёт",
     platforms: [
         .iOS("26.0")
     ],
     products: [
         .iOSApplication(
-            name: "My App",
+            name: "АэроУчёт",
             targets: ["AppModule"],
             displayVersion: "1.0",
             bundleVersion: "1",
-            appIcon: .placeholder(icon: .movieReel),
+            appIcon: .placeholder(icon: .plane),
             accentColor: .presetColor(.teal),
             supportedDeviceFamilies: [
                 .pad,
