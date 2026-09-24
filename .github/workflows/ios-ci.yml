@@ -36,3 +36,12 @@ jobs:
             -destination "generic/platform=iOS Simulator" \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+      - name: Static analyze
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -scheme "АэроУчёт" \
+            -destination "generic/platform=iOS Simulator" \
+            CODE_SIGNING_ALLOWED=NO \
+            analyze
