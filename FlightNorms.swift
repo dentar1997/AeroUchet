@@ -1389,11 +1389,9 @@ struct FlightNormVersionDetailView: View {
                 rows: rows.sorted(by: flightNormSavedAircraftSort)
             )
         }
-        .sorted {
-            $0.routeName.localizedStandardCompare(
-                $1.routeName
-            ) == .orderedAscending
-        }
+        .sorted(
+            by: flightNormSavedRouteSort
+        )
     }
     
     private var filteredGroups: [FlightNormSavedRouteGroup] {
@@ -1462,19 +1460,14 @@ struct FlightNormVersionDetailView: View {
 private struct FlightNormSavedRouteCard: View {
     let group: FlightNormSavedRouteGroup
     
-    private var nonEmptyNotes: [String] {
-        group.rows
-            .map {
-                $0.note.trimmingCharacters(
+    private var hasAnyNote: Bool {
+        group.rows.contains {
+            !$0.note
+                .trimmingCharacters(
                     in: .whitespacesAndNewlines
                 )
-            }
-            .filter { !$0.isEmpty }
-    }
-    
-    private var commonNote: String? {
-        let unique = Set(nonEmptyNotes)
-        return unique.count == 1 ? unique.first : nil
+                .isEmpty
+        }
     }
     
     var body: some View {
@@ -1483,7 +1476,8 @@ private struct FlightNormSavedRouteCard: View {
             spacing: 8
         ) {
             FlightNormAircraftColumnsHeader(
-                routeName: group.routeName
+                routeName: group.routeName,
+                rows: group.rows
             )
             
             FlightNormDirectionTimesRow(
@@ -1500,13 +1494,8 @@ private struct FlightNormSavedRouteCard: View {
                 rows: group.rows
             )
             
-            if let commonNote {
-                Text("Примечание: \(commonNote)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            } else if !nonEmptyNotes.isEmpty {
-                FlightNormDifferentNotesView(
+            if hasAnyNote {
+                FlightNormAircraftNotesRow(
                     rows: group.rows
                 )
             }
@@ -1517,6 +1506,7 @@ private struct FlightNormSavedRouteCard: View {
 
 private struct FlightNormAircraftColumnsHeader: View {
     let routeName: String
+    let rows: [FlightNormRow]
     
     var body: some View {
         HStack(spacing: 8) {
@@ -1533,12 +1523,19 @@ private struct FlightNormAircraftColumnsHeader: View {
                 flightNormSavedAircraftOrder,
                 id: \.self
             ) { aircraftType in
-                Text(aircraftType)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(maxWidth: .infinity)
+                Text(
+                    flightNormRow(
+                        aircraftType: aircraftType,
+                        rows: rows
+                    ) == nil
+                    ? ""
+                    : aircraftType
+                )
+                .font(.caption)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity)
             }
         }
     }
@@ -1582,25 +1579,58 @@ private struct FlightNormDirectionTimesRow: View {
     }
 }
 
-private struct FlightNormDifferentNotesView: View {
+private struct FlightNormAircraftNotesRow: View {
     let rows: [FlightNormRow]
     
     var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: 2
+        HStack(
+            alignment: .top,
+            spacing: 8
         ) {
-            ForEach(rows) { row in
-                if !row.note.trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                ).isEmpty {
-                    Text("\(row.aircraftType): \(row.note)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
+            Text("Примечание")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(
+                    width: 105,
+                    alignment: .leading
+                )
+            
+            ForEach(
+                flightNormSavedAircraftOrder,
+                id: \.self
+            ) { aircraftType in
+                Text(
+                    flightNormRow(
+                        aircraftType: aircraftType,
+                        rows: rows
+                    )?
+                    .note
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    ?? ""
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(
+                    horizontal: false,
+                    vertical: true
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
             }
         }
+    }
+}
+
+private func flightNormRow(
+    aircraftType: String,
+    rows: [FlightNormRow]
+) -> FlightNormRow? {
+    rows.first {
+        $0.aircraftType == aircraftType
     }
 }
 
@@ -1610,12 +1640,11 @@ private func flightNormTime(
     from: String,
     to: String
 ) -> String {
-    guard let row = rows.first(
-        where: {
-            $0.aircraftType == aircraftType
-        }
+    guard let row = flightNormRow(
+        aircraftType: aircraftType,
+        rows: rows
     ) else {
-        return "—"
+        return ""
     }
     
     return flightNormTime(
@@ -1641,7 +1670,98 @@ private func flightNormTime(
         return normTimeText(row.returnMinutes)
     }
     
-    return "—"
+    return ""
+}
+
+private func flightNormSavedRouteSort(
+    _ left: FlightNormSavedRouteGroup,
+    _ right: FlightNormSavedRouteGroup
+) -> Bool {
+    let leftIsMoscow =
+        flightNormIsMoscowRoute(left)
+    let rightIsMoscow =
+        flightNormIsMoscowRoute(right)
+    
+    if leftIsMoscow != rightIsMoscow {
+        return leftIsMoscow
+    }
+    
+    let leftKey =
+        leftIsMoscow
+        ? flightNormMoscowDestinationName(
+            left.routeName
+        )
+        : left.routeName
+    
+    let rightKey =
+        rightIsMoscow
+        ? flightNormMoscowDestinationName(
+            right.routeName
+        )
+        : right.routeName
+    
+    let comparison =
+    leftKey.localizedStandardCompare(
+        rightKey
+    )
+    
+    if comparison != .orderedSame {
+        return comparison == .orderedAscending
+    }
+    
+    return left.routeName.localizedStandardCompare(
+        right.routeName
+    ) == .orderedAscending
+}
+
+private func flightNormIsMoscowRoute(
+    _ group: FlightNormSavedRouteGroup
+) -> Bool {
+    if group.departureIATA == "SVO"
+        || group.arrivalIATA == "SVO" {
+        return true
+    }
+    
+    return group.routeName
+        .localizedCaseInsensitiveContains(
+            "Москва"
+        )
+}
+
+private func flightNormMoscowDestinationName(
+    _ routeName: String
+) -> String {
+    let separators =
+    CharacterSet(
+        charactersIn: "-–—"
+    )
+    
+    let parts =
+    routeName
+        .components(
+            separatedBy: separators
+        )
+        .map {
+            $0.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+        }
+        .filter {
+            !$0.isEmpty
+        }
+    
+    if let destination =
+        parts.first(
+            where: {
+                !$0.localizedCaseInsensitiveContains(
+                    "Москва"
+                )
+            }
+        ) {
+        return destination
+    }
+    
+    return routeName
 }
 
 private func flightNormSavedAircraftSort(
