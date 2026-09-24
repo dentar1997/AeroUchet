@@ -1048,64 +1048,6 @@ struct FlightNormsView: View {
 
 // MARK: - Проверка импорта
 
-private struct HardwareKeyboardYearField: UIViewRepresentable {
-    @Binding var year: Int
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(year: $year)
-    }
-
-    func makeUIView(context: Context) -> UITextField {
-        let field = UITextField(frame: .zero)
-        field.placeholder = "Год"
-        field.borderStyle = .none
-        field.keyboardType = .numberPad
-        field.clearButtonMode = .whileEditing
-        field.delegate = context.coordinator
-        field.text = String(year)
-        field.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.textChanged(_:)),
-            for: .editingChanged
-        )
-        return field
-    }
-
-    func updateUIView(_ field: UITextField, context: Context) {
-        let current = String(year)
-
-        if !field.isFirstResponder && field.text != current {
-            field.text = current
-        }
-    }
-
-    final class Coordinator: NSObject, UITextFieldDelegate {
-        private var year: Binding<Int>
-
-        init(year: Binding<Int>) {
-            self.year = year
-        }
-
-        @objc func textChanged(_ field: UITextField) {
-            let digits = (field.text ?? "").filter { $0.isNumber }
-
-            if field.text != digits {
-                field.text = digits
-            }
-
-            if let value = Int(digits) {
-                year.wrappedValue = value
-            }
-        }
-
-        func textFieldDidBeginEditing(_ textField: UITextField) {
-            DispatchQueue.main.async {
-                textField.selectAll(nil)
-            }
-        }
-    }
-}
-
 struct FlightNormImportReviewView: View {
     @Environment(\.dismiss)
     private var dismiss
@@ -1160,10 +1102,20 @@ struct FlightNormImportReviewView: View {
                         }
                     }
                     
-                    HardwareKeyboardYearField(
-                        year: $draft.year
-                    )
-                    .frame(minHeight: 22)
+                    Picker(
+                        "Год",
+                        selection: $draft.year
+                    ) {
+                        ForEach(
+                            2000...2100,
+                            id: \.self
+                        ) { year in
+                            Text(String(year))
+                                .tag(year)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(height: 110)
                     
                     Stepper(
                         "Версия \(draft.versionNumber)",
