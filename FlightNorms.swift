@@ -1908,39 +1908,41 @@ private struct FlightNormAircraftBlock: View {
     
     var body: some View {
         VStack(spacing: 4) {
-            HStack(spacing: 4) {
-                Text(row.aircraftType)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                
-                if isEditing {
-                    Button(
-                        role: .destructive
-                    ) {
-                        onDelete()
-                    } label: {
-                        Image(
-                            systemName:
-                                "trash"
-                        )
-                        .font(.caption2)
-                        .foregroundStyle(.red)
+            Text(row.aircraftType)
+                .font(.headline)
+                .fontWeight(.semibold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .foregroundStyle(
+                    isLowConfidence
+                    ? AnyShapeStyle(.orange)
+                    : AnyShapeStyle(.primary)
+                )
+                .overlay(
+                    alignment: .trailing
+                ) {
+                    if isEditing {
+                        Button(
+                            role: .destructive
+                        ) {
+                            onDelete()
+                        } label: {
+                            Image(
+                                systemName:
+                                    "trash"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .offset(x: 18)
                     }
-                    .buttonStyle(.plain)
                 }
-            }
-            .frame(
-                maxWidth: .infinity,
-                minHeight: 20,
-                alignment: .center
-            )
-            .foregroundStyle(
-                isLowConfidence
-                ? AnyShapeStyle(.orange)
-                : AnyShapeStyle(.primary)
-            )
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: 22,
+                    alignment: .center
+                )
             
             if isEditing {
                 AeroMinutesPickerButton(
