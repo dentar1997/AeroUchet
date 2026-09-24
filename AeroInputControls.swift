@@ -162,24 +162,26 @@ struct AeroMinutesPickerButton: View {
     var isHighlighted = false
 
     @State private var isPresented = false
+    @State private var draftMinutes = 0
 
     private var selectedHour: Int {
-        max(0, minutes / 60)
+        max(0, draftMinutes / 60)
     }
 
     private var selectedMinute: Int {
-        max(0, minutes % 60)
+        max(0, draftMinutes % 60)
     }
 
     var body: some View {
         Button {
+            draftMinutes = minutes
             isPresented = true
         } label: {
             Text(
                 String(
                     format: "%d:%02d",
-                    selectedHour,
-                    selectedMinute
+                    max(0, minutes / 60),
+                    max(0, minutes % 60)
                 )
             )
             .fontWeight(.medium)
@@ -204,6 +206,9 @@ struct AeroMinutesPickerButton: View {
                     Spacer()
 
                     Button("Готово") {
+                        if draftMinutes != minutes {
+                            minutes = draftMinutes
+                        }
                         isPresented = false
                     }
                     .fontWeight(.semibold)
@@ -217,7 +222,7 @@ struct AeroMinutesPickerButton: View {
                         values: Array(0...23),
                         selection: selectedHour
                     ) { hour in
-                        minutes =
+                        draftMinutes =
                         hour * 60
                         + selectedMinute
                     }
@@ -231,7 +236,7 @@ struct AeroMinutesPickerButton: View {
                         values: Array(0...59),
                         selection: selectedMinute
                     ) { minute in
-                        minutes =
+                        draftMinutes =
                         selectedHour * 60
                         + minute
                     }
@@ -246,7 +251,6 @@ struct AeroMinutesPickerButton: View {
         }
     }
 }
-
 
 private struct AeroNumberColumn: View {
     let values: [Int]
