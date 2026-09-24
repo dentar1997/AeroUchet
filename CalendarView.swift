@@ -24,28 +24,16 @@ struct CalendarSnapshot {
         absenceStore: AbsenceStore
     ) {
         
-        let duties =
-        store.duties
-        
-        
         totals =
-        buildDailyIndex(
-            flights: store.flights,
-            duties: duties,
-            workEvents: store.workEvents
-        )
+        store.dailyIndex
         
         
         flights =
-        buildFlightsByDay(
-            flights: store.flights
-        )
+        store.flightsByDay
         
         
         workEvents =
-        buildWorkEventsByDay(
-            events: store.workEvents
-        )
+        store.workEventsByDay
         
         
         absences =
