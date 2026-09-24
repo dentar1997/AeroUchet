@@ -1055,17 +1055,36 @@ struct FlightNormsView: View {
                         ForEach(group.versions) { version in
                             NavigationLink {
                                 FlightNormVersionDetailView(
-                                    version: version
+                                    store: store,
+                                    versionID: version.id
                                 )
                             } label: {
                                 VStack(
                                     alignment: .leading,
                                     spacing: 4
                                 ) {
-                                    Text(
-                                        "Версия \(version.versionNumber)"
-                                    )
-                                    .bold()
+                                    HStack {
+                                        Text(
+                                            "Версия \(version.versionNumber)"
+                                        )
+                                        .bold()
+                                        
+                                        Spacer()
+                                        
+                                        if version.rows.contains(
+                                            where: {
+                                                flightNormIsLowConfidence(
+                                                    $0
+                                                )
+                                            }
+                                        ) {
+                                            Image(
+                                                systemName:
+                                                    "exclamationmark.triangle.fill"
+                                            )
+                                            .foregroundStyle(.orange)
+                                        }
+                                    }
                                     
                                     Text(
                                         "\(version.rows.count) строк • \(version.sourceFileName)"
@@ -1213,9 +1232,6 @@ private let flightNormSavedAircraftOrder = [
 private let flightNormSavedRouteColumnWidth: CGFloat = 190
 private let flightNormSavedColumnSpacing: CGFloat = 4
 
-private let flightNormDraftRouteColumnWidth: CGFloat = 235
-private let flightNormDraftColumnSpacing: CGFloat = 8
-
 private struct FlightNormSavedRouteGroup: Identifiable {
     let id: String
     let routeName: String
@@ -1225,11 +1241,27 @@ private struct FlightNormSavedRouteGroup: Identifiable {
 }
 
 struct FlightNormVersionDetailView: View {
-    let version: FlightNormVersion
+    @Environment(\.dismiss)
+    private var dismiss
+    
+    @ObservedObject var store: FlightNormStore
+    let versionID: UUID
     
     @State private var searchText = ""
+    @State private var isEditing = false
+    @State private var showDeleteVersion = false
+    
+    private var version: FlightNormVersion? {
+        store.versions.first {
+            $0.id == versionID
+        }
+    }
     
     private var routeGroups: [FlightNormSavedRouteGroup] {
+        guard let version else {
+            return []
+        }
+        
         let grouped = Dictionary(
             grouping: version.rows
         ) { row in
@@ -1247,9 +1279,15 @@ struct FlightNormVersionDetailView: View {
             return FlightNormSavedRouteGroup(
                 id: key,
                 routeName: flightNormBestRouteName(rows),
-                departureIATA: normalizedIATA(first.departureIATA),
-                arrivalIATA: normalizedIATA(first.arrivalIATA),
-                rows: rows.sorted(by: flightNormSavedAircraftSort)
+                departureIATA: normalizedIATA(
+                    first.departureIATA
+                ),
+                arrivalIATA: normalizedIATA(
+                    first.arrivalIATA
+                ),
+                rows: rows.sorted(
+                    by: flightNormSavedAircraftSort
+                )
             )
         }
         .sorted(
@@ -1259,7 +1297,9 @@ struct FlightNormVersionDetailView: View {
     
     private var filteredGroups: [FlightNormSavedRouteGroup] {
         let query = searchText
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
             .uppercased()
         
         guard !query.isEmpty else {
@@ -1267,61 +1307,257 @@ struct FlightNormVersionDetailView: View {
         }
         
         return routeGroups.filter { group in
-            group.routeName.uppercased().contains(query)
+            group.routeName
+                .uppercased()
+                .contains(query)
             || group.departureIATA.contains(query)
             || group.arrivalIATA.contains(query)
             || group.rows.contains {
-                $0.aircraftType.uppercased().contains(query)
+                $0.aircraftType
+                    .uppercased()
+                    .contains(query)
             }
         }
     }
     
-    var body: some View {
-        List {
-            Section("Источник") {
-                LabeledContent(
-                    "Период",
-                    value: "\(version.season.rawValue) \(version.year)"
-                )
-                
-                LabeledContent(
-                    "Версия",
-                    value: String(version.versionNumber)
-                )
-                
-                LabeledContent(
-                    "Файл",
-                    value: version.sourceFileName
-                )
-                
-                LabeledContent(
-                    "Маршрутов",
-                    value: String(routeGroups.count)
-                )
-                
-                LabeledContent(
-                    "Нормативов",
-                    value: String(version.rows.count)
-                )
+    private var lowConfidenceCount: Int {
+        version?
+            .rows
+            .filter {
+                flightNormIsLowConfidence($0)
             }
-            
-            Section("Маршруты") {
-                ForEach(filteredGroups) { group in
-                    FlightNormSavedRouteCard(group: group)
+            .count
+        ?? 0
+    }
+    
+    var body: some View {
+        Group {
+            if let version {
+                List {
+                    Section("Источник") {
+                        LabeledContent(
+                            "Период",
+                            value:
+                                "\(version.season.rawValue) \(version.year)"
+                        )
+                        
+                        LabeledContent(
+                            "Версия",
+                            value:
+                                String(
+                                    version.versionNumber
+                                )
+                        )
+                        
+                        LabeledContent(
+                            "Файл",
+                            value:
+                                version.sourceFileName
+                        )
+                        
+                        LabeledContent(
+                            "Маршрутов",
+                            value:
+                                String(
+                                    routeGroups.count
+                                )
+                        )
+                        
+                        LabeledContent(
+                            "Нормативов",
+                            value:
+                                String(
+                                    version.rows.count
+                                )
+                        )
+                    }
+                    
+                    if lowConfidenceCount > 0
+                        && !isEditing {
+                        Section {
+                            Button {
+                                isEditing = true
+                            } label: {
+                                Label(
+                                    "Проверить распознавание: \(lowConfidenceCount)",
+                                    systemImage:
+                                        "exclamationmark.triangle.fill"
+                                )
+                                .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                    
+                    Section("Маршруты") {
+                        ForEach(
+                            filteredGroups
+                        ) { group in
+                            FlightNormSavedRouteCard(
+                                group: group,
+                                isEditing:
+                                    isEditing,
+                                onWarningTap: {
+                                    isEditing = true
+                                },
+                                timeBinding: {
+                                    rowID,
+                                    from,
+                                    to in
+                                    
+                                    timeBinding(
+                                        rowID: rowID,
+                                        from: from,
+                                        to: to
+                                    )
+                                },
+                                onDeleteRow: {
+                                    rowID in
+                                    
+                                    store.deleteRow(
+                                        versionID:
+                                            versionID,
+                                        rowID:
+                                            rowID
+                                    )
+                                }
+                            )
+                        }
+                    }
                 }
+            } else {
+                ContentUnavailableView(
+                    "Версия удалена",
+                    systemImage: "trash"
+                )
             }
         }
-        .navigationTitle("Версия \(version.versionNumber)")
+        .navigationTitle(
+            version.map {
+                "Версия \($0.versionNumber)"
+            }
+            ?? "Расчётное время"
+        )
         .navigationBarTitleDisplayMode(.inline)
         .searchable(
             text: $searchText,
             prompt: "Маршрут, IATA или тип ВС"
         )
+        .toolbar {
+            ToolbarItem(
+                placement: .topBarTrailing
+            ) {
+                Button(
+                    isEditing
+                    ? "Готово"
+                    : "Редактировать"
+                ) {
+                    isEditing.toggle()
+                }
+                .disabled(version == nil)
+            }
+            
+            ToolbarItem(
+                placement: .topBarTrailing
+            ) {
+                Button(
+                    role: .destructive
+                ) {
+                    showDeleteVersion = true
+                } label: {
+                    Image(
+                        systemName: "trash"
+                    )
+                }
+                .disabled(version == nil)
+            }
+        }
+        .alert(
+            "Удалить версию?",
+            isPresented:
+                $showDeleteVersion
+        ) {
+            Button(
+                "Удалить",
+                role: .destructive
+            ) {
+                store.delete(
+                    id: versionID
+                )
+                dismiss()
+            }
+            
+            Button(
+                "Отмена",
+                role: .cancel
+            ) {}
+        } message: {
+            if let version {
+                Text(
+                    "\(version.season.rawValue) \(version.year), версия \(version.versionNumber) будет удалена полностью."
+                )
+            }
+        }
+    }
+    
+    private func timeBinding(
+        rowID: UUID,
+        from: String,
+        to: String
+    ) -> Binding<Int> {
+        Binding(
+            get: {
+                guard
+                    let version =
+                        store.versions.first(
+                            where: {
+                                $0.id
+                                == versionID
+                            }
+                        ),
+                    let row =
+                        version.rows.first(
+                            where: {
+                                $0.id
+                                == rowID
+                            }
+                        )
+                else {
+                    return 0
+                }
+                
+                return flightNormMinutes(
+                    row: row,
+                    from: from,
+                    to: to
+                )
+                ?? 0
+            },
+            set: { minutes in
+                store.updateTime(
+                    versionID:
+                        versionID,
+                    rowID:
+                        rowID,
+                    from:
+                        from,
+                    to:
+                        to,
+                    minutes:
+                        minutes
+                )
+            }
+        )
     }
 }
 
+
 private struct FlightNormSavedRouteCard: View {
     let group: FlightNormSavedRouteGroup
+    let isEditing: Bool
+    let onWarningTap: () -> Void
+    let timeBinding:
+    (UUID, String, String) -> Binding<Int>
+    let onDeleteRow: (UUID) -> Void
     
     private var hasAnyNote: Bool {
         group.rows.contains {
@@ -1333,6 +1569,12 @@ private struct FlightNormSavedRouteCard: View {
         }
     }
     
+    private var hasLowConfidence: Bool {
+        group.rows.contains {
+            flightNormIsLowConfidence($0)
+        }
+    }
+    
     var body: some View {
         VStack(
             alignment: .leading,
@@ -1340,26 +1582,51 @@ private struct FlightNormSavedRouteCard: View {
         ) {
             FlightNormAircraftColumnsHeader(
                 routeName: group.routeName,
-                rows: group.rows
+                rows: group.rows,
+                isEditing: isEditing,
+                hasLowConfidence:
+                    hasLowConfidence,
+                onWarningTap:
+                    onWarningTap,
+                onDeleteRow:
+                    onDeleteRow
             )
             
             FlightNormDirectionTimesRow(
-                title: "\(group.departureIATA) → \(group.arrivalIATA)",
-                from: group.departureIATA,
-                to: group.arrivalIATA,
-                rows: group.rows
+                title:
+                    "\(group.departureIATA) → \(group.arrivalIATA)",
+                from:
+                    group.departureIATA,
+                to:
+                    group.arrivalIATA,
+                rows:
+                    group.rows,
+                isEditing:
+                    isEditing,
+                timeBinding:
+                    timeBinding
             )
             
             FlightNormDirectionTimesRow(
-                title: "\(group.arrivalIATA) → \(group.departureIATA)",
-                from: group.arrivalIATA,
-                to: group.departureIATA,
-                rows: group.rows
+                title:
+                    "\(group.arrivalIATA) → \(group.departureIATA)",
+                from:
+                    group.arrivalIATA,
+                to:
+                    group.departureIATA,
+                rows:
+                    group.rows,
+                isEditing:
+                    isEditing,
+                timeBinding:
+                    timeBinding
             )
             
             if hasAnyNote {
                 FlightNormAircraftNotesRow(
-                    rows: group.rows
+                    rows: group.rows,
+                    isEditing:
+                        isEditing
                 )
             }
         }
@@ -1367,58 +1634,128 @@ private struct FlightNormSavedRouteCard: View {
     }
 }
 
+
 private struct FlightNormAircraftColumnsHeader: View {
     let routeName: String
     let rows: [FlightNormRow]
+    let isEditing: Bool
+    let hasLowConfidence: Bool
+    let onWarningTap: () -> Void
+    let onDeleteRow: (UUID) -> Void
     
     var body: some View {
         HStack(
-            spacing: flightNormSavedColumnSpacing
+            alignment: .top,
+            spacing:
+                flightNormSavedColumnSpacing
         ) {
-            Text(
-                flightNormDisplayRouteName(
-                    routeName
+            HStack(spacing: 5) {
+                Text(
+                    flightNormDisplayRouteName(
+                        routeName
+                    )
                 )
-            )
                 .font(.headline)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .frame(
-                    width: flightNormSavedRouteColumnWidth,
-                    alignment: .leading
+                .foregroundStyle(
+                    isEditing
+                    && hasLowConfidence
+                    ? .orange
+                    : .primary
                 )
+                
+                if hasLowConfidence
+                    && !isEditing {
+                    Button {
+                        onWarningTap()
+                    } label: {
+                        Image(
+                            systemName:
+                                "exclamationmark.triangle.fill"
+                        )
+                        .foregroundStyle(.orange)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(
+                width:
+                    flightNormSavedRouteColumnWidth,
+                alignment: .leading
+            )
             
             ForEach(
                 flightNormSavedAircraftOrder,
                 id: \.self
             ) { aircraftType in
-                Text(
+                if let row =
                     flightNormRow(
-                        aircraftType: aircraftType,
-                        rows: rows
-                    ) == nil
-                    ? ""
-                    : aircraftType
-                )
-                .font(.caption)
-                .fontWeight(.semibold)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity)
+                        aircraftType:
+                            aircraftType,
+                        rows:
+                            rows
+                    ) {
+                    VStack(spacing: 4) {
+                        Text(aircraftType)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .foregroundStyle(
+                                isEditing
+                                && flightNormIsLowConfidence(
+                                    row
+                                )
+                                ? .orange
+                                : .primary
+                            )
+                        
+                        if isEditing {
+                            Button(
+                                role: .destructive
+                            ) {
+                                onDeleteRow(
+                                    row.id
+                                )
+                            } label: {
+                                Image(
+                                    systemName:
+                                        "trash"
+                                )
+                                .font(.caption2)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(
+                        maxWidth: .infinity
+                    )
+                } else {
+                    Text("")
+                        .frame(
+                            maxWidth: .infinity
+                        )
+                }
             }
         }
     }
 }
+
 
 private struct FlightNormDirectionTimesRow: View {
     let title: String
     let from: String
     let to: String
     let rows: [FlightNormRow]
+    let isEditing: Bool
+    let timeBinding:
+    (UUID, String, String) -> Binding<Int>
     
     var body: some View {
         HStack(
-            spacing: flightNormSavedColumnSpacing
+            spacing:
+                flightNormSavedColumnSpacing
         ) {
             Text(title)
                 .font(.caption)
@@ -1426,7 +1763,8 @@ private struct FlightNormDirectionTimesRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(
-                    width: flightNormSavedRouteColumnWidth,
+                    width:
+                        flightNormSavedRouteColumnWidth,
                     alignment: .leading
                 )
             
@@ -1434,35 +1772,70 @@ private struct FlightNormDirectionTimesRow: View {
                 flightNormSavedAircraftOrder,
                 id: \.self
             ) { aircraftType in
-                Text(
-                    flightNormTime(
-                        aircraftType: aircraftType,
-                        rows: rows,
-                        from: from,
-                        to: to
-                    )
-                )
-                .fontWeight(.medium)
-                .monospacedDigit()
-                .frame(maxWidth: .infinity)
+                if let row =
+                    flightNormRow(
+                        aircraftType:
+                            aircraftType,
+                        rows:
+                            rows
+                    ) {
+                    if isEditing {
+                        AeroMinutesPickerButton(
+                            minutes:
+                                timeBinding(
+                                    row.id,
+                                    from,
+                                    to
+                                ),
+                            foregroundStyle:
+                                flightNormIsLowConfidence(
+                                    row
+                                )
+                                ? .orange
+                                : .primary
+                        )
+                    } else {
+                        Text(
+                            flightNormTime(
+                                row: row,
+                                from: from,
+                                to: to
+                            )
+                        )
+                        .fontWeight(.medium)
+                        .monospacedDigit()
+                        .frame(
+                            maxWidth: .infinity
+                        )
+                    }
+                } else {
+                    Text("")
+                        .frame(
+                            maxWidth: .infinity
+                        )
+                }
             }
         }
     }
 }
 
+
 private struct FlightNormAircraftNotesRow: View {
     let rows: [FlightNormRow]
+    let isEditing: Bool
     
     var body: some View {
         HStack(
             alignment: .top,
-            spacing: flightNormSavedColumnSpacing
+            spacing:
+                flightNormSavedColumnSpacing
         ) {
             Text("Примечание")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(
-                    width: flightNormSavedRouteColumnWidth,
+                    width:
+                        flightNormSavedRouteColumnWidth,
                     alignment: .leading
                 )
             
@@ -1470,18 +1843,29 @@ private struct FlightNormAircraftNotesRow: View {
                 flightNormSavedAircraftOrder,
                 id: \.self
             ) { aircraftType in
+                let row =
+                flightNormRow(
+                    aircraftType:
+                        aircraftType,
+                    rows:
+                        rows
+                )
+                
                 Text(
                     normalizedFlightNormNote(
-                        flightNormRow(
-                            aircraftType: aircraftType,
-                            rows: rows
-                        )?
-                        .note
+                        row?.note
                         ?? ""
                     )
                 )
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(
+                    isEditing
+                    && row.map(
+                        flightNormIsLowConfidence
+                    ) == true
+                    ? .orange
+                    : .secondary
+                )
                 .multilineTextAlignment(.center)
                 .fixedSize(
                     horizontal: false,
@@ -1494,6 +1878,47 @@ private struct FlightNormAircraftNotesRow: View {
             }
         }
     }
+}
+
+
+private func flightNormIsLowConfidence(
+    _ row: FlightNormRow
+) -> Bool {
+    guard let confidence =
+            row.confidence
+    else {
+        return false
+    }
+    
+    return confidence < 0.80
+}
+
+private func flightNormMinutes(
+    row: FlightNormRow,
+    from: String,
+    to: String
+) -> Int? {
+    let departure =
+    normalizedIATA(
+        row.departureIATA
+    )
+    
+    let arrival =
+    normalizedIATA(
+        row.arrivalIATA
+    )
+    
+    if departure == from
+        && arrival == to {
+        return row.outboundMinutes
+    }
+    
+    if arrival == from
+        && departure == to {
+        return row.returnMinutes
+    }
+    
+    return nil
 }
 
 private func flightNormRow(
