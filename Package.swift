@@ -29,13 +29,17 @@ let package = Package(
                 .landscapeRight,
                 .landscapeLeft,
                 .portraitUpsideDown(.when(deviceFamilies: [.pad]))
-            ]
+            ],
+            additionalInfoPlistContentFilePath: "AeroUchetInfo.plist"
         )
     ],
     targets: [
         .executableTarget(
             name: "AppModule",
             path: ".",
+            exclude: [
+                "AeroUchetInfo.plist"
+            ],
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals")
             ]
