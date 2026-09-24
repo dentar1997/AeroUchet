@@ -24,6 +24,7 @@ struct FlightNormRow: Identifiable, Codable, Equatable, Sendable {
     var outboundMinutes: Int
     var returnMinutes: Int
     var note: String
+    var confidence: Float?
     
     init(
         id: UUID = UUID(),
@@ -33,7 +34,8 @@ struct FlightNormRow: Identifiable, Codable, Equatable, Sendable {
         arrivalIATA: String,
         outboundMinutes: Int,
         returnMinutes: Int,
-        note: String
+        note: String,
+        confidence: Float? = nil
     ) {
         self.id = id
         self.aircraftType = aircraftType
@@ -43,6 +45,7 @@ struct FlightNormRow: Identifiable, Codable, Equatable, Sendable {
         self.outboundMinutes = outboundMinutes
         self.returnMinutes = returnMinutes
         self.note = note
+        self.confidence = confidence
     }
 }
 
@@ -113,6 +116,74 @@ final class FlightNormStore: ObservableObject {
     
     func delete(id: UUID) {
         versions.removeAll { $0.id == id }
+    }
+    
+    func deleteRow(
+        versionID: UUID,
+        rowID: UUID
+    ) {
+        guard let versionIndex =
+                versions.firstIndex(
+                    where: { $0.id == versionID }
+                )
+        else {
+            return
+        }
+        
+        versions[versionIndex].rows
+            .removeAll { $0.id == rowID }
+    }
+    
+    func updateTime(
+        versionID: UUID,
+        rowID: UUID,
+        from: String,
+        to: String,
+        minutes: Int
+    ) {
+        guard
+            let versionIndex =
+                versions.firstIndex(
+                    where: { $0.id == versionID }
+                ),
+            let rowIndex =
+                versions[versionIndex].rows
+                .firstIndex(
+                    where: { $0.id == rowID }
+                )
+        else {
+            return
+        }
+        
+        let departure =
+        normalizedIATA(
+            versions[versionIndex]
+                .rows[rowIndex]
+                .departureIATA
+        )
+        
+        let arrival =
+        normalizedIATA(
+            versions[versionIndex]
+                .rows[rowIndex]
+                .arrivalIATA
+        )
+        
+        if departure == from
+            && arrival == to {
+            versions[versionIndex]
+                .rows[rowIndex]
+                .outboundMinutes = minutes
+        } else if arrival == from
+            && departure == to {
+            versions[versionIndex]
+                .rows[rowIndex]
+                .returnMinutes = minutes
+        }
+        
+        versions[versionIndex]
+            .rows[rowIndex]
+            .confidence = 1.0
     }
     
     func nextVersion(year: Int, season: FlightNormSeason) -> Int {
@@ -223,7 +294,8 @@ struct FlightNormImportDraft: Identifiable, Sendable {
                 returnMinutes: inbound,
                 note: normalizedFlightNormNote(
                     row.note
-                )
+                ),
+                confidence: row.confidence
             )
         }
         
@@ -251,6 +323,7 @@ private struct FlightNormOCRToken: Sendable {
 enum FlightNormImportError: LocalizedError {
     case cannotOpenPDF
     case noPages
+    case wrongDocument
     case noRows
     
     var errorDescription: String? {
@@ -259,6 +332,8 @@ enum FlightNormImportError: LocalizedError {
             return "Не удалось открыть PDF."
         case .noPages:
             return "В PDF нет страниц."
+        case .wrongDocument:
+            return "Выбранный PDF не похож на таблицу расчётного полётного времени."
         case .noRows:
             return "Не удалось распознать строки таблицы."
         }
@@ -344,6 +419,16 @@ enum FlightNormPDFImporter {
         }
         
         allRows = removeDuplicates(allRows)
+        
+        guard
+            looksLikeFlightNormDocument(
+                coverText: coverText,
+                fileName: url.lastPathComponent,
+                rows: allRows
+            )
+        else {
+            throw FlightNormImportError.wrongDocument
+        }
         
         guard !allRows.isEmpty else {
             throw FlightNormImportError.noRows
@@ -623,6 +708,43 @@ enum FlightNormPDFImporter {
         return nil
     }
     
+    private static func looksLikeFlightNormDocument(
+        coverText: String,
+        fileName: String,
+        rows: [FlightNormDraftRow]
+    ) -> Bool {
+        let text =
+        (coverText + "\n" + fileName)
+            .precomposedStringWithCanonicalMapping
+            .lowercased()
+            .replacingOccurrences(
+                of: "ё",
+                with: "е"
+            )
+        
+        let hasTitle =
+        text.contains("полетн")
+        && text.contains("врем")
+        
+        let knownAircraft =
+        Set(
+            rows.map { $0.aircraftType }
+        )
+        
+        let hasKnownAircraft =
+        !knownAircraft.isDisjoint(
+            with: Set([
+                "A320/321",
+                "B737",
+                "A330",
+                "A350",
+                "B777"
+            ])
+        )
+        
+        return hasTitle && hasKnownAircraft
+    }
+    
     private static func detectMetadata(
         coverText: String
     ) -> (
@@ -883,7 +1005,6 @@ struct FlightNormsView: View {
     
     @State private var showImporter = false
     @State private var isImporting = false
-    @State private var importedDraft: FlightNormImportDraft?
     @State private var importError: String?
     
     var groups: [FlightNormGroup] {
@@ -1014,22 +1135,6 @@ struct FlightNormsView: View {
                 importError = error.localizedDescription
             }
         }
-        .sheet(
-            item: $importedDraft
-        ) { draft in
-            FlightNormImportReviewView(
-                initialDraft: draft
-            ) { version in
-                let wasAdded = store.add(version)
-                importedDraft = nil
-                
-                if !wasAdded {
-                    importError =
-                    "\(version.season.rawValue) \(version.year), версия \(version.versionNumber) уже сохранена."
-                }
-            }
-            .presentationSizing(.page)
-        }
         .alert(
             "Ошибка импорта",
             isPresented: Binding(
@@ -1067,660 +1172,31 @@ struct FlightNormsView: View {
             }
             
             do {
-                var draft =
+                let draft =
                 try await FlightNormPDFImporter
                     .importPDF(url: url)
                 
-                if draft.versionNumber <= 0 {
-                    draft.versionNumber =
-                    store.nextVersion(
-                        year: draft.year,
-                        season: draft.season
-                    )
+                guard
+                    draft.invalidCount == 0,
+                    let version =
+                        draft.makeVersion()
+                else {
+                    importError =
+                    "PDF распознан не полностью. Версия не сохранена."
+                    return
                 }
                 
-                importedDraft = draft
+                guard store.add(version) else {
+                    importError =
+                    "\(version.season.rawValue) \(version.year), версия \(version.versionNumber) уже сохранена."
+                    return
+                }
                 
             } catch {
                 importError =
                 error.localizedDescription
             }
         }
-    }
-}
-
-// MARK: - Проверка импорта
-
-private struct FlightNormDraftRouteGroup: Identifiable {
-    let id: String
-    let routeName: String
-    let departureIATA: String
-    let arrivalIATA: String
-    let rowIDs: [UUID]
-}
-
-struct FlightNormImportReviewView: View {
-    @Environment(\.dismiss)
-    private var dismiss
-    
-    @State private var draft:
-    FlightNormImportDraft
-    
-    let onSave:
-    (FlightNormVersion) -> Void
-    
-    private let aircraftOrder = [
-        "A320/321",
-        "B737",
-        "A330",
-        "A350",
-        "B777"
-    ]
-    
-    private var aircraftCounts: [String: Int] {
-        Dictionary(
-            grouping: draft.rows,
-            by: { $0.aircraftType }
-        )
-        .mapValues { $0.count }
-    }
-    
-    private var routeGroups: [FlightNormDraftRouteGroup] {
-        let grouped = Dictionary(
-            grouping: draft.rows
-        ) { row in
-            flightNormSavedRouteKey(
-                departure: row.departureIATA,
-                arrival: row.arrivalIATA
-            )
-        }
-        
-        return grouped.compactMap { key, rows in
-            guard let first = rows.first else {
-                return nil
-            }
-            
-            return FlightNormDraftRouteGroup(
-                id: key,
-                routeName: flightNormBestDraftRouteName(rows),
-                departureIATA: normalizedIATA(
-                    first.departureIATA
-                ),
-                arrivalIATA: normalizedIATA(
-                    first.arrivalIATA
-                ),
-                rowIDs: rows.map(\.id)
-            )
-        }
-        .sorted(
-            by: flightNormDraftRouteSort
-        )
-    }
-    
-    private func rowBinding(
-        id: UUID
-    ) -> Binding<FlightNormDraftRow>? {
-        guard let index =
-                draft.rows.firstIndex(
-                    where: { $0.id == id }
-                )
-        else {
-            return nil
-        }
-        
-        return $draft.rows[index]
-    }
-    
-    init(
-        initialDraft: FlightNormImportDraft,
-        onSave: @escaping (FlightNormVersion) -> Void
-    ) {
-        _draft =
-        State(
-            initialValue: initialDraft
-        )
-        
-        self.onSave = onSave
-    }
-    
-    var body: some View {
-        NavigationStack {
-            List {
-                Section("Таблица") {
-                    Picker(
-                        "Сезон",
-                        selection: $draft.season
-                    ) {
-                        ForEach(
-                            FlightNormSeason.allCases
-                        ) { season in
-                            Text(season.rawValue)
-                                .tag(season)
-                        }
-                    }
-                    
-                    AeroYearPickerRow(
-                        "Год",
-                        selection: $draft.year,
-                        range: 2000...2100
-                    )
-                    
-                    Stepper(
-                        "Версия \(draft.versionNumber)",
-                        value: $draft.versionNumber,
-                        in: 1...999
-                    )
-                    
-                    LabeledContent(
-                        "Файл",
-                        value: draft.sourceFileName
-                    )
-                    
-                    LabeledContent(
-                        "Страниц",
-                        value: String(draft.pageCount)
-                    )
-                }
-                
-                Section("По типам ВС") {
-                    ForEach(
-                        aircraftOrder,
-                        id: \.self
-                    ) { aircraft in
-                        LabeledContent(
-                            aircraft,
-                            value: String(
-                                aircraftCounts[
-                                    aircraft,
-                                    default: 0
-                                ]
-                            )
-                        )
-                    }
-                    
-                    LabeledContent(
-                        "Всего",
-                        value: String(draft.rows.count)
-                    )
-                }
-                
-                if draft.invalidCount > 0 {
-                    Section {
-                        Label(
-                            "Нужно проверить строк: \(draft.invalidCount)",
-                            systemImage:
-                                "exclamationmark.triangle.fill"
-                        )
-                        .foregroundStyle(.orange)
-                    }
-                }
-                
-                Section {
-                    ForEach(routeGroups) { group in
-                        FlightNormDraftRouteCard(
-                            group: group,
-                            draft: $draft,
-                            rowBinding: rowBinding
-                        )
-                    }
-                } header: {
-                    Text(
-                        "Распознано: \(draft.rows.count)"
-                    )
-                } footer: {
-                    Text(
-                        "Нажмите на тип ВС, чтобы проверить или исправить распознанную строку."
-                    )
-                }
-            }
-            .navigationTitle(
-                "Проверка импорта"
-            )
-            .navigationBarTitleDisplayMode(
-                .inline
-            )
-            .toolbar {
-                ToolbarItem(
-                    placement: .cancellationAction
-                ) {
-                    Button("Отмена") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(
-                    placement: .confirmationAction
-                ) {
-                    Button("Сохранить") {
-                        guard let version =
-                                draft.makeVersion()
-                        else {
-                            return
-                        }
-                        
-                        onSave(version)
-                        dismiss()
-                    }
-                    .disabled(
-                        draft.rows.isEmpty
-                        ||
-                        draft.invalidCount > 0
-                    )
-                }
-            }
-        }
-    }
-}
-
-private struct FlightNormDraftRouteCard: View {
-    let group: FlightNormDraftRouteGroup
-    @Binding var draft: FlightNormImportDraft
-    let rowBinding:
-    (UUID) -> Binding<FlightNormDraftRow>?
-    
-    private var rows: [FlightNormDraftRow] {
-        draft.rows.filter {
-            group.rowIDs.contains($0.id)
-        }
-    }
-    
-    private func row(
-        aircraftType: String
-    ) -> FlightNormDraftRow? {
-        rows.first {
-            $0.aircraftType == aircraftType
-        }
-    }
-    
-    var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: 8
-        ) {
-            HStack(
-                spacing: flightNormDraftColumnSpacing
-            ) {
-                Text(
-                    flightNormDisplayRouteName(
-                        group.routeName
-                    )
-                )
-                .font(.headline)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .allowsTightening(true)
-                .frame(
-                    width: flightNormDraftRouteColumnWidth,
-                    alignment: .leading
-                )
-                
-                ForEach(
-                    flightNormSavedAircraftOrder,
-                    id: \.self
-                ) { aircraftType in
-                    if let row =
-                        row(
-                            aircraftType:
-                                aircraftType
-                        ),
-                       let binding =
-                        rowBinding(row.id) {
-                        NavigationLink {
-                            FlightNormDraftRowEditView(
-                                row: binding
-                            )
-                        } label: {
-                            Text(aircraftType)
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .lineLimit(1)
-                                .allowsTightening(true)
-                                .frame(
-                                    maxWidth: .infinity
-                                )
-                                .foregroundStyle(
-                                    !row.isValid
-                                    ? .red
-                                    : row.confidence < 0.80
-                                    ? .orange
-                                    : .primary
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        Text("")
-                            .frame(
-                                maxWidth: .infinity
-                            )
-                    }
-                }
-            }
-            
-            FlightNormDraftDirectionRow(
-                title:
-                    "\(group.departureIATA) → \(group.arrivalIATA)",
-                from: group.departureIATA,
-                to: group.arrivalIATA,
-                rows: rows
-            )
-            
-            FlightNormDraftDirectionRow(
-                title:
-                    "\(group.arrivalIATA) → \(group.departureIATA)",
-                from: group.arrivalIATA,
-                to: group.departureIATA,
-                rows: rows
-            )
-            
-            if rows.contains(
-                where: {
-                    !normalizedFlightNormNote(
-                        $0.note
-                    ).isEmpty
-                }
-            ) {
-                FlightNormDraftNotesRow(
-                    rows: rows
-                )
-            }
-        }
-        .padding(.vertical, 5)
-    }
-}
-
-
-private struct FlightNormDraftDirectionRow: View {
-    let title: String
-    let from: String
-    let to: String
-    let rows: [FlightNormDraftRow]
-    
-    var body: some View {
-        HStack(
-            spacing: flightNormDraftColumnSpacing
-        ) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(
-                    width: flightNormDraftRouteColumnWidth,
-                    alignment: .leading
-                )
-            
-            ForEach(
-                flightNormSavedAircraftOrder,
-                id: \.self
-            ) { aircraftType in
-                Text(
-                    flightNormDraftTime(
-                        aircraftType: aircraftType,
-                        rows: rows,
-                        from: from,
-                        to: to
-                    )
-                )
-                .fontWeight(.medium)
-                .monospacedDigit()
-                .frame(
-                    maxWidth: .infinity
-                )
-            }
-        }
-    }
-}
-
-
-private struct FlightNormDraftNotesRow: View {
-    let rows: [FlightNormDraftRow]
-    
-    var body: some View {
-        HStack(
-            alignment: .top,
-            spacing: flightNormDraftColumnSpacing
-        ) {
-            Text("Примечание")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(
-                    width: flightNormDraftRouteColumnWidth,
-                    alignment: .leading
-                )
-            
-            ForEach(
-                flightNormSavedAircraftOrder,
-                id: \.self
-            ) { aircraftType in
-                Text(
-                    normalizedFlightNormNote(
-                        rows.first {
-                            $0.aircraftType
-                            == aircraftType
-                        }?
-                        .note
-                        ?? ""
-                    )
-                )
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
-                .allowsTightening(true)
-                .multilineTextAlignment(
-                    .center
-                )
-                .frame(
-                    maxWidth: .infinity,
-                    alignment: .center
-                )
-            }
-        }
-    }
-}
-
-
-private func flightNormDraftTime(
-    aircraftType: String,
-    rows: [FlightNormDraftRow],
-    from: String,
-    to: String
-) -> String {
-    guard let row =
-            rows.first(
-                where: {
-                    $0.aircraftType
-                    == aircraftType
-                }
-            )
-    else {
-        return ""
-    }
-    
-    let departure =
-    normalizedIATA(
-        row.departureIATA
-    )
-    
-    let arrival =
-    normalizedIATA(
-        row.arrivalIATA
-    )
-    
-    if departure == from
-        && arrival == to {
-        return normalizedNormTime(
-            row.outboundTime
-        )
-    }
-    
-    if arrival == from
-        && departure == to {
-        return normalizedNormTime(
-            row.returnTime
-        )
-    }
-    
-    return ""
-}
-
-
-private func flightNormBestDraftRouteName(
-    _ rows: [FlightNormDraftRow]
-) -> String {
-    rows
-        .map {
-            $0.routeName.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-        }
-        .filter {
-            !$0.isEmpty
-        }
-        .sorted {
-            if $0.count != $1.count {
-                return $0.count > $1.count
-            }
-            
-            return $0.localizedStandardCompare(
-                $1
-            ) == .orderedAscending
-        }
-        .first
-    ?? ""
-}
-
-
-private func flightNormDraftRouteSort(
-    _ left: FlightNormDraftRouteGroup,
-    _ right: FlightNormDraftRouteGroup
-) -> Bool {
-    let leftIsMoscow =
-        left.departureIATA == "SVO"
-        || left.arrivalIATA == "SVO"
-        || left.routeName
-            .localizedCaseInsensitiveContains(
-                "Москва"
-            )
-    
-    let rightIsMoscow =
-        right.departureIATA == "SVO"
-        || right.arrivalIATA == "SVO"
-        || right.routeName
-            .localizedCaseInsensitiveContains(
-                "Москва"
-            )
-    
-    if leftIsMoscow != rightIsMoscow {
-        return leftIsMoscow
-    }
-    
-    let leftKey =
-        leftIsMoscow
-        ? flightNormMoscowDestinationName(
-            left.routeName
-        )
-        : left.routeName
-    
-    let rightKey =
-        rightIsMoscow
-        ? flightNormMoscowDestinationName(
-            right.routeName
-        )
-        : right.routeName
-    
-    let comparison =
-    leftKey.localizedStandardCompare(
-        rightKey
-    )
-    
-    if comparison != .orderedSame {
-        return comparison
-            == .orderedAscending
-    }
-    
-    return left.routeName
-        .localizedStandardCompare(
-            right.routeName
-        ) == .orderedAscending
-}
-
-
-// MARK: - Редактор строки
-
-struct FlightNormDraftRowEditView: View {
-    @Binding var row:
-    FlightNormDraftRow
-    
-    var body: some View {
-        Form {
-            Section("Маршрут") {
-                TextField(
-                    "Название",
-                    text: $row.routeName
-                )
-                
-                TextField(
-                    "Тип ВС",
-                    text: $row.aircraftType
-                )
-                
-                TextField(
-                    "IATA вылета",
-                    text: $row.departureIATA
-                )
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled()
-                
-                TextField(
-                    "IATA прилёта",
-                    text: $row.arrivalIATA
-                )
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled()
-            }
-            
-            Section("Расчётное время") {
-                TextField(
-                    "Туда",
-                    text: $row.outboundTime
-                )
-                
-                TextField(
-                    "Обратно",
-                    text: $row.returnTime
-                )
-            }
-            
-            Section("Примечание") {
-                TextField(
-                    "Примечание",
-                    text: $row.note,
-                    axis: .vertical
-                )
-                .lineLimit(3...8)
-            }
-            
-            Section {
-                if row.isValid {
-                    Label(
-                        "Строка готова",
-                        systemImage:
-                            "checkmark.circle.fill"
-                    )
-                    .foregroundStyle(.green)
-                } else {
-                    Label(
-                        "Проверь IATA и время",
-                        systemImage:
-                            "exclamationmark.triangle.fill"
-                    )
-                    .foregroundStyle(.red)
-                }
-            }
-        }
-        .navigationTitle("Строка")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
