@@ -875,56 +875,6 @@ struct FlightNormsView: View {
     
     var body: some View {
         List {
-            Section {
-                HStack(spacing: 12) {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.title2)
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: 3
-                    ) {
-                        Text("Перетащите PDF сюда")
-                            .fontWeight(.semibold)
-
-                        Text("Без открытия окна выбора файлов")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-                }
-                .frame(
-                    maxWidth: .infinity,
-                    minHeight: 54
-                )
-                .contentShape(Rectangle())
-                .dropDestination(
-                    for: URL.self
-                ) { urls, _ in
-                    guard
-                        let url = urls.first(
-                            where: {
-                                $0.pathExtension
-                                    .lowercased()
-                                == "pdf"
-                            }
-                        )
-                    else {
-                        importError =
-                        "Нужен файл PDF."
-                        return false
-                    }
-
-                    importPDF(url)
-                    return true
-                }
-            } footer: {
-                Text(
-                    "Откройте «Файлы» рядом с АэроУчётом и перетащите PDF на эту строку."
-                )
-            }
-
             if store.versions.isEmpty {
                 ContentUnavailableView(
                     "Нормативов пока нет",
