@@ -836,6 +836,69 @@ struct FlightNormGroup: Identifiable {
 
 // MARK: - Главный экран
 
+private struct FlightNormPDFDocumentPicker: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let onPick: (URL) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIViewController(
+        context: Context
+    ) -> UIDocumentPickerViewController {
+        let picker =
+        UIDocumentPickerViewController(
+            forOpeningContentTypes: [.pdf],
+            asCopy: false
+        )
+
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+
+        return picker
+    }
+
+    func updateUIViewController(
+        _ uiViewController: UIDocumentPickerViewController,
+        context: Context
+    ) {}
+
+    final class Coordinator:
+        NSObject,
+        UIDocumentPickerDelegate {
+
+        var parent: FlightNormPDFDocumentPicker
+
+        init(
+            parent: FlightNormPDFDocumentPicker
+        ) {
+            self.parent = parent
+        }
+
+        func documentPicker(
+            _ controller: UIDocumentPickerViewController,
+            didPickDocumentsAt urls: [URL]
+        ) {
+            parent.isPresented = false
+
+            guard let url = urls.first else {
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.parent.onPick(url)
+            }
+        }
+
+        func documentPickerWasCancelled(
+            _ controller: UIDocumentPickerViewController
+        ) {
+            parent.isPresented = false
+        }
+    }
+}
+
 struct FlightNormsView: View {
     @ObservedObject var store: FlightNormStore
     
@@ -955,21 +1018,13 @@ struct FlightNormsView: View {
                 }
             }
         }
-        .fileImporter(
-            isPresented: $showImporter,
-            allowedContentTypes: [.pdf],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else {
-                    return
-                }
-                
+        .sheet(
+            isPresented: $showImporter
+        ) {
+            FlightNormPDFDocumentPicker(
+                isPresented: $showImporter
+            ) { url in
                 importPDF(url)
-                
-            case .failure(let error):
-                importError = error.localizedDescription
             }
         }
         .sheet(
