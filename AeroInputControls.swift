@@ -159,7 +159,7 @@ struct AeroTimePickerRow: View {
 
 struct AeroMinutesPickerButton: View {
     @Binding var minutes: Int
-    var foregroundStyle: Color = .primary
+    var isHighlighted = false
 
     @State private var isPresented = false
 
@@ -184,7 +184,11 @@ struct AeroMinutesPickerButton: View {
             )
             .fontWeight(.medium)
             .monospacedDigit()
-            .foregroundStyle(foregroundStyle)
+            .foregroundStyle(
+                isHighlighted
+                ? AnyShapeStyle(.orange)
+                : AnyShapeStyle(.primary)
+            )
             .frame(
                 maxWidth: .infinity
             )
