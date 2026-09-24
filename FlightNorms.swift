@@ -1900,7 +1900,7 @@ private struct FlightNormAircraftBlock: View {
     
     var body: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 3) {
+            HStack(spacing: 4) {
                 Text(row.aircraftType)
                     .font(.caption)
                     .fontWeight(.semibold)
@@ -1908,10 +1908,6 @@ private struct FlightNormAircraftBlock: View {
                     .minimumScaleFactor(0.7)
                 
                 if isEditing {
-                    Spacer(
-                        minLength: 1
-                    )
-                    
                     Button(
                         role: .destructive
                     ) {
@@ -1927,6 +1923,11 @@ private struct FlightNormAircraftBlock: View {
                     .buttonStyle(.plain)
                 }
             }
+            .frame(
+                maxWidth: .infinity,
+                minHeight: 18,
+                alignment: .center
+            )
             .foregroundStyle(
                 isLowConfidence
                 ? AnyShapeStyle(.orange)
