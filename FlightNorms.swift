@@ -1102,20 +1102,11 @@ struct FlightNormImportReviewView: View {
                         }
                     }
                     
-                    Picker(
+                    AeroYearPickerRow(
                         "Год",
-                        selection: $draft.year
-                    ) {
-                        ForEach(
-                            2000...2100,
-                            id: \.self
-                        ) { year in
-                            Text(String(year))
-                                .tag(year)
-                        }
-                    }
-                    .pickerStyle(.wheel)
-                    .frame(height: 110)
+                        selection: $draft.year,
+                        range: 2000...2100
+                    )
                     
                     Stepper(
                         "Версия \(draft.versionNumber)",
