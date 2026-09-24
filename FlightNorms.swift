@@ -221,7 +221,9 @@ struct FlightNormImportDraft: Identifiable, Sendable {
                 arrivalIATA: normalizedIATA(row.arrivalIATA),
                 outboundMinutes: outbound,
                 returnMinutes: inbound,
-                note: row.note
+                note: normalizedFlightNormNote(
+                    row.note
+                )
             )
         }
         
@@ -458,6 +460,7 @@ enum FlightNormPDFImporter {
             if noteStart < nsText.length {
                 note = nsText.substring(from: noteStart)
                 note = cleanCellText(note)
+                note = normalizedFlightNormNote(note)
             }
             
             let confidence: Float
@@ -809,6 +812,46 @@ func normalizedIATA(_ value: String) -> String {
     value
         .trimmingCharacters(in: .whitespacesAndNewlines)
         .uppercased()
+}
+
+func normalizedFlightNormNote(
+    _ value: String
+) -> String {
+    let trimmed =
+    value.trimmingCharacters(
+        in: .whitespacesAndNewlines
+    )
+    
+    guard !trimmed.isEmpty else {
+        return ""
+    }
+    
+    let nsValue = trimmed as NSString
+    let wholeRange =
+    NSRange(
+        location: 0,
+        length: nsValue.length
+    )
+    
+    if let regex =
+        try? NSRegularExpression(
+            pattern: #"^4\.(?=\s|$)"#,
+            options: []
+        ),
+       regex.firstMatch(
+            in: trimmed,
+            options: [],
+            range: wholeRange
+       ) != nil {
+        return regex.stringByReplacingMatches(
+            in: trimmed,
+            options: [],
+            range: wholeRange,
+            withTemplate: "ч."
+        )
+    }
+    
+    return trimmed
 }
 
 private func cleanCellText(_ value: String) -> String {
@@ -1515,7 +1558,11 @@ private struct FlightNormAircraftColumnsHeader: View {
         HStack(
             spacing: flightNormSavedColumnSpacing
         ) {
-            Text(routeName)
+            Text(
+                flightNormDisplayRouteName(
+                    routeName
+                )
+            )
                 .font(.headline)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -1607,15 +1654,14 @@ private struct FlightNormAircraftNotesRow: View {
                 id: \.self
             ) { aircraftType in
                 Text(
-                    flightNormRow(
-                        aircraftType: aircraftType,
-                        rows: rows
-                    )?
-                    .note
-                    .trimmingCharacters(
-                        in: .whitespacesAndNewlines
+                    normalizedFlightNormNote(
+                        flightNormRow(
+                            aircraftType: aircraftType,
+                            rows: rows
+                        )?
+                        .note
+                        ?? ""
                     )
-                    ?? ""
                 )
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -1736,18 +1782,89 @@ private func flightNormIsMoscowRoute(
         )
 }
 
+private func flightNormDisplayRouteName(
+    _ routeName: String
+) -> String {
+    let trimmed =
+    routeName.trimmingCharacters(
+        in: .whitespacesAndNewlines
+    )
+    
+    guard !trimmed.isEmpty else {
+        return trimmed
+    }
+    
+    // Основной разделитель между аэропортами/городами в PDF
+    // обычно окружён пробелами. Внутренние дефисы в названиях
+    // вроде Шарм-эль-Шейх при этом сохраняются.
+    if let regex =
+        try? NSRegularExpression(
+            pattern: #"\s+[\-–—]\s+"#,
+            options: []
+        ) {
+        let nsTrimmed = trimmed as NSString
+        let wholeRange =
+        NSRange(
+            location: 0,
+            length: nsTrimmed.length
+        )
+        
+        if let match =
+            regex.firstMatch(
+                in: trimmed,
+                options: [],
+                range: wholeRange
+            ) {
+            let mutable =
+            NSMutableString(
+                string: trimmed
+            )
+            
+            mutable.replaceCharacters(
+                in: match.range,
+                with: " ↔ "
+            )
+            
+            return mutable as String
+        }
+    }
+    
+    // Для московских маршрутов OCR иногда убирает пробелы вокруг
+    // разделителя: Москва-Шарм-эль-Шейх.
+    let moscowPrefixes = [
+        "Москва-",
+        "Москва–",
+        "Москва—"
+    ]
+    
+    for prefix in moscowPrefixes {
+        if trimmed.hasPrefix(prefix) {
+            let destination =
+            String(
+                trimmed.dropFirst(
+                    prefix.count
+                )
+            )
+            
+            return "Москва ↔ \(destination)"
+        }
+    }
+    
+    return trimmed
+}
+
 private func flightNormMoscowDestinationName(
     _ routeName: String
 ) -> String {
-    let separators =
-    CharacterSet(
-        charactersIn: "-–—"
+    let displayName =
+    flightNormDisplayRouteName(
+        routeName
     )
     
     let parts =
-    routeName
+    displayName
         .components(
-            separatedBy: separators
+            separatedBy: "↔"
         )
         .map {
             $0.trimmingCharacters(
