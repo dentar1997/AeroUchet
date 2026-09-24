@@ -24,6 +24,10 @@ struct HomeView: View {
     
     var body: some View {
         
+        let duties =
+        store.duties
+        
+        
         let index =
         store.dailyIndex
         
