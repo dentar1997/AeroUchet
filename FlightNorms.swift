@@ -3,7 +3,6 @@ import Foundation
 import PDFKit
 import Vision
 import UniformTypeIdentifiers
-import UIKit
 
 // MARK: - Сезон
 
@@ -836,69 +835,6 @@ struct FlightNormGroup: Identifiable {
 
 // MARK: - Главный экран
 
-private struct FlightNormPDFDocumentPicker: UIViewControllerRepresentable {
-    @Binding var isPresented: Bool
-    let onPick: (URL) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeUIViewController(
-        context: Context
-    ) -> UIDocumentPickerViewController {
-        let picker =
-        UIDocumentPickerViewController(
-            forOpeningContentTypes: [.pdf],
-            asCopy: false
-        )
-
-        picker.allowsMultipleSelection = false
-        picker.delegate = context.coordinator
-
-        return picker
-    }
-
-    func updateUIViewController(
-        _ uiViewController: UIDocumentPickerViewController,
-        context: Context
-    ) {}
-
-    final class Coordinator:
-        NSObject,
-        UIDocumentPickerDelegate {
-
-        var parent: FlightNormPDFDocumentPicker
-
-        init(
-            parent: FlightNormPDFDocumentPicker
-        ) {
-            self.parent = parent
-        }
-
-        func documentPicker(
-            _ controller: UIDocumentPickerViewController,
-            didPickDocumentsAt urls: [URL]
-        ) {
-            parent.isPresented = false
-
-            guard let url = urls.first else {
-                return
-            }
-
-            DispatchQueue.main.async {
-                self.parent.onPick(url)
-            }
-        }
-
-        func documentPickerWasCancelled(
-            _ controller: UIDocumentPickerViewController
-        ) {
-            parent.isPresented = false
-        }
-    }
-}
-
 struct FlightNormsView: View {
     @ObservedObject var store: FlightNormStore
     
@@ -939,6 +875,56 @@ struct FlightNormsView: View {
     
     var body: some View {
         List {
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.title2)
+
+                    VStack(
+                        alignment: .leading,
+                        spacing: 3
+                    ) {
+                        Text("Перетащите PDF сюда")
+                            .fontWeight(.semibold)
+
+                        Text("Без открытия окна выбора файлов")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: 54
+                )
+                .contentShape(Rectangle())
+                .dropDestination(
+                    for: URL.self
+                ) { urls, _ in
+                    guard
+                        let url = urls.first(
+                            where: {
+                                $0.pathExtension
+                                    .lowercased()
+                                == "pdf"
+                            }
+                        )
+                    else {
+                        importError =
+                        "Нужен файл PDF."
+                        return false
+                    }
+
+                    importPDF(url)
+                    return true
+                }
+            } footer: {
+                Text(
+                    "Откройте «Файлы» рядом с АэроУчётом и перетащите PDF на эту строку."
+                )
+            }
+
             if store.versions.isEmpty {
                 ContentUnavailableView(
                     "Нормативов пока нет",
@@ -1018,16 +1004,21 @@ struct FlightNormsView: View {
                 }
             }
         }
-        .sheet(
+        .fileImporter(
             isPresented: $showImporter,
-            onDismiss: {
-                restoreHardwareKeyboardAfterFilePicker()
-            }
-        ) {
-            FlightNormPDFDocumentPicker(
-                isPresented: $showImporter
-            ) { url in
+            allowedContentTypes: [.pdf],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else {
+                    return
+                }
+
                 importPDF(url)
+
+            case .failure(let error):
+                importError = error.localizedDescription
             }
         }
         .sheet(
