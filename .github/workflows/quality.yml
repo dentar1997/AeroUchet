@@ -1,0 +1,34 @@
+name: AeroUchet Quality
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  quality:
+    name: Swift quality checks
+    runs-on: macos-26
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install quality tools
+        run: |
+          brew install swiftlint swiftformat
+
+      - name: SwiftLint
+        continue-on-error: true
+        run: |
+          swiftlint lint --config .swiftlint.yml
+
+      - name: SwiftFormat lint
+        continue-on-error: true
+        run: |
+          swiftformat --lint . --exclude .swiftpm,.build
