@@ -1387,19 +1387,28 @@ struct FlightNormVersionDetailView: View {
                         )
                     }
                     
-                    if lowConfidenceCount > 0
-                        && !isEditing {
+                    if lowConfidenceCount > 0 {
                         Section {
                             Button {
                                 isEditing = true
                             } label: {
-                                Label(
-                                    "Проверить распознавание: \(lowConfidenceCount)",
-                                    systemImage:
-                                        "exclamationmark.triangle"
-                                )
+                                HStack(spacing: 8) {
+                                    Image(
+                                        systemName:
+                                            "exclamationmark.triangle.fill"
+                                    )
+                                    .foregroundStyle(.orange)
+                                    
+                                    Text(
+                                        "Проверить распознавание: \(lowConfidenceCount)"
+                                    )
+                                    .foregroundStyle(.primary)
+                                    
+                                    Spacer()
+                                }
+                                .contentShape(Rectangle())
                             }
-                            .foregroundStyle(.primary)
+                            .buttonStyle(.plain)
                         }
                     }
                     
@@ -1873,13 +1882,12 @@ private struct FlightNormSavedRouteCard: View {
                             maxWidth: .infinity,
                             minHeight:
                                 hasAnyNote
-                                ? 118
-                                : 94
+                                ? 96
+                                : 72
                         )
                 }
             }
         }
-        .padding(.vertical, 5)
     }
 }
 
