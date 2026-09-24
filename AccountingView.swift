@@ -41,19 +41,8 @@ struct AccountingView: View {
         calendarSync.revision
         
         
-        let duties =
-        store.duties
-        
-        
         let index =
-        buildDailyIndex(
-            flights:
-                store.flights,
-            duties:
-                duties,
-            workEvents:
-                store.workEvents
-        )
+        store.dailyIndex
         
         
         let totals =
