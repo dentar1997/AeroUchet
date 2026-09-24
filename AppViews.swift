@@ -24,19 +24,8 @@ struct HomeView: View {
     
     var body: some View {
         
-        let duties =
-        store.duties
-        
-        
         let index =
-        buildDailyIndex(
-            flights:
-                store.flights,
-            duties:
-                duties,
-            workEvents:
-                store.workEvents
-        )
+        store.dailyIndex
         
         
         let activeMonth =
