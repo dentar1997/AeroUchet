@@ -186,6 +186,36 @@ final class FlightNormStore: ObservableObject {
             .confidence = 1.0
     }
     
+    func addRow(
+        versionID: UUID,
+        row: FlightNormRow
+    ) {
+        guard let versionIndex =
+                versions.firstIndex(
+                    where: { $0.id == versionID }
+                )
+        else {
+            return
+        }
+        
+        versions[versionIndex].rows.append(row)
+    }
+    
+    func replaceRows(
+        versionID: UUID,
+        rows: [FlightNormRow]
+    ) {
+        guard let versionIndex =
+                versions.firstIndex(
+                    where: { $0.id == versionID }
+                )
+        else {
+            return
+        }
+        
+        versions[versionIndex].rows = rows
+    }
+    
     func nextVersion(year: Int, season: FlightNormSeason) -> Int {
         let values = versions
             .filter { $0.year == year && $0.season == season }
@@ -1063,28 +1093,10 @@ struct FlightNormsView: View {
                                     alignment: .leading,
                                     spacing: 4
                                 ) {
-                                    HStack {
-                                        Text(
-                                            "Версия \(version.versionNumber)"
-                                        )
-                                        .bold()
-                                        
-                                        Spacer()
-                                        
-                                        if version.rows.contains(
-                                            where: {
-                                                flightNormIsLowConfidence(
-                                                    $0
-                                                )
-                                            }
-                                        ) {
-                                            Image(
-                                                systemName:
-                                                    "exclamationmark.triangle.fill"
-                                            )
-                                            .foregroundStyle(.orange)
-                                        }
-                                    }
+                                    Text(
+                                        "Версия \(version.versionNumber)"
+                                    )
+                                    .bold()
                                     
                                     Text(
                                         "\(version.rows.count) строк • \(version.sourceFileName)"
@@ -1250,6 +1262,8 @@ struct FlightNormVersionDetailView: View {
     @State private var searchText = ""
     @State private var isEditing = false
     @State private var showDeleteVersion = false
+    @State private var undoStack: [[FlightNormRow]] = []
+    @State private var redoStack: [[FlightNormRow]] = []
     
     private var version: FlightNormVersion? {
         store.versions.first {
@@ -1296,7 +1310,8 @@ struct FlightNormVersionDetailView: View {
     }
     
     private var filteredGroups: [FlightNormSavedRouteGroup] {
-        let query = searchText
+        let query =
+        searchText
             .trimmingCharacters(
                 in: .whitespacesAndNewlines
             )
@@ -1381,10 +1396,10 @@ struct FlightNormVersionDetailView: View {
                                 Label(
                                     "Проверить распознавание: \(lowConfidenceCount)",
                                     systemImage:
-                                        "exclamationmark.triangle.fill"
+                                        "exclamationmark.triangle"
                                 )
-                                .foregroundStyle(.orange)
                             }
+                            .foregroundStyle(.primary)
                         }
                     }
                     
@@ -1396,9 +1411,6 @@ struct FlightNormVersionDetailView: View {
                                 group: group,
                                 isEditing:
                                     isEditing,
-                                onWarningTap: {
-                                    isEditing = true
-                                },
                                 timeBinding: {
                                     rowID,
                                     from,
@@ -1413,11 +1425,23 @@ struct FlightNormVersionDetailView: View {
                                 onDeleteRow: {
                                     rowID in
                                     
-                                    store.deleteRow(
-                                        versionID:
-                                            versionID,
-                                        rowID:
-                                            rowID
+                                    performEditAction {
+                                        store.deleteRow(
+                                            versionID:
+                                                versionID,
+                                            rowID:
+                                                rowID
+                                        )
+                                    }
+                                },
+                                onAddRow: {
+                                    aircraftType in
+                                    
+                                    addManualRow(
+                                        aircraftType:
+                                            aircraftType,
+                                        group:
+                                            group
                                     )
                                 }
                             )
@@ -1443,6 +1467,42 @@ struct FlightNormVersionDetailView: View {
             prompt: "Маршрут, IATA или тип ВС"
         )
         .toolbar {
+            if isEditing {
+                ToolbarItemGroup(
+                    placement: .topBarLeading
+                ) {
+                    Button {
+                        undoLastEdit()
+                    } label: {
+                        Image(
+                            systemName:
+                                "arrow.uturn.backward"
+                        )
+                    }
+                    .disabled(
+                        undoStack.isEmpty
+                    )
+                    .accessibilityLabel(
+                        "Отменить последнее изменение"
+                    )
+                    
+                    Button {
+                        redoLastEdit()
+                    } label: {
+                        Image(
+                            systemName:
+                                "arrow.uturn.forward"
+                        )
+                    }
+                    .disabled(
+                        redoStack.isEmpty
+                    )
+                    .accessibilityLabel(
+                        "Вернуть последнее изменение"
+                    )
+                }
+            }
+            
             ToolbarItem(
                 placement: .topBarTrailing
             ) {
@@ -1499,6 +1559,105 @@ struct FlightNormVersionDetailView: View {
         }
     }
     
+    private func currentRows() -> [FlightNormRow] {
+        version?.rows ?? []
+    }
+    
+    private func performEditAction(
+        _ action: () -> Void
+    ) {
+        guard version != nil else {
+            return
+        }
+        
+        undoStack.append(
+            currentRows()
+        )
+        
+        if undoStack.count > 50 {
+            undoStack.removeFirst()
+        }
+        
+        redoStack.removeAll()
+        action()
+    }
+    
+    private func undoLastEdit() {
+        guard let previous =
+                undoStack.popLast()
+        else {
+            return
+        }
+        
+        redoStack.append(
+            currentRows()
+        )
+        
+        store.replaceRows(
+            versionID: versionID,
+            rows: previous
+        )
+    }
+    
+    private func redoLastEdit() {
+        guard let next =
+                redoStack.popLast()
+        else {
+            return
+        }
+        
+        undoStack.append(
+            currentRows()
+        )
+        
+        store.replaceRows(
+            versionID: versionID,
+            rows: next
+        )
+    }
+    
+    private func addManualRow(
+        aircraftType: String,
+        group: FlightNormSavedRouteGroup
+    ) {
+        guard
+            flightNormRow(
+                aircraftType:
+                    aircraftType,
+                rows:
+                    group.rows
+            ) == nil
+        else {
+            return
+        }
+        
+        let row =
+        FlightNormRow(
+            aircraftType:
+                aircraftType,
+            routeName:
+                group.routeName,
+            departureIATA:
+                group.departureIATA,
+            arrivalIATA:
+                group.arrivalIATA,
+            outboundMinutes: 0,
+            returnMinutes: 0,
+            note:
+                "Добавлено вручную",
+            confidence: 1.0
+        )
+        
+        performEditAction {
+            store.addRow(
+                versionID:
+                    versionID,
+                row:
+                    row
+            )
+        }
+    }
+    
     private func timeBinding(
         rowID: UUID,
         from: String,
@@ -1533,18 +1692,53 @@ struct FlightNormVersionDetailView: View {
                 ?? 0
             },
             set: { minutes in
-                store.updateTime(
-                    versionID:
-                        versionID,
-                    rowID:
-                        rowID,
-                    from:
-                        from,
-                    to:
-                        to,
-                    minutes:
-                        minutes
-                )
+                let oldValue: Int
+                
+                guard
+                    let version =
+                        store.versions.first(
+                            where: {
+                                $0.id
+                                == versionID
+                            }
+                        ),
+                    let row =
+                        version.rows.first(
+                            where: {
+                                $0.id
+                                == rowID
+                            }
+                        ),
+                    let existing =
+                        flightNormMinutes(
+                            row: row,
+                            from: from,
+                            to: to
+                        )
+                else {
+                    return
+                }
+                
+                oldValue = existing
+                
+                guard oldValue != minutes else {
+                    return
+                }
+                
+                performEditAction {
+                    store.updateTime(
+                        versionID:
+                            versionID,
+                        rowID:
+                            rowID,
+                        from:
+                            from,
+                        to:
+                            to,
+                        minutes:
+                            minutes
+                    )
+                }
             }
         )
     }
@@ -1554,10 +1748,10 @@ struct FlightNormVersionDetailView: View {
 private struct FlightNormSavedRouteCard: View {
     let group: FlightNormSavedRouteGroup
     let isEditing: Bool
-    let onWarningTap: () -> Void
     let timeBinding:
     (UUID, String, String) -> Binding<Int>
     let onDeleteRow: (UUID) -> Void
+    let onAddRow: (String) -> Void
     
     private var hasAnyNote: Bool {
         group.rows.contains {
@@ -1569,114 +1763,49 @@ private struct FlightNormSavedRouteCard: View {
         }
     }
     
-    private var hasLowConfidence: Bool {
-        group.rows.contains {
-            flightNormIsLowConfidence($0)
-        }
-    }
-    
-    var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: 8
-        ) {
-            FlightNormAircraftColumnsHeader(
-                routeName: group.routeName,
-                rows: group.rows,
-                isEditing: isEditing,
-                hasLowConfidence:
-                    hasLowConfidence,
-                onWarningTap:
-                    onWarningTap,
-                onDeleteRow:
-                    onDeleteRow
-            )
-            
-            FlightNormDirectionTimesRow(
-                title:
-                    "\(group.departureIATA) → \(group.arrivalIATA)",
-                from:
-                    group.departureIATA,
-                to:
-                    group.arrivalIATA,
-                rows:
-                    group.rows,
-                isEditing:
-                    isEditing,
-                timeBinding:
-                    timeBinding
-            )
-            
-            FlightNormDirectionTimesRow(
-                title:
-                    "\(group.arrivalIATA) → \(group.departureIATA)",
-                from:
-                    group.arrivalIATA,
-                to:
-                    group.departureIATA,
-                rows:
-                    group.rows,
-                isEditing:
-                    isEditing,
-                timeBinding:
-                    timeBinding
-            )
-            
-            if hasAnyNote {
-                FlightNormAircraftNotesRow(
-                    rows: group.rows,
-                    isEditing:
-                        isEditing
-                )
-            }
-        }
-        .padding(.vertical, 5)
-    }
-}
-
-
-private struct FlightNormAircraftColumnsHeader: View {
-    let routeName: String
-    let rows: [FlightNormRow]
-    let isEditing: Bool
-    let hasLowConfidence: Bool
-    let onWarningTap: () -> Void
-    let onDeleteRow: (UUID) -> Void
-    
     var body: some View {
         HStack(
             alignment: .top,
             spacing:
                 flightNormSavedColumnSpacing
         ) {
-            HStack(spacing: 5) {
+            VStack(
+                alignment: .leading,
+                spacing: 8
+            ) {
                 Text(
                     flightNormDisplayRouteName(
-                        routeName
+                        group.routeName
                     )
                 )
                 .font(.headline)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .foregroundStyle(
-                    isEditing
-                    && hasLowConfidence
-                    ? .orange
-                    : .primary
+                
+                Text(
+                    "\(group.departureIATA) → \(group.arrivalIATA)"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(
+                    minHeight: 28,
+                    alignment: .leading
                 )
                 
-                if hasLowConfidence
-                    && !isEditing {
-                    Button {
-                        onWarningTap()
-                    } label: {
-                        Image(
-                            systemName:
-                                "exclamationmark.triangle.fill"
-                        )
-                        .foregroundStyle(.orange)
-                    }
-                    .buttonStyle(.plain)
+                Text(
+                    "\(group.arrivalIATA) → \(group.departureIATA)"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(
+                    minHeight: 28,
+                    alignment: .leading
+                )
+                
+                if hasAnyNote {
+                    Text("Примечание")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
             .frame(
@@ -1694,173 +1823,183 @@ private struct FlightNormAircraftColumnsHeader: View {
                         aircraftType:
                             aircraftType,
                         rows:
-                            rows
+                            group.rows
                     ) {
-                    VStack(spacing: 4) {
-                        Text(aircraftType)
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .foregroundStyle(
-                                isEditing
-                                && flightNormIsLowConfidence(
-                                    row
-                                )
-                                ? .orange
-                                : .primary
+                    FlightNormAircraftBlock(
+                        row: row,
+                        group: group,
+                        isEditing:
+                            isEditing,
+                        hasAnyNote:
+                            hasAnyNote,
+                        timeBinding:
+                            timeBinding,
+                        onDelete: {
+                            onDeleteRow(
+                                row.id
                             )
-                        
-                        if isEditing {
-                            Button(
-                                role: .destructive
-                            ) {
-                                onDeleteRow(
-                                    row.id
-                                )
-                            } label: {
-                                Image(
-                                    systemName:
-                                        "trash"
-                                )
-                                .font(.caption2)
-                            }
-                            .buttonStyle(.plain)
                         }
-                    }
+                    )
                     .frame(
                         maxWidth: .infinity
                     )
+                } else if isEditing {
+                    Button {
+                        onAddRow(
+                            aircraftType
+                        )
+                    } label: {
+                        Image(
+                            systemName:
+                                "plus.circle.fill"
+                        )
+                        .font(.title2)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight:
+                            hasAnyNote
+                            ? 118
+                            : 94,
+                        alignment: .center
+                    )
+                    .accessibilityLabel(
+                        "Добавить \(aircraftType)"
+                    )
                 } else {
-                    Text("")
+                    Color.clear
                         .frame(
-                            maxWidth: .infinity
+                            maxWidth: .infinity,
+                            minHeight:
+                                hasAnyNote
+                                ? 118
+                                : 94
                         )
                 }
             }
         }
+        .padding(.vertical, 5)
     }
 }
 
 
-private struct FlightNormDirectionTimesRow: View {
-    let title: String
-    let from: String
-    let to: String
-    let rows: [FlightNormRow]
+private struct FlightNormAircraftBlock: View {
+    let row: FlightNormRow
+    let group: FlightNormSavedRouteGroup
     let isEditing: Bool
+    let hasAnyNote: Bool
     let timeBinding:
     (UUID, String, String) -> Binding<Int>
+    let onDelete: () -> Void
+    
+    private var isLowConfidence: Bool {
+        isEditing
+        && flightNormIsLowConfidence(row)
+    }
     
     var body: some View {
-        HStack(
-            spacing:
-                flightNormSavedColumnSpacing
-        ) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(
-                    width:
-                        flightNormSavedRouteColumnWidth,
-                    alignment: .leading
-                )
-            
-            ForEach(
-                flightNormSavedAircraftOrder,
-                id: \.self
-            ) { aircraftType in
-                if let row =
-                    flightNormRow(
-                        aircraftType:
-                            aircraftType,
-                        rows:
-                            rows
+        VStack(spacing: 8) {
+            HStack(spacing: 3) {
+                Text(row.aircraftType)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                
+                if isEditing {
+                    Spacer(
+                        minLength: 1
+                    )
+                    
+                    Button(
+                        role: .destructive
                     ) {
-                    if isEditing {
-                        AeroMinutesPickerButton(
-                            minutes:
-                                timeBinding(
-                                    row.id,
-                                    from,
-                                    to
-                                ),
-                            isHighlighted:
-                                flightNormIsLowConfidence(
-                                    row
-                                )
+                        onDelete()
+                    } label: {
+                        Image(
+                            systemName:
+                                "trash"
                         )
-                    } else {
-                        Text(
-                            flightNormTime(
-                                row: row,
-                                from: from,
-                                to: to
-                            )
-                        )
-                        .fontWeight(.medium)
-                        .monospacedDigit()
-                        .frame(
-                            maxWidth: .infinity
-                        )
+                        .font(.caption2)
+                        .foregroundStyle(.red)
                     }
-                } else {
-                    Text("")
-                        .frame(
-                            maxWidth: .infinity
-                        )
+                    .buttonStyle(.plain)
                 }
             }
-        }
-    }
-}
-
-
-private struct FlightNormAircraftNotesRow: View {
-    let rows: [FlightNormRow]
-    let isEditing: Bool
-    
-    var body: some View {
-        HStack(
-            alignment: .top,
-            spacing:
-                flightNormSavedColumnSpacing
-        ) {
-            Text("Примечание")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(
-                    width:
-                        flightNormSavedRouteColumnWidth,
-                    alignment: .leading
-                )
+            .foregroundStyle(
+                isLowConfidence
+                ? AnyShapeStyle(.orange)
+                : AnyShapeStyle(.primary)
+            )
             
-            ForEach(
-                flightNormSavedAircraftOrder,
-                id: \.self
-            ) { aircraftType in
-                let row =
-                flightNormRow(
-                    aircraftType:
-                        aircraftType,
-                    rows:
-                        rows
+            if isEditing {
+                AeroMinutesPickerButton(
+                    minutes:
+                        timeBinding(
+                            row.id,
+                            group.departureIATA,
+                            group.arrivalIATA
+                        ),
+                    isHighlighted:
+                        isLowConfidence
+                )
+                .frame(minHeight: 28)
+                
+                AeroMinutesPickerButton(
+                    minutes:
+                        timeBinding(
+                            row.id,
+                            group.arrivalIATA,
+                            group.departureIATA
+                        ),
+                    isHighlighted:
+                        isLowConfidence
+                )
+                .frame(minHeight: 28)
+            } else {
+                Text(
+                    flightNormTime(
+                        row: row,
+                        from:
+                            group.departureIATA,
+                        to:
+                            group.arrivalIATA
+                    )
+                )
+                .fontWeight(.medium)
+                .monospacedDigit()
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: 28
                 )
                 
                 Text(
+                    flightNormTime(
+                        row: row,
+                        from:
+                            group.arrivalIATA,
+                        to:
+                            group.departureIATA
+                    )
+                )
+                .fontWeight(.medium)
+                .monospacedDigit()
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: 28
+                )
+            }
+            
+            if hasAnyNote {
+                Text(
                     normalizedFlightNormNote(
-                        row?.note
-                        ?? ""
+                        row.note
                     )
                 )
                 .font(.caption2)
                 .foregroundStyle(
-                    isEditing
-                    && row.map(
-                        flightNormIsLowConfidence
-                    ) == true
+                    isLowConfidence
                     ? .orange
                     : .secondary
                 )
