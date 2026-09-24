@@ -157,6 +157,93 @@ struct AeroTimePickerRow: View {
 }
 
 
+struct AeroMinutesPickerButton: View {
+    @Binding var minutes: Int
+    var foregroundStyle: Color = .primary
+
+    @State private var isPresented = false
+
+    private var selectedHour: Int {
+        max(0, minutes / 60)
+    }
+
+    private var selectedMinute: Int {
+        max(0, minutes % 60)
+    }
+
+    var body: some View {
+        Button {
+            isPresented = true
+        } label: {
+            Text(
+                String(
+                    format: "%d:%02d",
+                    selectedHour,
+                    selectedMinute
+                )
+            )
+            .fontWeight(.medium)
+            .monospacedDigit()
+            .foregroundStyle(foregroundStyle)
+            .frame(
+                maxWidth: .infinity
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $isPresented) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Расчётное время")
+                        .font(.headline)
+
+                    Spacer()
+
+                    Button("Готово") {
+                        isPresented = false
+                    }
+                    .fontWeight(.semibold)
+                }
+                .padding()
+
+                Divider()
+
+                HStack(spacing: 0) {
+                    AeroNumberColumn(
+                        values: Array(0...23),
+                        selection: selectedHour
+                    ) { hour in
+                        minutes =
+                        hour * 60
+                        + selectedMinute
+                    }
+
+                    Text(":")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 4)
+
+                    AeroNumberColumn(
+                        values: Array(0...59),
+                        selection: selectedMinute
+                    ) { minute in
+                        minutes =
+                        selectedHour * 60
+                        + minute
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+            .frame(
+                width: 300,
+                height: 270
+            )
+            .presentationCompactAdaptation(.sheet)
+        }
+    }
+}
+
+
 private struct AeroNumberColumn: View {
     let values: [Int]
     let selection: Int
