@@ -1,0 +1,12 @@
+only_rules:
+  - duplicate_imports
+  - trailing_whitespace
+  - unused_closure_parameter
+  - unused_enumerated
+  - vertical_whitespace
+
+excluded:
+  - .swiftpm
+  - .build
+
+reporter: github-actions-logging
