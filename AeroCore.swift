@@ -64,6 +64,14 @@ let longDateFormatter: DateFormatter = {
     return formatter
 }()
 
+let weekdayFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "ru_RU")
+    formatter.timeZone = moscowTimeZone
+    formatter.dateFormat = "EEEE"
+    return formatter
+}()
+
 
 // MARK: - Лег
 
@@ -309,6 +317,24 @@ struct FlightDuty: Identifiable {
     let id: UUID
     let legs: [FlightLeg]
     
+    private let timelines: [FlightTimeline]
+    
+    
+    init(
+        id: UUID,
+        legs: [FlightLeg]
+    ) {
+        
+        self.id = id
+        self.legs = legs
+        self.timelines =
+        legs.map {
+            makeTimeline(
+                for: $0
+            )
+        }
+    }
+    
     
     var firstLeg: FlightLeg {
         legs.first!
@@ -321,7 +347,7 @@ struct FlightDuty: Identifiable {
     
     
     var start: Date {
-        firstLeg.timeline.workStart
+        timelines.first!.workStart
     }
     
     
@@ -330,7 +356,7 @@ struct FlightDuty: Identifiable {
         moscowCalendar.date(
             byAdding: .minute,
             value: 30,
-            to: lastLeg.timeline.engineOff
+            to: timelines.last!.engineOff
         )!
     }
     
@@ -355,32 +381,52 @@ struct FlightDuty: Identifiable {
     
     var flightMinutes: Int {
         
-        legs.reduce(0) {
-            $0 + $1.flightMinutes
+        timelines.reduce(0) {
+            $0
+            +
+            minutesBetween(
+                $1.engineOn,
+                $1.engineOff
+            )
         }
     }
     
     
     var airMinutes: Int {
         
-        legs.reduce(0) {
-            $0 + $1.airMinutes
+        timelines.reduce(0) {
+            $0
+            +
+            minutesBetween(
+                $1.takeoff,
+                $1.landing
+            )
         }
     }
     
     
     var flightNightMinutes: Int {
         
-        legs.reduce(0) {
-            $0 + $1.flightNightMinutes
+        timelines.reduce(0) {
+            $0
+            +
+            nightMinutes(
+                from: $1.engineOn,
+                to: $1.engineOff
+            )
         }
     }
     
     
     var airNightMinutes: Int {
         
-        legs.reduce(0) {
-            $0 + $1.airNightMinutes
+        timelines.reduce(0) {
+            $0
+            +
+            nightMinutes(
+                from: $1.takeoff,
+                to: $1.landing
+            )
         }
     }
     
@@ -412,7 +458,6 @@ struct FlightDuty: Identifiable {
         )
     }
 }
-
 
 // MARK: - Итоги одного дня
 
@@ -484,78 +529,13 @@ struct DailyTimeTotals {
 }
 
 
-// MARK: - Тестовые рейсы
-
-let initialFlights = [
-    
-    FlightLeg(
-        date: "22.09.2026",
-        flightNumber: "SU 1132",
-        departure: "SVO",
-        arrival: "AER",
-        aircraft: "Airbus A320",
-        registration: "RA-737XX",
-        plannedDeparture: "09:40",
-        workStart: "08:40",
-        engineOn: "09:32",
-        takeoff: "09:48",
-        landing: "13:01",
-        engineOff: "13:09"
-    ),
-    
-    FlightLeg(
-        date: "22.09.2026",
-        flightNumber: "SU 1133",
-        departure: "AER",
-        arrival: "SVO",
-        aircraft: "Airbus A320",
-        registration: "RA-737XX",
-        plannedDeparture: "14:10",
-        workStart: "13:09",
-        engineOn: "14:02",
-        takeoff: "14:17",
-        landing: "17:36",
-        engineOff: "17:44"
-    ),
-    
-    FlightLeg(
-        date: "18.09.2026",
-        flightNumber: "SU 1210",
-        departure: "SVO",
-        arrival: "KGD",
-        aircraft: "Airbus A320",
-        registration: "RA-73XXX",
-        plannedDeparture: "18:20",
-        workStart: "17:20",
-        engineOn: "18:12",
-        takeoff: "18:29",
-        landing: "20:17",
-        engineOff: "20:25"
-    ),
-    
-    FlightLeg(
-        date: "30.09.2026",
-        flightNumber: "SU 1546",
-        departure: "SVO",
-        arrival: "OVB",
-        aircraft: "Airbus A320",
-        registration: "RA-73888",
-        plannedDeparture: "22:00",
-        workStart: "21:00",
-        engineOn: "21:50",
-        takeoff: "22:10",
-        landing: "01:30",
-        engineOff: "01:40"
-    )
-]
-
-
 // MARK: - Хранилище приложения
 
 final class AppStore: ObservableObject {
     
     @Published var flights: [FlightLeg] = [] {
         didSet {
+            rebuildDerivedData()
             saveFlights()
         }
     }
@@ -563,9 +543,17 @@ final class AppStore: ObservableObject {
     
     @Published var workEvents: [WorkEvent] = [] {
         didSet {
+            rebuildDerivedData()
             saveWorkEvents()
         }
     }
+    
+    
+    private var cachedDuties: [FlightDuty] = []
+    private var cachedDailyIndex: [Int: DailyTimeTotals] = [:]
+    private var cachedFlightsByDay: [Int: [FlightLeg]] = [:]
+    private var cachedWorkEventsByDay: [Int: [WorkEvent]] = [:]
+    private var cachedLatestActivityDate: Date?
     
     
     private let flightsKey =
@@ -578,47 +566,40 @@ final class AppStore: ObservableObject {
     
     init() {
         
-        let flightsLoaded =
+        _ =
         loadFlights()
-        
-        
-        if !flightsLoaded {
-            
-            flights =
-            initialFlights
-        }
         
         
         _ =
         loadWorkEvents()
+        
+        
+        rebuildDerivedData()
     }
     
     
     var duties: [FlightDuty] {
-        
-        buildFlightDuties(
-            from: flights
-        )
+        cachedDuties
+    }
+    
+    
+    var dailyIndex: [Int: DailyTimeTotals] {
+        cachedDailyIndex
+    }
+    
+    
+    var flightsByDay: [Int: [FlightLeg]] {
+        cachedFlightsByDay
+    }
+    
+    
+    var workEventsByDay: [Int: [WorkEvent]] {
+        cachedWorkEventsByDay
     }
     
     
     var latestActivityDate: Date? {
-        
-        let flightDates =
-        flights.map {
-            $0.timeline.engineOff
-        }
-        
-        
-        let workDates =
-        workEvents.map {
-            $0.endDate
-        }
-        
-        
-        return
-        (flightDates + workDates)
-            .max()
+        cachedLatestActivityDate
     }
     
     
@@ -725,6 +706,56 @@ final class AppStore: ObservableObject {
         flights.removeAll()
         
         workEvents.removeAll()
+    }
+    
+    
+    private func rebuildDerivedData() {
+        
+        let duties =
+        buildFlightDuties(
+            from: flights
+        )
+        
+        
+        cachedDuties =
+        duties
+        
+        
+        cachedDailyIndex =
+        buildDailyIndex(
+            flights: flights,
+            duties: duties,
+            workEvents: workEvents
+        )
+        
+        
+        cachedFlightsByDay =
+        buildFlightsByDay(
+            flights: flights
+        )
+        
+        
+        cachedWorkEventsByDay =
+        buildWorkEventsByDay(
+            events: workEvents
+        )
+        
+        
+        let flightDates =
+        flights.map {
+            $0.timeline.engineOff
+        }
+        
+        
+        let workDates =
+        workEvents.map {
+            $0.endDate
+        }
+        
+        
+        cachedLatestActivityDate =
+        (flightDates + workDates)
+            .max()
     }
     
     
@@ -1290,16 +1321,25 @@ func buildFlightDuties(
     from flights: [FlightLeg]
 ) -> [FlightDuty] {
     
-    let sorted =
-    flights.sorted {
-        
-        $0.timeline.workStart
-        <
+    let prepared =
+    flights
+        .map {
+            (
+                flight: $0,
+                timeline:
+                    makeTimeline(
+                        for: $0
+                    )
+            )
+        }
+        .sorted {
+            $0.timeline.workStart
+            <
             $1.timeline.workStart
-    }
+        }
     
     
-    guard !sorted.isEmpty
+    guard !prepared.isEmpty
     else {
         return []
     }
@@ -1310,15 +1350,15 @@ func buildFlightDuties(
     
     
     var current:
-    [FlightLeg] = []
+    [(flight: FlightLeg, timeline: FlightTimeline)] = []
     
     
-    for flight in sorted {
+    for item in prepared {
         
         if current.isEmpty {
             
             current =
-            [flight]
+            [item]
             
             continue
         }
@@ -1331,14 +1371,14 @@ func buildFlightDuties(
         let difference =
         signedMinutesBetween(
             previous.timeline.engineOff,
-            flight.timeline.workStart
+            item.timeline.workStart
         )
         
         
         let routeContinues =
-        previous.arrival
+        previous.flight.arrival
         ==
-        flight.departure
+        item.flight.departure
         
         
         if routeContinues
@@ -1348,7 +1388,7 @@ func buildFlightDuties(
             difference <= 5 {
             
             current.append(
-                flight
+                item
             )
             
         } else {
@@ -1356,15 +1396,17 @@ func buildFlightDuties(
             result.append(
                 FlightDuty(
                     id:
-                        current.first!.id,
+                        current.first!.flight.id,
                     legs:
-                        current
+                        current.map {
+                            $0.flight
+                        }
                 )
             )
             
             
             current =
-            [flight]
+            [item]
         }
     }
     
@@ -1374,9 +1416,11 @@ func buildFlightDuties(
         result.append(
             FlightDuty(
                 id:
-                    current.first!.id,
+                    current.first!.flight.id,
                 legs:
-                    current
+                    current.map {
+                        $0.flight
+                    }
             )
         )
     }
@@ -1769,11 +1813,15 @@ func buildFlightsByDay(
     
     for flight in flights {
         
+        let timeline =
+        flight.timeline
+        
+        
         for day in touchedDays(
             from:
-                flight.timeline.engineOn,
+                timeline.engineOn,
             to:
-                flight.timeline.engineOff
+                timeline.engineOff
         ) {
             
             result[
@@ -1801,11 +1849,19 @@ func buildWorkEventsByDay(
     
     for event in events {
         
+        let start =
+        event.startDate
+        
+        
+        let end =
+        event.endDate
+        
+        
         for day in touchedDays(
             from:
-                event.startDate,
+                start,
             to:
-                event.endDate
+                end
         ) {
             
             result[
@@ -2062,27 +2118,8 @@ func weekdayName(
     _ date: Date
 ) -> String {
     
-    let formatter =
-    DateFormatter()
-    
-    
-    formatter.locale =
-    Locale(
-        identifier:
-            "ru_RU"
-    )
-    
-    
-    formatter.timeZone =
-    moscowTimeZone
-    
-    
-    formatter.dateFormat =
-    "EEEE"
-    
-    
     let value =
-    formatter.string(
+    weekdayFormatter.string(
         from:
             date
     )
