@@ -1,4 +1,53 @@
 import SwiftUI
+import UIKit
+
+// MARK: - Swift Playgrounds: восстановление физической клавиатуры
+
+@MainActor
+func restoreHardwareKeyboardAfterFilePicker() {
+    DispatchQueue.main.asyncAfter(
+        deadline: .now() + 0.25
+    ) {
+        guard
+            let windowScene =
+                UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: {
+                    $0.activationState == .foregroundActive
+                }),
+            let window =
+                windowScene.windows
+                .first(where: { $0.isKeyWindow })
+                ?? windowScene.windows.first
+        else {
+            return
+        }
+
+        let primer =
+        UITextField(
+            frame: CGRect(
+                x: -1000,
+                y: -1000,
+                width: 1,
+                height: 1
+            )
+        )
+
+        primer.alpha = 0.01
+        primer.autocorrectionType = .no
+        window.addSubview(primer)
+
+        primer.becomeFirstResponder()
+
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + 0.20
+        ) {
+            primer.resignFirstResponder()
+            primer.removeFromSuperview()
+        }
+    }
+}
+
 
 // MARK: - Элементы выбора без Picker/DatePicker
 //
