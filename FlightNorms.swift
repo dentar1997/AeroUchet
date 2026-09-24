@@ -1019,7 +1019,10 @@ struct FlightNormsView: View {
             }
         }
         .sheet(
-            isPresented: $showImporter
+            isPresented: $showImporter,
+            onDismiss: {
+                restoreHardwareKeyboardAfterFilePicker()
+            }
         ) {
             FlightNormPDFDocumentPicker(
                 isPresented: $showImporter
