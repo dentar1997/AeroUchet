@@ -34,5 +34,22 @@ jobs:
           xcodebuild \
             -scheme "АэроУчёт" \
             -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
+            -showBuildTimingSummary \
             build
+
+      - name: Package simulator app
+        run: |
+          APP_PATH="$(find "$RUNNER_TEMP/AeroUchetDerivedData/Build/Products/Debug-iphonesimulator" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          echo "Simulator app: $APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/AeroUchet-Simulator.zip"
+
+      - name: Upload simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: AeroUchet-Simulator
+          path: ${{ runner.temp }}/AeroUchet-Simulator.zip
+          if-no-files-found: error
+          retention-days: 7
