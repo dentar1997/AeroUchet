@@ -1787,12 +1787,10 @@ private struct FlightNormDirectionTimesRow: View {
                                     from,
                                     to
                                 ),
-                            foregroundStyle:
+                            isHighlighted:
                                 flightNormIsLowConfidence(
                                     row
                                 )
-                                ? .orange
-                                : .primary
                         )
                     } else {
                         Text(
