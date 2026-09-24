@@ -12,8 +12,6 @@ struct AeroYearPickerRow: View {
     @Binding var selection: Int
     let range: ClosedRange<Int>
 
-    @State private var isPresented = false
-
     init(
         _ title: String,
         selection: Binding<Int>,
@@ -25,8 +23,12 @@ struct AeroYearPickerRow: View {
     }
 
     var body: some View {
-        Button {
-            isPresented = true
+        NavigationLink {
+            AeroYearSelectionView(
+                title: title,
+                selection: $selection,
+                range: range
+            )
         } label: {
             HStack {
                 Text(title)
@@ -36,76 +38,51 @@ struct AeroYearPickerRow: View {
                 Text(String(selection))
                     .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $isPresented) {
-            VStack(spacing: 0) {
-                HStack {
-                    Text(title)
-                        .font(.headline)
-
-                    Spacer()
-
-                    Button("Готово") {
-                        isPresented = false
-                    }
-                    .fontWeight(.semibold)
-                }
-                .padding()
-
-                Divider()
-
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 2) {
-                            ForEach(
-                                Array(range),
-                                id: \.self
-                            ) { year in
-                                Button {
-                                    selection = year
-                                } label: {
-                                    Text(String(year))
-                                        .font(
-                                            year == selection
-                                            ? .title2.weight(.semibold)
-                                            : .body
-                                        )
-                                        .foregroundStyle(
-                                            year == selection
-                                            ? .primary
-                                            : .secondary
-                                        )
-                                        .frame(
-                                            maxWidth: .infinity,
-                                            minHeight: 38
-                                        )
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .id(year)
-                            }
-                        }
-                        .padding(.vertical, 68)
-                    }
-                    .onAppear {
-                        DispatchQueue.main.async {
-                            proxy.scrollTo(
-                                selection,
-                                anchor: .center
-                            )
-                        }
-                    }
-                }
-            }
-            .frame(width: 240, height: 260)
-            .presentationCompactAdaptation(.sheet)
         }
     }
 }
 
+
+private struct AeroYearSelectionView: View {
+    @Environment(\.dismiss)
+    private var dismiss
+
+    let title: String
+    @Binding var selection: Int
+    let range: ClosedRange<Int>
+
+    var body: some View {
+        List {
+            ForEach(
+                Array(range),
+                id: \.self
+            ) { year in
+                Button {
+                    selection = year
+                    dismiss()
+                } label: {
+                    HStack {
+                        Text(String(year))
+                            .foregroundStyle(.primary)
+
+                        Spacer()
+
+                        if year == selection {
+                            Image(
+                                systemName: "checkmark"
+                            )
+                            .fontWeight(.semibold)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
 
 struct AeroTimePickerRow: View {
     let title: String
