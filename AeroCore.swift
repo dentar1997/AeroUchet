@@ -6,12 +6,12 @@ import Foundation
 
 let moscowTimeZone = TimeZone(identifier: "Europe/Moscow")!
 
-var moscowCalendar: Calendar {
+let moscowCalendar: Calendar = {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = moscowTimeZone
     calendar.firstWeekday = 2
     return calendar
-}
+}()
 
 
 // MARK: - Форматтеры
@@ -1540,8 +1540,12 @@ private func buildAppDerivedData(
             
             totals.groundWorkMinutes +=
             creditedWorkMinutes(
-                event:
-                    item.event,
+                start:
+                    item.start,
+                end:
+                    item.end,
+                type:
+                    item.event.type,
                 day:
                     day
             )
@@ -1549,8 +1553,12 @@ private func buildAppDerivedData(
             
             totals.groundWorkNightMinutes +=
             creditedNightMinutes(
-                event:
-                    item.event,
+                start:
+                    item.start,
+                end:
+                    item.end,
+                type:
+                    item.event.type,
                 day:
                     day
             )
@@ -1915,7 +1923,9 @@ func touchedDays(
 // MARK: - Учёт домашнего резерва по суткам
 
 func creditedWorkMinutes(
-    event: WorkEvent,
+    start: Date,
+    end: Date,
+    type: WorkEventType,
     day: Date
 ) -> Int {
     
@@ -1935,14 +1945,14 @@ func creditedWorkMinutes(
     
     let segmentStart =
     max(
-        event.startDate,
+        start,
         dayStart
     )
     
     
     let segmentEnd =
     min(
-        event.endDate,
+        end,
         dayEnd
     )
     
@@ -1954,7 +1964,7 @@ func creditedWorkMinutes(
     
     
     let divisor =
-    event.type.creditDivisor
+    type.creditDivisor
     
     
     if divisor == 1 {
@@ -1968,14 +1978,14 @@ func creditedWorkMinutes(
     
     let elapsedBefore =
     minutesBetween(
-        event.startDate,
+        start,
         segmentStart
     )
     
     
     let elapsedAfter =
     minutesBetween(
-        event.startDate,
+        start,
         segmentEnd
     )
     
@@ -1987,17 +1997,37 @@ func creditedWorkMinutes(
 }
 
 
-func creditedNightMinutes(
+func creditedWorkMinutes(
     event: WorkEvent,
+    day: Date
+) -> Int {
+    
+    creditedWorkMinutes(
+        start:
+            event.startDate,
+        end:
+            event.endDate,
+        type:
+            event.type,
+        day:
+            day
+    )
+}
+
+
+func creditedNightMinutes(
+    start: Date,
+    end: Date,
+    type: WorkEventType,
     day: Date
 ) -> Int {
     
     let rawNight =
     nightMinutesInDay(
         from:
-            event.startDate,
+            start,
         to:
-            event.endDate,
+            end,
         day:
             day
     )
@@ -2006,7 +2036,25 @@ func creditedNightMinutes(
     return
     rawNight
     /
-    event.type.creditDivisor
+    type.creditDivisor
+}
+
+
+func creditedNightMinutes(
+    event: WorkEvent,
+    day: Date
+) -> Int {
+    
+    creditedNightMinutes(
+        start:
+            event.startDate,
+        end:
+            event.endDate,
+        type:
+            event.type,
+        day:
+            day
+    )
 }
 
 
