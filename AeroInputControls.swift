@@ -23,66 +23,23 @@ struct AeroYearPickerRow: View {
     }
 
     var body: some View {
-        NavigationLink {
-            AeroYearSelectionView(
-                title: title,
-                selection: $selection,
-                range: range
-            )
-        } label: {
+        Stepper(
+            value: $selection,
+            in: range
+        ) {
             HStack {
                 Text(title)
 
                 Spacer()
 
                 Text(String(selection))
+                    .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
         }
     }
 }
 
-
-private struct AeroYearSelectionView: View {
-    @Environment(\.dismiss)
-    private var dismiss
-
-    let title: String
-    @Binding var selection: Int
-    let range: ClosedRange<Int>
-
-    var body: some View {
-        List {
-            ForEach(
-                Array(range),
-                id: \.self
-            ) { year in
-                Button {
-                    selection = year
-                    dismiss()
-                } label: {
-                    HStack {
-                        Text(String(year))
-                            .foregroundStyle(.primary)
-
-                        Spacer()
-
-                        if year == selection {
-                            Image(
-                                systemName: "checkmark"
-                            )
-                            .fontWeight(.semibold)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
 
 struct AeroTimePickerRow: View {
     let title: String
