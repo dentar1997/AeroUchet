@@ -1028,6 +1028,7 @@ struct FlightNormsView: View {
                     "\(version.season.rawValue) \(version.year), версия \(version.versionNumber) уже сохранена."
                 }
             }
+            .presentationSizing(.page)
         }
         .alert(
             "Ошибка импорта",
@@ -1337,7 +1338,7 @@ private struct FlightNormDraftRouteCard: View {
             spacing: 8
         ) {
             HStack(
-                spacing: flightNormSavedColumnSpacing
+                spacing: flightNormDraftColumnSpacing
             ) {
                 Text(
                     flightNormDisplayRouteName(
@@ -1346,9 +1347,10 @@ private struct FlightNormDraftRouteCard: View {
                 )
                 .font(.headline)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.8)
+                .allowsTightening(true)
                 .frame(
-                    width: flightNormSavedRouteColumnWidth,
+                    width: flightNormDraftRouteColumnWidth,
                     alignment: .leading
                 )
                 
@@ -1369,10 +1371,10 @@ private struct FlightNormDraftRouteCard: View {
                             )
                         } label: {
                             Text(aircraftType)
-                                .font(.caption)
+                                .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .lineLimit(1)
-                                .minimumScaleFactor(0.7)
+                                .allowsTightening(true)
                                 .frame(
                                     maxWidth: .infinity
                                 )
@@ -1435,7 +1437,7 @@ private struct FlightNormDraftDirectionRow: View {
     
     var body: some View {
         HStack(
-            spacing: flightNormSavedColumnSpacing
+            spacing: flightNormDraftColumnSpacing
         ) {
             Text(title)
                 .font(.caption)
@@ -1443,7 +1445,7 @@ private struct FlightNormDraftDirectionRow: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .frame(
-                    width: flightNormSavedRouteColumnWidth,
+                    width: flightNormDraftRouteColumnWidth,
                     alignment: .leading
                 )
             
@@ -1476,13 +1478,13 @@ private struct FlightNormDraftNotesRow: View {
     var body: some View {
         HStack(
             alignment: .top,
-            spacing: flightNormSavedColumnSpacing
+            spacing: flightNormDraftColumnSpacing
         ) {
             Text("Примечание")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(
-                    width: flightNormSavedRouteColumnWidth,
+                    width: flightNormDraftRouteColumnWidth,
                     alignment: .leading
                 )
             
@@ -1502,12 +1504,11 @@ private struct FlightNormDraftNotesRow: View {
                 )
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .allowsTightening(true)
                 .multilineTextAlignment(
                     .center
-                )
-                .fixedSize(
-                    horizontal: false,
-                    vertical: true
                 )
                 .frame(
                     maxWidth: .infinity,
@@ -1735,6 +1736,9 @@ private let flightNormSavedAircraftOrder = [
 
 private let flightNormSavedRouteColumnWidth: CGFloat = 190
 private let flightNormSavedColumnSpacing: CGFloat = 4
+
+private let flightNormDraftRouteColumnWidth: CGFloat = 235
+private let flightNormDraftColumnSpacing: CGFloat = 8
 
 private struct FlightNormSavedRouteGroup: Identifiable {
     let id: String
