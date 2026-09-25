@@ -317,19 +317,22 @@ private struct DutyAssignmentOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let width = min(geometry.size.width - 32, 1500)
-            let rests = max(0, duty.legs.count - 1)
-            let desiredHeight = CGFloat(170 + duty.legs.count * 215 + rests * 64)
-            let height = min(geometry.size.height - 24, desiredHeight)
+            let width = min(geometry.size.width * 0.86, 1100)
 
             ZStack {
                 Color.black.opacity(0.65)
                     .ignoresSafeArea()
                     .onTapGesture(perform: onClose)
 
-                DutyDetailView(duty: duty, onClose: onClose)
-                    .environmentObject(store)
-                    .frame(width: width, height: height)
+                ScrollView {
+                    DutyDetailView(duty: duty, onClose: onClose, scrollsAsPage: true)
+                        .environmentObject(store)
+                        .frame(width: width)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.vertical, 20)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: geometry.size.height)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -428,10 +431,12 @@ struct DutyDetailView: View {
 
     let duty: FlightDuty
     let onClose: (() -> Void)?
+    let scrollsAsPage: Bool
 
-    init(duty: FlightDuty, onClose: (() -> Void)? = nil) {
+    init(duty: FlightDuty, onClose: (() -> Void)? = nil, scrollsAsPage: Bool = false) {
         self.duty = duty
         self.onClose = onClose
+        self.scrollsAsPage = scrollsAsPage
     }
 
     private func close() {
@@ -510,12 +515,12 @@ struct DutyDetailView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
 
-            ScrollView {
-                dutyCard(isEditing && isValid
-                         ? FlightDuty(id: current.id, legs: updatedLegs)
-                         : current)
-                    .padding(16)
-                    .frame(maxWidth: .infinity)
+            if scrollsAsPage {
+                assignmentContents(current)
+            } else {
+                ScrollView {
+                    assignmentContents(current)
+                }
             }
         }
         .environment(\.timeZone, moscowTimeZone)
@@ -574,6 +579,14 @@ struct DutyDetailView: View {
         } message: {
             Text("Задание и \(legCountText(current.legs.count)) будут удалены.")
         }
+    }
+
+    private func assignmentContents(_ duty: FlightDuty) -> some View {
+        dutyCard(isEditing && isValid
+                 ? FlightDuty(id: duty.id, legs: updatedLegs)
+                 : duty)
+            .padding(16)
+            .frame(maxWidth: .infinity)
     }
 
     private var updatedLegs: [FlightLeg] {
