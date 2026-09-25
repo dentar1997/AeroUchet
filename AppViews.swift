@@ -415,6 +415,16 @@ struct DutyDetailView: View {
         count: 3
     )
 
+    // Контраст плиток не зависит от уровня модального представления iPadOS.
+    private var valueTileColor: Color {
+        Color(uiColor: UIColor { traits in
+            if traits.userInterfaceStyle == .dark {
+                return UIColor(white: 0.36, alpha: 1)
+            }
+            return UIColor(white: 0.88, alpha: 1)
+        })
+    }
+
     private var current: FlightDuty {
         store.duties.first { candidate in
             candidate.legs.contains { $0.id == duty.firstLeg.id }
@@ -434,7 +444,7 @@ struct DutyDetailView: View {
         }
         .environment(\.timeZone, moscowTimeZone)
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("Полёты")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -810,7 +820,7 @@ struct DutyDetailView: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(uiColor: .systemGray4))
+                .fill(valueTileColor)
         )
         .accessibilityElement(children: .combine)
     }
@@ -1171,7 +1181,7 @@ struct DutyDetailView: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(uiColor: .systemGray4))
+                .fill(valueTileColor)
         )
         .accessibilityElement(children: .combine)
     }
@@ -1193,7 +1203,7 @@ struct DutyDetailView: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(uiColor: .systemGray4))
+                .fill(valueTileColor)
         )
         .accessibilityElement(children: .combine)
     }
