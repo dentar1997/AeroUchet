@@ -289,22 +289,41 @@ struct DutiesListView: View {
     @State private var selectedDuty: FlightDuty?
 
     var body: some View {
-        List(store.duties) { duty in
-            Button {
-                selectedDuty = duty
-            } label: {
-                DutyRow(duty: duty)
-                    .contentShape(Rectangle())
+        ZStack {
+            List(store.duties) { duty in
+                Button {
+                    selectedDuty = duty
+                } label: {
+                    DutyRow(duty: duty)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-        }
-        .sheet(item: $selectedDuty) { duty in
-            NavigationStack {
-                DutyDetailView(duty: duty)
-                    .environmentObject(store)
+
+            if let duty = selectedDuty {
+                GeometryReader { geometry in
+                    ZStack {
+                        Color.black.opacity(0.65)
+                            .ignoresSafeArea()
+                            .onTapGesture { selectedDuty = nil }
+
+                        DutyDetailView(duty: duty) {
+                            selectedDuty = nil
+                        }
+                        .environmentObject(store)
+                        .frame(
+                            width: min(geometry.size.width - 32, 1500),
+                            height: min(
+                                geometry.size.height - 24,
+                                CGFloat(170 + duty.legs.count * 215
+                                        + max(0, duty.legs.count - 1) * 64)
+                            )
+                        )
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .zIndex(1)
             }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
         }
     }
 }
@@ -396,10 +415,10 @@ struct DutyRow: View {
 // MARK: - Детали смены
 
 struct DutyDetailView: View {
-    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: AppStore
 
     let duty: FlightDuty
+    let onClose: () -> Void
 
     @State private var isEditing = false
     @State private var draft: [FlightLeg] = []
@@ -434,23 +453,10 @@ struct DutyDetailView: View {
     var body: some View {
         let current = current
 
-        ScrollView {
-            dutyCard(isEditing && isValid
-                     ? FlightDuty(id: current.id, legs: updatedLegs)
-                     : current)
-                .frame(maxWidth: 1100, alignment: .leading)
-                .padding(16)
-                .frame(maxWidth: .infinity)
-        }
-        .environment(\.timeZone, moscowTimeZone)
-        .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Закрыть") { dismiss() }
-            }
-            ToolbarItemGroup(placement: .topBarTrailing) {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Button("Закрыть", action: onClose)
+                Spacer()
                 if isEditing {
                     Button("Применить") { showReview = true }
                         .disabled(!isValid || differences.isEmpty)
@@ -478,7 +484,28 @@ struct DutyDetailView: View {
                     .accessibilityLabel("Удалить задание на полёт")
                 }
             }
+            .buttonStyle(.bordered)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
+            ScrollView {
+                dutyCard(isEditing && isValid
+                         ? FlightDuty(id: current.id, legs: updatedLegs)
+                         : current)
+                    .padding(16)
+                    .frame(maxWidth: .infinity)
+            }
         }
+        .environment(\.timeZone, moscowTimeZone)
+        .background(
+            Color(uiColor: .secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: 20)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20))
         .sheet(isPresented: $showReview) {
             NavigationStack {
                 ScrollView {
@@ -520,7 +547,7 @@ struct DutyDetailView: View {
             Button("Отмена", role: .cancel) {}
             Button("Удалить задание", role: .destructive) {
                 store.deleteDutyLegs(ids: Set(current.legs.map(\.id)))
-                dismiss()
+                onClose()
             }
         } message: {
             Text("Задание и \(legCountText(current.legs.count)) будут удалены.")
@@ -665,15 +692,6 @@ struct DutyDetailView: View {
                 }
             }
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
-        )
     }
 
     private func restCard(start: Date, end: Date) -> some View {
