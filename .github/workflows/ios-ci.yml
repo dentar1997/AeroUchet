@@ -28,6 +28,10 @@ jobs:
         run: |
           xcodebuild -list || true
 
+      - name: One-time cleanup checks
+        run: |
+          bash Scripts/run-test-event-cleanup-tests.sh
+
       - name: Core time regression checks
         run: |
           bash Scripts/run-core-time-tests.sh
