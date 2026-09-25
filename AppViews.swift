@@ -410,7 +410,6 @@ struct DutyDetailView: View {
     @State private var deletingFlight: FlightLeg?
     @State private var showDeleteConfirmation = false
 
-    private let columns = [GridItem(.adaptive(minimum: 175, maximum: 280), spacing: 8)]
     private let timeColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
 
     private var current: FlightDuty {
@@ -425,17 +424,6 @@ struct DutyDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 dutyHeader(current)
-
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                    CompactFlightValue(title: "Начало смены", value: formatDateTime(current.start))
-                    CompactFlightValue(title: "Окончание (+30 мин)", value: formatDateTime(current.end))
-                    CompactFlightValue(title: "Рабочее время", value: timeText(current.workMinutes) + " · ночь " + timeText(current.workNightMinutes))
-                    if current.restMinutes > 0 {
-                        CompactFlightValue(title: "Перерыв без работы", value: timeText(current.restMinutes))
-                    }
-                    CompactFlightValue(title: "Полётное время", value: timeText(current.flightMinutes) + " · ночь " + timeText(current.flightNightMinutes))
-                    CompactFlightValue(title: "Лётное время", value: timeText(current.airMinutes) + " · ночь " + timeText(current.airNightMinutes))
-                }
 
                 if current.restMinutes > 0 {
                     Label("Разделённая смена: время отдыха между рабочими интервалами не входит в рабочее время.",
@@ -478,32 +466,57 @@ struct DutyDetailView: View {
     private func dutyHeader(_ duty: FlightDuty) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Полётное задание")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(duty.firstLeg.assignmentNumber.map { "№ \($0)" } ?? "Без номера")
-                        .font(.title2.bold())
-                }
+                Text(duty.firstLeg.assignmentNumber.map { "Полётное задание № \($0)" } ?? "Полётное задание")
+                    .font(.title2.bold())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
 
                 Spacer()
 
                 Label("\(duty.legs.count) лег.", systemImage: "airplane")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
 
             Text(dutyAirportRoute(duty))
-                .font(.title3.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 8) {
-                Label(formatDate(duty.start), systemImage: "calendar")
-                Text("•")
-                Text("\(formatClock(duty.start)) – \(formatClock(duty.end))")
+                dutySummaryValue(
+                    title: "Рабочее",
+                    total: duty.workMinutes,
+                    night: duty.workNightMinutes
+                )
+                dutySummaryValue(
+                    title: "Полётное",
+                    total: duty.flightMinutes,
+                    night: duty.flightNightMinutes
+                )
+                dutySummaryValue(
+                    title: "Лётное",
+                    total: duty.airMinutes,
+                    night: duty.airNightMinutes
+                )
+
+                if duty.restMinutes > 0 {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Перерыв")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(timeText(duty.restMinutes))
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+                    )
+                }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
         .padding(14)
         .background(
@@ -516,6 +529,25 @@ struct DutyDetailView: View {
         )
     }
 
+    private func dutySummaryValue(title: String, total: Int, night: Int) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text("\(timeText(total)) · ночь \(timeText(night))")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+        )
+    }
+
     private func dutyAirportRoute(_ duty: FlightDuty) -> String {
         guard let first = duty.legs.first else { return duty.routeText }
         let codes = [first.departure] + duty.legs.map(\.arrival)
@@ -524,19 +556,27 @@ struct DutyDetailView: View {
 
     private func legCard(_ leg: FlightLeg, workEnd: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Рейс № \(leg.displayedLegNumber)")
-                        .font(.headline)
-                    Text("\(airportDisplayName(leg.departure)) → \(airportDisplayName(leg.arrival))")
-                        .font(.subheadline.weight(.semibold))
-                    Text("\((leg.scheduleType ?? .planned).rawValue) • \(leg.aircraft) • \(formattedRegistration(leg.registration))")
-                        .font(.caption)
+            HStack(alignment: .center, spacing: 10) {
+                Text(
+                    "Рейс № \(leg.displayedLegNumber)  •  " +
+                    "\(airportDisplayName(leg.departure)) → \(airportDisplayName(leg.arrival))  •  " +
+                    "\((leg.scheduleType ?? .planned).rawValue)  •  \(leg.aircraft)  •  \(formattedRegistration(leg.registration))"
+                )
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+                Spacer(minLength: 6)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Расчётное")
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
+                    Text(leg.calculatedMinutes.map(timeText) ?? "Ожидает норму")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
                 }
-                Spacer(minLength: 8)
-                CompactFlightValue(title: "Расчётное время", value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму")
-                    .frame(width: 175)
+
                 Menu {
                     Button("Редактировать", systemImage: "pencil") { editingFlight = leg }
                     Button(role: .destructive) {
