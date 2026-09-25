@@ -925,14 +925,20 @@ struct DutyDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .popover(isPresented: focusBinding(.assignment)) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            editPopoverHeader("Номер задания")
+                        VStack(alignment: .leading, spacing: 8) {
+                            editPopoverHeader("Задание на полёт №")
 
-                            TextField("Номер задания", text: $assignmentNumber)
+                            TextField("Номер", text: $assignmentNumber)
                                 .textInputAutocapitalization(.characters)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.headline)
+                                .multilineTextAlignment(.center)
+                                .frame(width: 190)
+                                .frame(maxWidth: .infinity)
                         }
-                        .padding(12)
-                        .frame(minWidth: 270)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .frame(width: 235)
                         .environment(\.locale, Locale(identifier: "ru_RU"))
                     }
                     .accessibilityHint("Нажмите, чтобы изменить номер задания")
