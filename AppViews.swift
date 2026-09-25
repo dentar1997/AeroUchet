@@ -721,14 +721,13 @@ struct FlightRow: View {
 
 struct FlightDetailView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @EnvironmentObject private var store: AppStore
 
     let flight: FlightLeg
 
     @State private var showEdit = false
     @State private var showDeleteConfirmation = false
-
-    private let columns = [GridItem(.adaptive(minimum: 175, maximum: 280), spacing: 8)]
 
     private var currentFlight: FlightLeg {
         store.flights.first { $0.id == flight.id } ?? flight
@@ -738,35 +737,27 @@ struct FlightDetailView: View {
         let current = currentFlight
 
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header(current)
-
-                if current.hasValidStoredDates {
-                    sectionTitle("Время")
-                    timelineGrid(current)
-
-                    sectionTitle("Расчёт")
-                    calculationGrid(current)
+            Group {
+                if sizeClass == .regular {
+                    HStack(alignment: .top, spacing: 12) {
+                        flightColumn(current)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        timeColumn(current)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        calculationColumn(current)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
                 } else {
-                    Label(
-                        "Проверьте сохранённые даты и времена. До исправления рейс не участвует в расчётах.",
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
-                    .foregroundStyle(.orange)
-                    sectionTitle("Сохранённые значения")
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                        CompactFlightValue(title: "Дата", value: current.date)
-                        CompactFlightValue(title: "Начало работы", value: current.workStart)
-                        CompactFlightValue(title: "Включение", value: current.engineOn)
-                        CompactFlightValue(title: "Взлёт", value: current.takeoff)
-                        CompactFlightValue(title: "Посадка", value: current.landing)
-                        CompactFlightValue(title: "Выключение", value: current.engineOff)
+                    VStack(alignment: .leading, spacing: 20) {
+                        flightColumn(current)
+                        timeColumn(current)
+                        calculationColumn(current)
                     }
                 }
             }
-            .frame(maxWidth: 1100, alignment: .leading)
+            .frame(maxWidth: 1100, alignment: .topLeading)
             .padding(16)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("\(current.departure) → \(current.arrival)")
@@ -801,56 +792,58 @@ struct FlightDetailView: View {
         }
     }
 
-    private func header(_ current: FlightLeg) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("\(current.departure) → \(current.arrival)")
-                    .font(.title2.bold())
-                Text("№ \(current.displayedLegNumber)")
-                    .font(.headline)
-            }
-            HStack(spacing: 10) {
-                Text((current.scheduleType ?? .planned).rawValue)
-                    .foregroundStyle(current.scheduleType == .unscheduled ? Color.orange : Color.secondary)
-                Text(current.aircraft)
-                if !current.registration.isEmpty {
-                    Text(current.registration)
+    private func flightColumn(_ current: FlightLeg) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Рейс").font(.headline)
+            CompactFlightValue(title: "Маршрут", value: "\(current.departure) → \(current.arrival)")
+            CompactFlightValue(title: "Номер", value: current.displayedLegNumber)
+            CompactFlightValue(title: "Тип рейса", value: (current.scheduleType ?? .planned).rawValue)
+            CompactFlightValue(title: "Тип ВС", value: current.aircraft)
+            CompactFlightValue(title: "Борт", value: current.registration.isEmpty ? "—" : current.registration)
+        }
+    }
+
+    @ViewBuilder
+    private func timeColumn(_ current: FlightLeg) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Время").font(.headline)
+            if current.hasValidStoredDates {
+                CompactFlightValue(title: "Начало работы", value: formatDateTime(current.timeline.workStart))
+                CompactFlightValue(title: "Включение двигателей", value: formatDateTime(current.timeline.engineOn))
+                CompactFlightValue(title: "Взлёт", value: formatDateTime(current.timeline.takeoff))
+                CompactFlightValue(title: "Посадка", value: formatDateTime(current.timeline.landing))
+                CompactFlightValue(title: "Выключение двигателей", value: formatDateTime(current.timeline.engineOff))
+                if let end = current.timeline.workEnd {
+                    CompactFlightValue(title: "Завершение работы", value: formatDateTime(end))
                 }
-            }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func sectionTitle(_ title: String) -> some View {
-        Text(title)
-            .font(.headline)
-            .padding(.top, 2)
-    }
-
-    private func timelineGrid(_ current: FlightLeg) -> some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-            CompactFlightValue(title: "Начало работы", value: formatDateTime(current.timeline.workStart))
-            CompactFlightValue(title: "Включение двигателей", value: formatDateTime(current.timeline.engineOn))
-            CompactFlightValue(title: "Взлёт", value: formatDateTime(current.timeline.takeoff))
-            CompactFlightValue(title: "Посадка", value: formatDateTime(current.timeline.landing))
-            CompactFlightValue(title: "Выключение двигателей", value: formatDateTime(current.timeline.engineOff))
-            if let end = current.timeline.workEnd {
-                CompactFlightValue(title: "Завершение работы", value: formatDateTime(end))
+            } else {
+                CompactFlightValue(title: "Дата", value: current.date)
+                CompactFlightValue(title: "Начало работы", value: current.workStart)
+                CompactFlightValue(title: "Включение", value: current.engineOn)
+                CompactFlightValue(title: "Взлёт", value: current.takeoff)
+                CompactFlightValue(title: "Посадка", value: current.landing)
+                CompactFlightValue(title: "Выключение", value: current.engineOff)
             }
         }
     }
 
-    private func calculationGrid(_ current: FlightLeg) -> some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-            CompactFlightValue(title: "Расчётное время", value: current.calculatedMinutes.map(timeText) ?? "Ожидает норму")
-            CompactFlightValue(title: "Полётное время", value: timeText(current.flightMinutes))
-            CompactFlightValue(title: "Лётное время", value: timeText(current.airMinutes))
-            CompactFlightValue(title: "Рабочее время", value: timeText(current.workMinutes))
-            CompactFlightValue(title: "Полётная ночь", value: timeText(current.flightNightMinutes))
-            CompactFlightValue(title: "Лётная ночь", value: timeText(current.airNightMinutes))
-            CompactFlightValue(title: "Рабочая ночь", value: timeText(current.workNightMinutes))
+    @ViewBuilder
+    private func calculationColumn(_ current: FlightLeg) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Расчёт").font(.headline)
+            if current.hasValidStoredDates {
+                CompactFlightValue(title: "Расчётное время", value: current.calculatedMinutes.map(timeText) ?? "Ожидает норму")
+                CompactFlightValue(title: "Полётное время", value: timeText(current.flightMinutes))
+                CompactFlightValue(title: "Лётное время", value: timeText(current.airMinutes))
+                CompactFlightValue(title: "Рабочее время", value: timeText(current.workMinutes))
+                CompactFlightValue(title: "Полётная ночь", value: timeText(current.flightNightMinutes))
+                CompactFlightValue(title: "Лётная ночь", value: timeText(current.airNightMinutes))
+                CompactFlightValue(title: "Рабочая ночь", value: timeText(current.workNightMinutes))
+            } else {
+                Label("Проверьте даты и время. Рейс пока не участвует в расчётах.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
         }
     }
 }
