@@ -1966,12 +1966,13 @@ struct CalendarDayDetail: View {
                     ) { flight in
                         
                         NavigationLink {
-                            
-                            FlightDetailView(
-                                flight:
-                                    flight
-                            )
-                            
+                            if let duty = store.duties.first(where: {
+                                $0.legs.contains(where: { $0.id == flight.id })
+                            }) {
+                                DutyDetailView(duty: duty)
+                            } else {
+                                Text("Смена для этого рейса не найдена")
+                            }
                         } label: {
                             
                             CalendarFlightRow(
