@@ -410,11 +410,8 @@ struct DutyDetailView: View {
     @State private var deletingFlight: FlightLeg?
     @State private var showDeleteConfirmation = false
 
-    @Environment(\.horizontalSizeClass) private var sizeClass
-
     private let columns = [GridItem(.adaptive(minimum: 175, maximum: 280), spacing: 8)]
     private let timeColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
-    private let calculationColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 4)
 
     private var current: FlightDuty {
         if let number = duty.firstLeg.assignmentNumber {
@@ -436,15 +433,12 @@ struct DutyDetailView: View {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                     CompactFlightValue(title: "Начало смены", value: formatDateTime(current.start))
                     CompactFlightValue(title: "Окончание (+30 мин)", value: formatDateTime(current.end))
-                    CompactFlightValue(title: "Рабочее время", value: timeText(current.workMinutes))
+                    CompactFlightValue(title: "Рабочее время", value: timeText(current.workMinutes) + " · ночь " + timeText(current.workNightMinutes))
                     if current.restMinutes > 0 {
                         CompactFlightValue(title: "Перерыв без работы", value: timeText(current.restMinutes))
                     }
-                    CompactFlightValue(title: "Полётное", value: timeText(current.flightMinutes))
-                    CompactFlightValue(title: "Лётное", value: timeText(current.airMinutes))
-                    CompactFlightValue(title: "Рабочая ночь", value: timeText(current.workNightMinutes))
-                    CompactFlightValue(title: "Полётная ночь", value: timeText(current.flightNightMinutes))
-                    CompactFlightValue(title: "Лётная ночь", value: timeText(current.airNightMinutes))
+                    CompactFlightValue(title: "Полётное время", value: timeText(current.flightMinutes) + " · ночь " + timeText(current.flightNightMinutes))
+                    CompactFlightValue(title: "Лётное время", value: timeText(current.airMinutes) + " · ночь " + timeText(current.airNightMinutes))
                 }
 
                 if current.restMinutes > 0 {
@@ -495,7 +489,9 @@ struct DutyDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
+                Spacer(minLength: 8)
+                CompactFlightValue(title: "Расчётное время", value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму")
+                    .frame(width: 175)
                 Menu {
                     Button("Редактировать", systemImage: "pencil") { editingFlight = leg }
                     Button(role: .destructive) {
@@ -512,7 +508,6 @@ struct DutyDetailView: View {
                 .accessibilityLabel("Действия с рейсом \(leg.displayedLegNumber)")
             }
 
-            Text("Временные точки").font(.subheadline.bold())
             LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
                 CompactFlightValue(title: "Начало работы", value: formatDateTime(leg.timeline.workStart))
                 CompactFlightValue(title: "Включение двигателей", value: formatDateTime(leg.timeline.engineOn))
@@ -520,16 +515,13 @@ struct DutyDetailView: View {
                 CompactFlightValue(title: "Завершение работы", value: formatDateTime(workEnd))
                 CompactFlightValue(title: "Выключение двигателей", value: formatDateTime(leg.timeline.engineOff))
                 CompactFlightValue(title: "Посадка", value: formatDateTime(leg.timeline.landing))
-            }
-
-            Text("Расчёт времени").font(.subheadline.bold())
-            if sizeClass == .compact {
-                ScrollView(.horizontal) {
-                    legCalculations(leg, workEnd: workEnd)
-                        .frame(width: 680)
-                }
-            } else {
-                legCalculations(leg, workEnd: workEnd)
+                CompactFlightValue(title: "Рабочее время",
+                                   value: timeText(minutesBetween(leg.timeline.workStart, workEnd))
+                                       + " · ночь " + timeText(nightMinutes(from: leg.timeline.workStart, to: workEnd)))
+                CompactFlightValue(title: "Полётное время",
+                                   value: timeText(leg.flightMinutes) + " · ночь " + timeText(leg.flightNightMinutes))
+                CompactFlightValue(title: "Лётное время",
+                                   value: timeText(leg.airMinutes) + " · ночь " + timeText(leg.airNightMinutes))
             }
         }
         .padding(12)
@@ -539,21 +531,7 @@ struct DutyDetailView: View {
         )
     }
 
-    private func legCalculations(_ leg: FlightLeg, workEnd: Date) -> some View {
-        LazyVGrid(columns: calculationColumns, alignment: .leading, spacing: 8) {
-            CompactFlightValue(title: "Расчётное время", value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму")
-            CompactFlightValue(title: "Рабочее время",
-                               value: timeText(minutesBetween(leg.timeline.workStart, workEnd)))
-            CompactFlightValue(title: "Полётное время", value: timeText(leg.flightMinutes))
-            CompactFlightValue(title: "Лётное время", value: timeText(leg.airMinutes))
 
-            Color.clear.frame(height: 1).accessibilityHidden(true)
-            CompactFlightValue(title: "Рабочая ночь",
-                               value: timeText(nightMinutes(from: leg.timeline.workStart, to: workEnd)))
-            CompactFlightValue(title: "Полётная ночь", value: timeText(leg.flightNightMinutes))
-            CompactFlightValue(title: "Лётная ночь", value: timeText(leg.airNightMinutes))
-        }
-    }
 }
 
 private struct CompactFlightValue: View {
