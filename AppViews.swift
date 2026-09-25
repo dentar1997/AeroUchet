@@ -1329,14 +1329,29 @@ struct DutyDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .popover(isPresented: focusBinding(.time(index, point))) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(title)
-                            .font(.headline)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Text(title)
+                                .font(.subheadline.weight(.semibold))
 
-                        HStack(alignment: .top, spacing: 18) {
-                            VStack(alignment: .leading, spacing: 6) {
+                            Spacer()
+
+                            Button {
+                                focusedField = nil
+                            } label: {
+                                Image(systemName: "checkmark")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .buttonBorderShape(.circle)
+                            .controlSize(.small)
+                            .accessibilityLabel("Готово")
+                        }
+
+                        HStack(alignment: .top, spacing: 10) {
+                            VStack(alignment: .leading, spacing: 4) {
                                 Text("Дата")
-                                    .font(.caption)
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
 
                                 DatePicker(
@@ -1346,11 +1361,19 @@ struct DutyDetailView: View {
                                 )
                                 .labelsHidden()
                                 .datePickerStyle(.graphical)
+                                .scaleEffect(0.78, anchor: .topLeading)
+                                .frame(
+                                    width: 250,
+                                    height: 190,
+                                    alignment: .topLeading
+                                )
+                                .clipped()
                             }
+                            .frame(height: 212, alignment: .top)
 
-                            VStack(alignment: .leading, spacing: 6) {
+                            VStack(alignment: .leading, spacing: 4) {
                                 Text("Время")
-                                    .font(.caption)
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
 
                                 DatePicker(
@@ -1360,19 +1383,18 @@ struct DutyDetailView: View {
                                 )
                                 .labelsHidden()
                                 .datePickerStyle(.wheel)
-                                .frame(width: 180, height: 180)
+                                .scaleEffect(0.88)
+                                .frame(
+                                    width: 145,
+                                    height: 190
+                                )
                                 .clipped()
                             }
-                        }
-
-                        HStack {
-                            Spacer()
-                            Button("Готово") { focusedField = nil }
-                                .buttonStyle(.borderedProminent)
+                            .frame(height: 212, alignment: .top)
                         }
                     }
-                    .padding(14)
-                    .frame(minWidth: 560)
+                    .padding(10)
+                    .frame(minWidth: 430)
                     .fixedSize(horizontal: false, vertical: true)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
