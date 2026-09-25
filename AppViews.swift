@@ -927,29 +927,65 @@ struct DutyDetailView: View {
     private func flightIdentity(_ leg: FlightLeg, index: Int) -> some View {
         Group {
             if sizeClass == .compact {
-                VStack(alignment: .leading, spacing: 6) {
-                    routeIdentity(leg, index: index)
-                    HStack(spacing: 24) {
-                        flightKindIdentity(leg, index: index)
-                        aircraftIdentity(leg, index: index)
+                VStack(alignment: .leading, spacing: 8) {
+                    identityField("Маршрут") {
+                        routeIdentity(leg, index: index)
+                    }
+                    HStack(alignment: .top, spacing: 18) {
+                        identityField("Тип ВС") {
+                            aircraftIdentity(leg, index: index)
+                        }
+                        identityField("Вид полёта") {
+                            flightKindIdentity(leg, index: index)
+                        }
+                        identityField("Бортовой номер") {
+                            registrationIdentity(leg, index: index)
+                        }
                     }
                 }
             } else {
-                HStack(spacing: 24) {
-                    routeIdentity(leg, index: index)
-                        .layoutPriority(1)
-                    Spacer(minLength: 12)
-                    flightKindIdentity(leg, index: index)
-                    Spacer(minLength: 12)
-                    aircraftIdentity(leg, index: index)
+                HStack(alignment: .top, spacing: 18) {
+                    identityField("Тип ВС") {
+                        aircraftIdentity(leg, index: index)
+                    }
+                    .frame(width: 68, alignment: .leading)
+
+                    identityField("Маршрут") {
+                        routeIdentity(leg, index: index)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .layoutPriority(1)
+
+                    identityField("Вид полёта") {
+                        flightKindIdentity(leg, index: index)
+                    }
+                    .frame(width: 86, alignment: .leading)
+
+                    identityField("Бортовой номер") {
+                        registrationIdentity(leg, index: index)
+                    }
+                    .frame(width: 100, alignment: .leading)
                 }
             }
         }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.primary)
-        .lineLimit(1)
-        .minimumScaleFactor(0.7)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func identityField<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            content()
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
     }
 
     private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {
@@ -975,7 +1011,7 @@ struct DutyDetailView: View {
     private func flightKindIdentity(_ leg: FlightLeg, index: Int) -> some View {
         Group {
             if isEditing {
-                Picker("Тип рейса", selection: scheduleBinding(index)) {
+                Picker("Вид полёта", selection: scheduleBinding(index)) {
                     ForEach(FlightScheduleType.allCases) { kind in
                         Text(kind.rawValue).tag(kind)
                     }
@@ -990,14 +1026,19 @@ struct DutyDetailView: View {
     private func aircraftIdentity(_ leg: FlightLeg, index: Int) -> some View {
         Group {
             if isEditing {
-                HStack(spacing: 6) {
-                    TextField("Тип ВС", text: $draft[index].aircraft)
-                        .frame(minWidth: 55)
-                    TextField("Борт", text: $draft[index].registration)
-                        .frame(minWidth: 75)
-                }
+                TextField("Тип ВС", text: $draft[index].aircraft)
             } else {
-                Text("\(leg.aircraft)  \(formattedRegistration(leg.registration))")
+                Text(leg.aircraft)
+            }
+        }
+    }
+
+    private func registrationIdentity(_ leg: FlightLeg, index: Int) -> some View {
+        Group {
+            if isEditing {
+                TextField("Борт", text: $draft[index].registration)
+            } else {
+                Text(formattedRegistration(leg.registration))
             }
         }
     }
