@@ -410,7 +410,10 @@ struct DutyDetailView: View {
     @State private var deletingFlight: FlightLeg?
     @State private var showDeleteConfirmation = false
 
-    private let timeColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
+    private let timeColumns = Array(
+        repeating: GridItem(.flexible(minimum: 0), spacing: 8),
+        count: 3
+    )
 
     private var current: FlightDuty {
         if let number = duty.firstLeg.assignmentNumber {
@@ -421,25 +424,12 @@ struct DutyDetailView: View {
 
     var body: some View {
         let current = current
+
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                dutyHeader(current)
-
-                if current.restMinutes > 0 {
-                    Label("Разделённая смена: время отдыха между рабочими интервалами не входит в рабочее время.",
-                          systemImage: "moon.zzz")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                ForEach(current.legs) { leg in
-                    let index = current.legs.firstIndex(where: { $0.id == leg.id })!
-                    legCard(leg, workEnd: current.workIntervals[index].end)
-                }
-            }
-            .frame(maxWidth: 1100, alignment: .leading)
-            .padding(16)
-            .frame(maxWidth: .infinity)
+            dutyCard(current)
+                .frame(maxWidth: 1100, alignment: .leading)
+                .padding(16)
+                .frame(maxWidth: .infinity)
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Полёты")
@@ -450,94 +440,158 @@ struct DutyDetailView: View {
             }
         }
         .alert("Удалить лег?", isPresented: $showDeleteConfirmation) {
-            Button("Отмена", role: .cancel) { deletingFlight = nil }
+            Button("Отмена", role: .cancel) {
+                deletingFlight = nil
+            }
+
             Button("Удалить", role: .destructive) {
                 if let flight = deletingFlight {
                     store.deleteFlight(id: flight.id)
-                    if current.legs.count <= 1 { dismiss() }
+
+                    if current.legs.count <= 1 {
+                        dismiss()
+                    }
                 }
+
                 deletingFlight = nil
             }
         } message: {
-            Text(deletingFlight.map { "\($0.displayedLegNumber)  \($0.departure) → \($0.arrival)" } ?? "")
+            Text(
+                deletingFlight.map {
+                    "\($0.displayedLegNumber)  \($0.departure) → \($0.arrival)"
+                } ?? ""
+            )
         }
     }
 
-    private func dutyHeader(_ duty: FlightDuty) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(duty.firstLeg.assignmentNumber.map { "Полётное задание № \($0)" } ?? "Полётное задание")
-                    .font(.title2.bold())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+    private func dutyCard(_ duty: FlightDuty) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            dutyTitle(duty)
 
-                Spacer()
-
-                Label("\(duty.legs.count) лег.", systemImage: "airplane")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+            ForEach(duty.legs) { leg in
+                let index = duty.legs.firstIndex(where: { $0.id == leg.id })!
+                legCard(
+                    leg,
+                    workEnd: duty.workIntervals[index].end
+                )
             }
 
-            Text(dutyAirportRoute(duty))
-                .font(.subheadline.weight(.semibold))
+            Divider()
+                .padding(.vertical, 2)
+
+            dutyTotals(duty)
+
+            if duty.restMinutes > 0 {
+                Label(
+                    "Перерыв без работы: \(timeText(duty.restMinutes)). В рабочее время не входит.",
+                    systemImage: "moon.zzz"
+                )
+                .font(.footnote)
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 8) {
-                dutySummaryValue(
-                    title: "Рабочее",
-                    total: duty.workMinutes,
-                    night: duty.workNightMinutes
-                )
-                dutySummaryValue(
-                    title: "Полётное",
-                    total: duty.flightMinutes,
-                    night: duty.flightNightMinutes
-                )
-                dutySummaryValue(
-                    title: "Лётное",
-                    total: duty.airMinutes,
-                    night: duty.airNightMinutes
-                )
-
-                if duty.restMinutes > 0 {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Перерыв")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text(timeText(duty.restMinutes))
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color(uiColor: .tertiarySystemGroupedBackground))
-                    )
-                }
             }
         }
-        .padding(14)
+        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 18)
+            RoundedRectangle(cornerRadius: 20)
                 .fill(Color(uiColor: .secondarySystemGroupedBackground))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18)
+            RoundedRectangle(cornerRadius: 20)
                 .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
         )
     }
 
-    private func dutySummaryValue(title: String, total: Int, night: Int) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Text("\(timeText(total)) · ночь \(timeText(night))")
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+    private func dutyTitle(_ duty: FlightDuty) -> some View {
+        ZStack {
+            Text(
+                duty.firstLeg.assignmentNumber.map {
+                    "Полётное задание № \($0)"
+                } ?? "Полётное задание"
+            )
+            .font(.title2.bold())
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .frame(maxWidth: .infinity)
+
+            HStack {
+                Spacer()
+
+                Text(legCountText(duty.legs.count))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func legCountText(_ count: Int) -> String {
+        let lastTwo = count % 100
+        let last = count % 10
+
+        if lastTwo >= 11 && lastTwo <= 14 {
+            return "\(count) легов"
+        }
+
+        switch last {
+        case 1:
+            return "\(count) лег"
+        case 2...4:
+            return "\(count) лега"
+        default:
+            return "\(count) легов"
+        }
+    }
+
+    private func dutyTotals(_ duty: FlightDuty) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Итого за полётную смену")
+                .font(.headline)
+
+            HStack(spacing: 8) {
+                dutyTotalCell(
+                    title: "Рабочее время",
+                    total: duty.workMinutes,
+                    night: duty.workNightMinutes
+                )
+
+                dutyTotalCell(
+                    title: "Полётное время",
+                    total: duty.flightMinutes,
+                    night: duty.flightNightMinutes
+                )
+
+                dutyTotalCell(
+                    title: "Лётное время",
+                    total: duty.airMinutes,
+                    night: duty.airNightMinutes
+                )
+            }
+        }
+    }
+
+    private func dutyTotalCell(
+        title: String,
+        total: Int,
+        night: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(timeText(total))
+                    .font(.subheadline.weight(.semibold))
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Ночь")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(timeText(night))
+                    .font(.subheadline.weight(.semibold))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
@@ -546,73 +600,82 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color(uiColor: .tertiarySystemGroupedBackground))
         )
-    }
-
-    private func dutyAirportRoute(_ duty: FlightDuty) -> String {
-        guard let first = duty.legs.first else { return duty.routeText }
-        let codes = [first.departure] + duty.legs.map(\.arrival)
-        return codes.map(airportDisplayName).joined(separator: "  →  ")
+        .accessibilityElement(children: .combine)
     }
 
     private func legCard(_ leg: FlightLeg, workEnd: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 10) {
-                Text(
-                    "Рейс № \(leg.displayedLegNumber)  •  " +
-                    "\(airportDisplayName(leg.departure)) → \(airportDisplayName(leg.arrival))  •  " +
-                    "\((leg.scheduleType ?? .planned).rawValue)  •  \(leg.aircraft)  •  \(formattedRegistration(leg.registration))"
+            legHeader(leg)
+
+            LazyVGrid(
+                columns: timeColumns,
+                alignment: .leading,
+                spacing: 8
+            ) {
+                CompactFlightValue(
+                    title: "Начало работы",
+                    value: formatDateTime(leg.timeline.workStart)
                 )
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
 
-                Spacer(minLength: 6)
+                CompactFlightValue(
+                    title: "Включение двигателей",
+                    value: formatDateTime(leg.timeline.engineOn)
+                )
 
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("Расчётное")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text(leg.calculatedMinutes.map(timeText) ?? "Ожидает норму")
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                }
+                CompactFlightValue(
+                    title: "Взлёт",
+                    value: formatDateTime(leg.timeline.takeoff)
+                )
 
-                Menu {
-                    Button("Редактировать", systemImage: "pencil") { editingFlight = leg }
-                    Button(role: .destructive) {
-                        deletingFlight = leg
-                        showDeleteConfirmation = true
-                    } label: {
-                        Label("Удалить лег", systemImage: "trash")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.title3)
-                        .padding(8)
-                }
-                .accessibilityLabel("Действия с рейсом \(leg.displayedLegNumber)")
-            }
+                CompactFlightValue(
+                    title: "Завершение работы",
+                    value: formatDateTime(workEnd)
+                )
 
-            LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
-                CompactFlightValue(title: "Начало работы", value: formatDateTime(leg.timeline.workStart))
-                CompactFlightValue(title: "Включение двигателей", value: formatDateTime(leg.timeline.engineOn))
-                CompactFlightValue(title: "Взлёт", value: formatDateTime(leg.timeline.takeoff))
-                CompactFlightValue(title: "Завершение работы", value: formatDateTime(workEnd))
-                CompactFlightValue(title: "Выключение двигателей", value: formatDateTime(leg.timeline.engineOff))
-                CompactFlightValue(title: "Посадка", value: formatDateTime(leg.timeline.landing))
-                CompactFlightValue(title: "Рабочее время",
-                                   value: timeText(minutesBetween(leg.timeline.workStart, workEnd))
-                                       + " · ночь " + timeText(nightMinutes(from: leg.timeline.workStart, to: workEnd)))
-                CompactFlightValue(title: "Полётное время",
-                                   value: timeText(leg.flightMinutes) + " · ночь " + timeText(leg.flightNightMinutes))
-                CompactFlightValue(title: "Лётное время",
-                                   value: timeText(leg.airMinutes) + " · ночь " + timeText(leg.airNightMinutes))
+                CompactFlightValue(
+                    title: "Выключение двигателей",
+                    value: formatDateTime(leg.timeline.engineOff)
+                )
+
+                CompactFlightValue(
+                    title: "Посадка",
+                    value: formatDateTime(leg.timeline.landing)
+                )
+
+                CompactFlightValue(
+                    title: "Рабочее время",
+                    value:
+                        timeText(minutesBetween(leg.timeline.workStart, workEnd))
+                        + " · ночь "
+                        + timeText(
+                            nightMinutes(
+                                from: leg.timeline.workStart,
+                                to: workEnd
+                            )
+                        )
+                )
+
+                CompactFlightValue(
+                    title: "Полётное время",
+                    value:
+                        timeText(leg.flightMinutes)
+                        + " · ночь "
+                        + timeText(leg.flightNightMinutes)
+                )
+
+                CompactFlightValue(
+                    title: "Лётное время",
+                    value:
+                        timeText(leg.airMinutes)
+                        + " · ночь "
+                        + timeText(leg.airNightMinutes)
+                )
             }
         }
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 16)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                .fill(Color(uiColor: .tertiarySystemGroupedBackground))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
@@ -620,8 +683,78 @@ struct DutyDetailView: View {
         )
     }
 
+    private func legHeader(_ leg: FlightLeg) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            Text("Рейс № \(leg.displayedLegNumber)")
+                .font(.title2.bold())
+                .lineLimit(1)
 
+            Text(
+                "\(airportDisplayName(leg.departure)) → "
+                + "\(airportDisplayName(leg.arrival))"
+            )
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .layoutPriority(1)
+
+            Text(leg.aircraft)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+
+            Text(formattedRegistration(leg.registration))
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+
+            Text((leg.scheduleType ?? .planned).rawValue)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Расчётное")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Text(
+                    leg.calculatedMinutes.map(timeText)
+                    ?? "Ожидает норму"
+                )
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            }
+
+            Menu {
+                Button(
+                    "Редактировать",
+                    systemImage: "pencil"
+                ) {
+                    editingFlight = leg
+                }
+
+                Button(role: .destructive) {
+                    deletingFlight = leg
+                    showDeleteConfirmation = true
+                } label: {
+                    Label(
+                        "Удалить лег",
+                        systemImage: "trash"
+                    )
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .padding(8)
+            }
+            .accessibilityLabel(
+                "Действия с рейсом \(leg.displayedLegNumber)"
+            )
+        }
+    }
 }
+
 
 private func airportDisplayName(_ rawCode: String) -> String {
     let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
