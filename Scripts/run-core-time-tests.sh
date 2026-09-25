@@ -243,6 +243,10 @@ expect(
 print("All AeroUchet time calculation regression checks passed.")
 SWIFT
 
-xcrun swiftc   "$ROOT_DIR/AeroTimeMath.swift"   "$TMP_DIR/main.swift"   -o "$TMP_DIR/aerouchet-core-tests"
+xcrun swiftc \
+  "$ROOT_DIR/AeroTimeMath.swift" \
+  "$ROOT_DIR/AeroDateParsing.swift" \
+  "$TMP_DIR/main.swift" \
+  -o "$TMP_DIR/aerouchet-core-tests"
 
 "$TMP_DIR/aerouchet-core-tests"
