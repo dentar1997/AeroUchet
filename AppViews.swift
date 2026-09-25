@@ -877,45 +877,43 @@ struct DutyDetailView: View {
     }
 
     private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
-        Group {
-            if sizeClass == .compact {
-                VStack(spacing: 8) {
+        LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
+            Group {
+                if sizeClass == .compact {
+                    VStack(spacing: 4) {
+                        flightNumber(leg, index: index)
+                        aircraftField(leg, index: index)
+                        registrationField(leg, index: index)
+                    }
+                } else {
                     HStack(alignment: .top, spacing: 8) {
                         flightNumber(leg, index: index)
-                            .frame(maxWidth: .infinity)
-                        calculatedTime(leg)
-                            .frame(width: 155)
-                    }
-
-                    identityField("Маршрут", field: .route(index)) {
-                        routeIdentity(leg, index: index)
-                    }
-
-                    HStack(alignment: .top, spacing: 8) {
-                        flightKindField(leg, index: index)
                         aircraftField(leg, index: index)
                         registrationField(leg, index: index)
                     }
                 }
-            } else {
-                HStack(alignment: .top, spacing: 10) {
-                    flightNumber(leg, index: index)
-                        .frame(width: 95)
-                    identityField("Маршрут", field: .route(index)) {
-                        routeIdentity(leg, index: index)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            identityField("Маршрут", field: .route(index)) {
+                routeIdentity(leg, index: index)
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+
+            Group {
+                if sizeClass == .compact {
+                    VStack(spacing: 4) {
+                        flightKindField(leg, index: index)
+                        calculatedTime(leg)
                     }
-                    .frame(maxWidth: .infinity)
-                    .layoutPriority(1)
-                    flightKindField(leg, index: index)
-                        .frame(width: 95)
-                    aircraftField(leg, index: index)
-                        .frame(width: 80)
-                    registrationField(leg, index: index)
-                        .frame(width: 110)
-                    calculatedTime(leg)
-                        .frame(width: 155)
+                } else {
+                    HStack(alignment: .top, spacing: 8) {
+                        flightKindField(leg, index: index)
+                        calculatedTime(leg)
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .topTrailing)
         }
     }
 
