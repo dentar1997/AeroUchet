@@ -451,12 +451,15 @@ struct DutyDetailView: View {
                         original = []
                     }
                 } else {
-                    Button("Редактировать") {
+                    Button {
                         original = current.legs
                         draft = current.legs
                         assignmentNumber = current.firstLeg.assignmentNumber ?? ""
                         isEditing = true
+                    } label: {
+                        Image(systemName: "wrench")
                     }
+                    .accessibilityLabel("Редактировать полётное задание")
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
@@ -880,20 +883,21 @@ struct DutyDetailView: View {
     private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
         Group {
             if sizeClass == .compact {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
                         flightNumber(leg, index: index)
                         Spacer(minLength: 8)
                         calculatedTime(leg)
                             .frame(width: 155)
                     }
-                    flightInfoCards(leg, index: index)
+                    flightIdentity(leg, index: index)
                 }
             } else {
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .center, spacing: 12) {
                     flightNumber(leg, index: index)
-                        .frame(width: 150, alignment: .leading)
-                    flightInfoCards(leg, index: index)
+                        .frame(width: 155, alignment: .leading)
+                    flightIdentity(leg, index: index)
+                        .frame(maxWidth: .infinity)
                     calculatedTime(leg)
                         .frame(width: 155)
                 }
@@ -919,99 +923,41 @@ struct DutyDetailView: View {
         .minimumScaleFactor(0.8)
     }
 
-    private func flightInfoCards(_ leg: FlightLeg, index: Int) -> some View {
-        Group {
-            if sizeClass == .compact {
-                VStack(spacing: 8) {
-                    routeCard(leg, index: index)
-                    HStack(spacing: 8) {
-                        aircraftCard(leg, index: index)
-                        flightTypeCard(leg, index: index)
-                            .frame(width: 110)
-                    }
-                }
-            } else {
-                HStack(spacing: 8) {
-                    routeCard(leg, index: index)
-                    aircraftCard(leg, index: index)
-                    flightTypeCard(leg, index: index)
-                        .frame(width: 125)
-                }
-            }
-        }
-    }
-
-    private func routeCard(_ leg: FlightLeg, index: Int) -> some View {
-        infoCard("Маршрут") {
+    private func flightIdentity(_ leg: FlightLeg, index: Int) -> some View {
+        HStack(spacing: 6) {
             if isEditing {
-                HStack(spacing: 4) {
-                    TextField("Вылет", text: $draft[index].departure)
-                    Image(systemName: "arrow.right")
-                        .font(.caption)
-                    TextField("Прилёт", text: $draft[index].arrival)
-                }
-            } else {
-                Text(
-                    "\(airportDisplayName(leg.departure)) → "
-                    + "\(airportDisplayName(leg.arrival))"
-                )
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            }
-        }
-    }
-
-    private func aircraftCard(_ leg: FlightLeg, index: Int) -> some View {
-        infoCard("ВС · борт") {
-            if isEditing {
-                HStack(spacing: 4) {
-                    TextField("Тип ВС", text: $draft[index].aircraft)
-                    TextField("Борт", text: $draft[index].registration)
-                }
-            } else {
-                Text("\(leg.aircraft) · \(formattedRegistration(leg.registration))")
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-        }
-    }
-
-    private func flightTypeCard(_ leg: FlightLeg, index: Int) -> some View {
-        infoCard("Вид полёта") {
-            if isEditing {
-                Picker("Вид полёта", selection: scheduleBinding(index)) {
+                TextField("Вылет", text: $draft[index].departure)
+                    .frame(minWidth: 52)
+                Image(systemName: "arrow.right")
+                    .font(.caption)
+                TextField("Прилёт", text: $draft[index].arrival)
+                    .frame(minWidth: 52)
+                TextField("Тип ВС", text: $draft[index].aircraft)
+                    .frame(minWidth: 55)
+                TextField("Борт", text: $draft[index].registration)
+                    .frame(minWidth: 75)
+                Picker("Тип рейса", selection: scheduleBinding(index)) {
                     ForEach(FlightScheduleType.allCases) { kind in
                         Text(kind.rawValue).tag(kind)
                     }
                 }
                 .labelsHidden()
             } else {
-                Text((leg.scheduleType ?? .planned).rawValue)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                Text(
+                    "\(airportDisplayName(leg.departure)) → "
+                    + "\(airportDisplayName(leg.arrival))"
+                )
+                .layoutPriority(1)
+                Text("· \(leg.aircraft)")
+                Text("· \(formattedRegistration(leg.registration))")
+                Text("· \((leg.scheduleType ?? .planned).rawValue)")
             }
         }
-    }
-
-    private func infoCard<Content: View>(
-        _ title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            content()
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color(uiColor: .systemGray4))
-        )
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.primary)
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .frame(maxWidth: .infinity)
     }
 
     private func calculatedTime(_ leg: FlightLeg) -> some View {
