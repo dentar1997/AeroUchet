@@ -252,6 +252,19 @@ struct AccountingView: View {
                         
                         AccountingCard(
                             title:
+                                "Лётная ночь",
+                            value:
+                                timeText(
+                                    totals
+                                        .airNightMinutes
+                                ),
+                            icon:
+                                "moon.circle.fill"
+                        )
+                        
+                        
+                        AccountingCard(
+                            title:
                                 "Рабочая ночь",
                             value:
                                 timeText(
@@ -260,6 +273,32 @@ struct AccountingView: View {
                                 ),
                             icon:
                                 "moon.stars.fill"
+                        )
+                        
+                        
+                        AccountingCard(
+                            title:
+                                "Рабочая ночь — рейсы",
+                            value:
+                                timeText(
+                                    totals
+                                        .flightWorkNightMinutes
+                                ),
+                            icon:
+                                "airplane.departure"
+                        )
+                        
+                        
+                        AccountingCard(
+                            title:
+                                "Рабочая ночь — земля",
+                            value:
+                                timeText(
+                                    totals
+                                        .groundWorkNightMinutes
+                                ),
+                            icon:
+                                "building.2"
                         )
                     }
                 }
