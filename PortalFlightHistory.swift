@@ -13,7 +13,19 @@ enum PortalFlightHistory {
         }
     }
 
-    static func parse(_ data: Data) throws -> [FlightLeg] {
+    struct VerifiedImport {
+        let flights: [FlightLeg]
+        let checkedRows: Int
+        let flightMinutes: Int
+        let airMinutes: Int
+        let workMinutes: Int
+
+        var status: String {
+            "Проверка пройдена: у всех \(checkedRows) легов полётное, лётное и рабочее время совпали с выгрузкой. Суммы: \(timeText(flightMinutes)), \(timeText(airMinutes)), \(timeText(workMinutes))."
+        }
+    }
+
+    static func parse(_ data: Data) throws -> VerifiedImport {
         let book = try workbookStream(data)
         let records = try records(in: book)
         var sheetOffset: Int?
@@ -76,11 +88,13 @@ enum PortalFlightHistory {
                 }
             }
         }
-        let expected = [3: "Номер рейса", 5: "Аэропорт взлёта", 6: "Аэропорт посадки", 9: "Фактическое начало работы", 10: "Время включения двигателей", 11: "Фактическая дата взлёта", 12: "Фактическая дата посадки", 13: "Время выключения двигателей", 14: "Фактическое завершение работы"]
+        let expected = [3: "Номер рейса", 4: "Номер задания", 5: "Аэропорт взлёта", 6: "Аэропорт посадки", 8: "Тип рейса", 9: "Фактическое начало работы", 10: "Время включения двигателей", 11: "Фактическая дата взлёта", 12: "Фактическая дата посадки", 13: "Время выключения двигателей", 14: "Фактическое завершение работы", 15: "Полётное время", 16: "Лётное время", 17: "Рабочее время"]
         for (col, title) in expected where cells[0]?[col]?.text != title {
             throw ImportError.invalid("Неожиданный формат выгрузки: нет столбца «\(title)»")
         }
         var flights: [FlightLeg] = []
+        var problems: [String] = []
+        var totals = [0, 0, 0]
         for row in cells.keys.sorted() where row > 0 {
             guard let values = cells[row], values[3] != nil else { continue }
             func text(_ col: Int) -> String { values[col]?.text ?? "" }
@@ -102,6 +116,24 @@ enum PortalFlightHistory {
                   !text(5).isEmpty, !text(6).isEmpty else {
                 throw ImportError.invalid("Строка \(row + 1): неверная последовательность времени или аэропорт")
             }
+            let intervals = [(1, 4), (2, 3), (0, 5)]
+            for (index, pair) in intervals.enumerated() {
+                let actual = Int((dates[pair.1].timeIntervalSince(dates[pair.0]) / 60).rounded())
+                guard let listed = durationMinutes(text(15 + index)) else {
+                    throw ImportError.invalid("Строка \(row + 1): не удалось прочитать \(["полётное", "лётное", "рабочее"][index]) время")
+                }
+                if listed != actual {
+                    problems.append("строка \(row + 1), \(["полётное", "лётное", "рабочее"][index]): в файле \(listed) мин, пересчитано \(actual) мин")
+                }
+                totals[index] += actual
+            }
+            let numberParts = text(3).split(separator: "/", omittingEmptySubsequences: false)
+            guard !numberParts.isEmpty,
+                  numberParts.allSatisfy({ part in part.count >= 1 && part.count <= 4 && part.utf8.allSatisfy({ byte in byte >= 48 && byte <= 57 }) }),
+                  !text(4).isEmpty,
+                  let schedule = FlightScheduleType(rawValue: text(8)) else {
+                throw ImportError.invalid("Строка \(row + 1): неизвестный номер задания, рейса или тип рейса")
+            }
             let times = PortalFlightTimes(workStart: dates[0], engineOn: dates[1], takeoff: dates[2], landing: dates[3], engineOff: dates[4], workEnd: dates[5])
             flights.append(FlightLeg(
                 date: formatDate(dates[1]), flightNumber: text(3),
@@ -109,11 +141,64 @@ enum PortalFlightHistory {
                 registration: text(2), plannedDeparture: "",
                 workStart: formatClock(dates[0]), engineOn: formatClock(dates[1]),
                 takeoff: formatClock(dates[2]), landing: formatClock(dates[3]),
-                engineOff: formatClock(dates[4]), portalTimes: times
+                engineOff: formatClock(dates[4]), portalTimes: times,
+                assignmentNumber: text(4), scheduleType: schedule
             ))
         }
         guard !flights.isEmpty else { throw ImportError.invalid("На листе «Рейсы» нет рейсов") }
-        return flights
+        if !problems.isEmpty {
+            throw ImportError.invalid("Сверка не прошла: \(problems.count) расхождений. \(problems.prefix(3).joined(separator: "; ")). Ничего не сохранено.")
+        }
+        assignLegNumbers(&flights)
+        return VerifiedImport(flights: flights, checkedRows: flights.count,
+                              flightMinutes: totals[0], airMinutes: totals[1], workMinutes: totals[2])
+    }
+
+    private static func durationMinutes(_ value: String) -> Int? {
+        let parts = value.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: " мин", with: "")
+            .components(separatedBy: " ч ")
+        guard parts.count == 2, let hours = Int(parts[0]), let minutes = Int(parts[1]),
+              hours >= 0, minutes >= 0, minutes < 60 else { return nil }
+        return hours * 60 + minutes
+    }
+
+    private static func assignLegNumbers(_ flights: inout [FlightLeg]) {
+        let assignments = Dictionary(grouping: flights.indices) {
+            flights[$0].assignmentNumber ?? ""
+        }
+        for indices in assignments.values {
+            let ordered = indices.sorted {
+                flights[$0].portalTimes!.workStart < flights[$1].portalTimes!.workStart
+            }
+            guard let first = ordered.first else { continue }
+            let parts = flights[first].flightNumber.split(separator: "/").map(String.init)
+            guard !parts.isEmpty else { continue }
+            if parts.count == 1 {
+                for index in ordered { flights[index].legNumber = parts[0] }
+            } else if parts.count == ordered.count {
+                for (position, index) in ordered.enumerated() {
+                    flights[index].legNumber = parts[position]
+                }
+            } else if ordered.count == 1 && parts.count == 2 {
+                let index = ordered[0]
+                if flights[index].departure.hasPrefix("SVO") {
+                    flights[index].legNumber = parts[0]
+                } else if flights[index].arrival.hasPrefix("SVO") {
+                    flights[index].legNumber = parts[1]
+                }
+            } else if ordered.count == 3 && parts.count == 2 {
+                for (position, index) in ordered.enumerated() {
+                    flights[index].legNumber = parts[position == 2 ? 1 : 0]
+                }
+                let middle = ordered[1]
+                if flights[middle].airMinutes == 0,
+                   flights[middle].departure == flights[middle].arrival,
+                   flights[middle].arrival == flights[ordered[2]].departure {
+                    flights[middle].legNumber = parts[1]
+                }
+            }
+        }
     }
 
     private static let excelEpoch: Date = {
