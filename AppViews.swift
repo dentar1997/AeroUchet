@@ -317,6 +317,8 @@ private struct DutyAssignmentOverlay: View {
     @ObservedObject var store: AppStore
     let onClose: () -> Void
 
+    @State private var dragOffset: CGFloat = 0
+
     var body: some View {
         GeometryReader { geometry in
             let widthRatio = geometry.size.width >= 800 ? 0.74 : 0.92
@@ -324,14 +326,11 @@ private struct DutyAssignmentOverlay: View {
             let maximumHeight = max(320, geometry.size.height - 40)
 
             ZStack {
-                Color.black.opacity(0.65)
+                Color.black
+                    .opacity(backgroundOpacity(for: geometry.size.height))
                     .ignoresSafeArea()
                     .onTapGesture(perform: onClose)
 
-                // Внешняя карточка больше никогда не является ScrollView.
-                // Если задание помещается — показываем его целиком.
-                // Если не помещается — фиксируем карточку и прокручиваем
-                // только содержимое внутри неё под шапкой.
                 ViewThatFits(in: .vertical) {
                     DutyDetailView(
                         duty: duty,
@@ -356,11 +355,55 @@ private struct DutyAssignmentOverlay: View {
                     alignment: .center
                 )
                 .padding(.vertical, 20)
+                .offset(y: dragOffset)
+                .contentShape(Rectangle())
+                .simultaneousGesture(dismissDrag(in: geometry.size.height))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
+
+    private func backgroundOpacity(for height: CGFloat) -> Double {
+        guard height > 0 else { return 0.65 }
+        let progress = min(max(dragOffset / height, 0), 1)
+        return 0.65 * Double(1 - progress * 0.75)
+    }
+
+    private func dismissDrag(in height: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { value in
+                // Карточка задания двигается только вниз.
+                // Список рейсов под ней не участвует в жесте вообще.
+                dragOffset = max(0, value.translation.height)
+            }
+            .onEnded { value in
+                let predicted = max(
+                    value.translation.height,
+                    value.predictedEndTranslation.height
+                )
+                let shouldClose =
+                    value.translation.height > 110
+                    || predicted > 220
+
+                if shouldClose {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        dragOffset = max(height, 500)
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                        onClose()
+                    }
+                } else {
+                    withAnimation(
+                        .spring(response: 0.28, dampingFraction: 0.82)
+                    ) {
+                        dragOffset = 0
+                    }
+                }
+            }
+    }
 }
+
 
 // MARK: - Строка смены
 
