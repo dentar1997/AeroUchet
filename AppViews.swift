@@ -406,7 +406,11 @@ struct DutyDetailView: View {
 
     let duty: FlightDuty
 
-    @State private var showDutyEditor = false
+    @State private var isEditing = false
+    @State private var draft: [FlightLeg] = []
+    @State private var original: [FlightLeg] = []
+    @State private var assignmentNumber = ""
+    @State private var showReview = false
     @State private var showDeleteConfirmation = false
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -416,28 +420,64 @@ struct DutyDetailView: View {
     )
 
     private var current: FlightDuty {
-        if let number = duty.firstLeg.assignmentNumber {
-            return store.duties.first { $0.firstLeg.assignmentNumber == number } ?? duty
-        }
-
-        return store.duties.first { $0.id == duty.id } ?? duty
+        store.duties.first { candidate in
+            candidate.legs.contains { $0.id == duty.firstLeg.id }
+        } ?? duty
     }
 
     var body: some View {
         let current = current
 
         ScrollView {
-            dutyCard(current)
-                .frame(maxWidth: 1100, alignment: .leading)
-                .padding(16)
-                .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 12) {
+                dutyCard(isEditing && isValid
+                         ? FlightDuty(id: current.id, legs: updatedLegs)
+                         : current)
+                actionBar()
+            }
+            .frame(maxWidth: 1100, alignment: .leading)
+            .padding(16)
+            .frame(maxWidth: .infinity)
         }
+        .environment(\.timeZone, moscowTimeZone)
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Полёты")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $showDutyEditor) {
-            FlightDutyEditorView(duty: current) { updated in
-                store.updateDutyLegs(updated)
+        .sheet(isPresented: $showReview) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Заменить исходные данные на изменения?")
+                            .font(.headline)
+
+                        ForEach(differences, id: \.self) { item in
+                            Text(item)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(
+                                    Color(uiColor: .secondarySystemGroupedBackground),
+                                    in: RoundedRectangle(cornerRadius: 10)
+                                )
+                        }
+                    }
+                    .padding()
+                }
+                .navigationTitle("Проверка изменений")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Отмена") { showReview = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Заменить") {
+                            store.updateDutyLegs(updatedLegs)
+                            isEditing = false
+                            draft = []
+                            original = []
+                            showReview = false
+                        }
+                    }
+                }
             }
         }
         .alert("Удалить полётное задание?", isPresented: $showDeleteConfirmation) {
@@ -451,15 +491,147 @@ struct DutyDetailView: View {
         }
     }
 
-    // Уровень 1: одна общая карточка полётного задания.
-    private func dutyCard(_ duty: FlightDuty) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            dutyTitle(duty)
-            dutyTotals(duty)
+    private var updatedLegs: [FlightLeg] {
+        let number = assignmentNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        return draft.map { leg in
+            var updated = leg
+            updated.assignmentNumber = number.isEmpty ? nil : number
+            updated.departure = leg.departure.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            updated.arrival = leg.arrival.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            updated.registration = leg.registration.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            return updated
+        }
+    }
 
-            HStack(spacing: 12) {
+    private var isValid: Bool {
+        let legs = updatedLegs
+        guard !legs.isEmpty, legs.allSatisfy({
+            !$0.flightNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !$0.departure.isEmpty && !$0.arrival.isEmpty
+            && $0.hasValidStoredDates
+        }) else { return false }
+
+        return zip(legs, legs.dropFirst()).allSatisfy {
+            $0.0.timeline.workStart <= $0.1.timeline.workStart
+        }
+    }
+
+    private var differences: [String] {
+        zip(original, updatedLegs).flatMap { old, new -> [String] in
+            var result: [String] = []
+            let label = "Рейс № \(old.displayedLegNumber): "
+            func add(_ title: String, _ before: String, _ after: String) {
+                if before != after {
+                    result.append(label + title + ": " + before + " → " + after)
+                }
+            }
+
+            add("Номер задания", old.assignmentNumber ?? "—", new.assignmentNumber ?? "—")
+            add("Номер рейса", old.flightNumber, new.flightNumber)
+            add("Номер лега", old.legNumber ?? "—", new.legNumber ?? "—")
+            add("Вылет", old.departure, new.departure)
+            add("Прилёт", old.arrival, new.arrival)
+            add("Тип ВС", old.aircraft, new.aircraft)
+            add("Борт", old.registration, new.registration)
+            add("Тип рейса", (old.scheduleType ?? .planned).rawValue,
+                (new.scheduleType ?? .planned).rawValue)
+
+            let oldTimes = times(for: old)
+            let newTimes = times(for: new)
+            for point in DutyEditPoint.allCases {
+                add(point.title,
+                    formatDateTime(point.date(in: oldTimes)),
+                    formatDateTime(point.date(in: newTimes)))
+            }
+            return result
+        }
+    }
+
+
+    private func legNumberBinding(_ index: Int) -> Binding<String> {
+        Binding(
+            get: { draft[index].legNumber ?? "" },
+            set: { draft[index].legNumber = $0.isEmpty ? nil : $0 }
+        )
+    }
+
+    private func scheduleBinding(_ index: Int) -> Binding<FlightScheduleType> {
+        Binding(
+            get: { draft[index].scheduleType ?? .planned },
+            set: { draft[index].scheduleType = $0 }
+        )
+    }
+
+    private func times(for leg: FlightLeg) -> PortalFlightTimes {
+        if let portal = leg.portalTimes { return portal }
+        let t = leg.timeline
+        return PortalFlightTimes(
+            workStart: t.workStart,
+            engineOn: t.engineOn,
+            takeoff: t.takeoff,
+            landing: t.landing,
+            engineOff: t.engineOff,
+            workEnd: t.workEnd ?? moscowCalendar.date(
+                byAdding: .minute, value: 30, to: t.engineOff
+            )!
+        )
+    }
+
+    private func timeBinding(_ index: Int, _ point: DutyEditPoint) -> Binding<Date> {
+        Binding(
+            get: { point.date(in: times(for: draft[index])) },
+            set: { newDate in
+                var leg = draft[index]
+                let previous = times(for: leg)
+                let updated = PortalFlightTimes(
+                    workStart: point == .workStart ? newDate : previous.workStart,
+                    engineOn: point == .engineOn ? newDate : previous.engineOn,
+                    takeoff: point == .takeoff ? newDate : previous.takeoff,
+                    landing: point == .landing ? newDate : previous.landing,
+                    engineOff: point == .engineOff ? newDate : previous.engineOff,
+                    workEnd: point == .workEnd ? newDate :
+                        (point == .engineOff && index == draft.count - 1
+                         ? max(previous.workEnd, newDate)
+                         : previous.workEnd)
+                )
+                leg.portalTimes = updated
+                leg.date = formatDate(updated.engineOn)
+                leg.workStart = formatClock(updated.workStart)
+                leg.engineOn = formatClock(updated.engineOn)
+                leg.takeoff = formatClock(updated.takeoff)
+                leg.landing = formatClock(updated.landing)
+                leg.engineOff = formatClock(updated.engineOff)
+                draft[index] = leg
+            }
+        )
+    }
+    private func actionBar() -> some View {
+        HStack(spacing: 12) {
+            if isEditing {
+                Button("Применить", systemImage: "checkmark") {
+                    showReview = true
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!isValid || differences.isEmpty)
+
+                Button("Отменить", systemImage: "xmark") {
+                    isEditing = false
+                    draft = []
+                    original = []
+                }
+                .buttonStyle(.bordered)
+
+                if !isValid {
+                    Text("Проверьте порядок временных точек и обязательные поля.")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            } else {
                 Button("Редактировать", systemImage: "pencil") {
-                    showDutyEditor = true
+                    original = current.legs
+                    draft = current.legs
+                    assignmentNumber = current.firstLeg.assignmentNumber ?? ""
+                    isEditing = true
                 }
                 .buttonStyle(.bordered)
 
@@ -469,10 +641,21 @@ struct DutyDetailView: View {
                 .buttonStyle(.bordered)
                 .tint(.red)
             }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    // Уровень 1: одна общая карточка полётного задания.
+    private func dutyCard(_ duty: FlightDuty) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            dutyTitle(duty)
+            dutyTotals(duty)
+
 
             ForEach(duty.legs.indices, id: \.self) { index in
                 legCard(
                     duty.legs[index],
+                    index: index,
                     workEnd: duty.workIntervals[index].end
                 )
 
@@ -526,11 +709,22 @@ struct DutyDetailView: View {
 
     private func dutyTitle(_ duty: FlightDuty) -> some View {
         ZStack {
-            Text(
-                duty.firstLeg.assignmentNumber.map {
-                    "Полётное задание № \($0)"
-                } ?? "Полётное задание"
-            )
+            Group {
+                if isEditing {
+                    HStack {
+                        Text("Полётное задание №")
+                        TextField("Номер", text: $assignmentNumber)
+                            .textInputAutocapitalization(.characters)
+                            .frame(width: 145)
+                    }
+                } else {
+                    Text(
+                        duty.firstLeg.assignmentNumber.map {
+                            "Полётное задание № \($0)"
+                        } ?? "Полётное задание"
+                    )
+                }
+            }
             .font(.title2.bold())
             .lineLimit(1)
             .minimumScaleFactor(0.85)
@@ -633,46 +827,43 @@ struct DutyDetailView: View {
     }
 
     // Уровень 2: отдельная карточка каждого лега.
-    private func legCard(_ leg: FlightLeg, workEnd: Date) -> some View {
+    private func legCard(_ leg: FlightLeg, index: Int, workEnd: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            legHeader(leg)
+            legHeader(leg, index: index)
 
-            // Уровень 3: светлые карточки временных точек и времён лега.
-            LazyVGrid(
-                columns: timeColumns,
-                alignment: .leading,
-                spacing: 8
-            ) {
-                legValueCard(
+            // Все исходные точки редактируются на месте. Итоги остаются вычисляемыми.
+            LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
+                timeCell(
                     title: "Начало работы",
-                    value: formatDateTime(leg.timeline.workStart)
+                    value: formatDateTime(leg.timeline.workStart),
+                    index: index, point: .workStart
                 )
-
-                legValueCard(
+                timeCell(
                     title: "Включение двигателей",
-                    value: formatDateTime(leg.timeline.engineOn)
+                    value: formatDateTime(leg.timeline.engineOn),
+                    index: index, point: .engineOn
                 )
-
-                legValueCard(
+                timeCell(
                     title: "Взлёт",
-                    value: formatDateTime(leg.timeline.takeoff)
+                    value: formatDateTime(leg.timeline.takeoff),
+                    index: index, point: .takeoff
                 )
-
-                legValueCard(
+                timeCell(
                     title: "Завершение работы",
-                    value: formatDateTime(workEnd)
+                    value: formatDateTime(workEnd),
+                    index: index,
+                    point: index == draft.count - 1 ? nil : .workEnd
                 )
-
-                legValueCard(
+                timeCell(
                     title: "Выключение двигателей",
-                    value: formatDateTime(leg.timeline.engineOff)
+                    value: formatDateTime(leg.timeline.engineOff),
+                    index: index, point: .engineOff
                 )
-
-                legValueCard(
+                timeCell(
                     title: "Посадка",
-                    value: formatDateTime(leg.timeline.landing)
+                    value: formatDateTime(leg.timeline.landing),
+                    index: index, point: .landing
                 )
-
                 legValueCard(
                     title: "Рабочее время",
                     total: minutesBetween(leg.timeline.workStart, workEnd),
@@ -706,76 +897,122 @@ struct DutyDetailView: View {
         )
     }
 
-    private func legHeader(_ leg: FlightLeg) -> some View {
+    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
         Group {
             if sizeClass == .compact {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .top, spacing: 8) {
-                        flightNumber(leg)
-                        Spacer(minLength: 4)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        flightNumber(leg, index: index)
+                        Spacer(minLength: 8)
                         calculatedTime(leg)
                     }
-
-                    flightIdentity(leg)
+                    flightIdentity(leg, index: index)
                 }
             } else {
-                HStack(alignment: .top, spacing: 12) {
-                    flightNumber(leg)
+                HStack(alignment: .center, spacing: 12) {
+                    flightNumber(leg, index: index)
                         .frame(width: 155, alignment: .leading)
-
-                    flightIdentity(leg)
-                        .frame(maxWidth: .infinity, alignment: .center)
-
+                    flightIdentity(leg, index: index)
+                        .frame(maxWidth: .infinity)
                     calculatedTime(leg)
-                        .frame(width: 140, alignment: .trailing)
+                        .frame(width: 155)
                 }
             }
         }
     }
 
-    private func flightNumber(_ leg: FlightLeg) -> some View {
-        Text("Рейс № \(leg.displayedLegNumber)")
-            .font(.headline)
-            .foregroundStyle(.primary)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
+    private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
+        Group {
+            if isEditing {
+                VStack(alignment: .leading, spacing: 3) {
+                    TextField("Номер рейса", text: $draft[index].flightNumber)
+                    TextField("Номер лега", text: legNumberBinding(index))
+                        .font(.caption)
+                }
+            } else {
+                Text("Рейс № \(leg.displayedLegNumber)")
+            }
+        }
+        .font(.headline)
+        .foregroundStyle(.primary)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
     }
 
-    private func flightIdentity(_ leg: FlightLeg) -> some View {
-        VStack(alignment: .center, spacing: 3) {
-            Text(
-                "\(airportDisplayName(leg.departure)) → "
-                + "\(airportDisplayName(leg.arrival))"
-            )
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(.primary)
-            .multilineTextAlignment(.center)
-            .lineLimit(2)
-
-            HStack(spacing: 8) {
-                Text(leg.aircraft)
-                Text(formattedRegistration(leg.registration))
-                Text((leg.scheduleType ?? .planned).rawValue)
-                    .foregroundStyle(.secondary)
+    private func flightIdentity(_ leg: FlightLeg, index: Int) -> some View {
+        HStack(spacing: 6) {
+            if isEditing {
+                TextField("Вылет", text: $draft[index].departure)
+                    .frame(minWidth: 52)
+                Image(systemName: "arrow.right")
+                    .font(.caption)
+                TextField("Прилёт", text: $draft[index].arrival)
+                    .frame(minWidth: 52)
+                TextField("Тип ВС", text: $draft[index].aircraft)
+                    .frame(minWidth: 55)
+                TextField("Борт", text: $draft[index].registration)
+                    .frame(minWidth: 75)
+                Picker("Тип рейса", selection: scheduleBinding(index)) {
+                    ForEach(FlightScheduleType.allCases) { kind in
+                        Text(kind.rawValue).tag(kind)
+                    }
+                }
+                .labelsHidden()
+            } else {
+                Text(
+                    "\(airportDisplayName(leg.departure)) → "
+                    + "\(airportDisplayName(leg.arrival))"
+                )
+                .layoutPriority(1)
+                Text("· \(leg.aircraft)")
+                Text("· \(formattedRegistration(leg.registration))")
+                Text("· \((leg.scheduleType ?? .planned).rawValue)")
             }
-            .font(.caption)
-            .foregroundStyle(.primary)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
         }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.primary)
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
         .frame(maxWidth: .infinity)
     }
 
     private func calculatedTime(_ leg: FlightLeg) -> some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            Text("Расчётное время")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        legValueCard(
+            title: "Расчётное время",
+            value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму"
+        )
+    }
 
-            Text(leg.calculatedMinutes.map(timeText) ?? "Ожидает норму")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+    private func timeCell(
+        title: String,
+        value: String,
+        index: Int,
+        point: DutyEditPoint?
+    ) -> some View {
+        Group {
+            if isEditing, let point {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    DatePicker(
+                        title,
+                        selection: timeBinding(index, point),
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(uiColor: .systemGray4))
+                )
+            } else {
+                legValueCard(title: title, value: value)
+            }
         }
     }
 
@@ -853,236 +1090,6 @@ private enum DutyEditPoint: CaseIterable, Identifiable {
         case .engineOff: return times.engineOff
         case .workEnd: return times.workEnd
         }
-    }
-}
-
-private struct FlightDutyEditorView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let duty: FlightDuty
-    let onApply: ([FlightLeg]) -> Void
-
-    @State private var draft: [FlightLeg]
-    @State private var assignmentNumber: String
-    @State private var showReview = false
-
-    init(duty: FlightDuty, onApply: @escaping ([FlightLeg]) -> Void) {
-        self.duty = duty
-        self.onApply = onApply
-        _draft = State(initialValue: duty.legs)
-        _assignmentNumber = State(initialValue: duty.firstLeg.assignmentNumber ?? "")
-    }
-
-    private var updatedLegs: [FlightLeg] {
-        let number = assignmentNumber.trimmingCharacters(in: .whitespacesAndNewlines)
-        return draft.map { leg in
-            var updated = leg
-            updated.assignmentNumber = number.isEmpty ? nil : number
-            updated.departure = leg.departure.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-            updated.arrival = leg.arrival.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-            updated.registration = leg.registration.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-            return updated
-        }
-    }
-
-    private var isValid: Bool {
-        let legs = updatedLegs
-        guard !legs.isEmpty, legs.allSatisfy({
-            !$0.flightNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !$0.departure.isEmpty && !$0.arrival.isEmpty
-            && $0.hasValidStoredDates
-        }) else { return false }
-
-        return zip(legs, legs.dropFirst()).allSatisfy {
-            $0.0.timeline.workStart <= $0.1.timeline.workStart
-        }
-    }
-
-    private var differences: [String] {
-        zip(duty.legs, updatedLegs).flatMap { old, new -> [String] in
-            var result: [String] = []
-            let label = "Рейс № \(old.displayedLegNumber): "
-            func add(_ title: String, _ before: String, _ after: String) {
-                if before != after {
-                    result.append(label + title + ": " + before + " → " + after)
-                }
-            }
-
-            add("Номер задания", old.assignmentNumber ?? "—", new.assignmentNumber ?? "—")
-            add("Номер рейса", old.flightNumber, new.flightNumber)
-            add("Номер лега", old.legNumber ?? "—", new.legNumber ?? "—")
-            add("Вылет", old.departure, new.departure)
-            add("Прилёт", old.arrival, new.arrival)
-            add("Тип ВС", old.aircraft, new.aircraft)
-            add("Борт", old.registration, new.registration)
-            add("Тип рейса", (old.scheduleType ?? .planned).rawValue,
-                (new.scheduleType ?? .planned).rawValue)
-
-            let oldTimes = times(for: old)
-            let newTimes = times(for: new)
-            for point in DutyEditPoint.allCases {
-                add(point.title,
-                    formatDateTime(point.date(in: oldTimes)),
-                    formatDateTime(point.date(in: newTimes)))
-            }
-            return result
-        }
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Полётное задание") {
-                    TextField("Номер задания", text: $assignmentNumber)
-                        .textInputAutocapitalization(.characters)
-                }
-
-                ForEach(draft.indices, id: \.self) { index in
-                    Section("Рейс № \(draft[index].displayedLegNumber)") {
-                        TextField("Номер рейса", text: $draft[index].flightNumber)
-                        TextField("Номер лега", text: legNumberBinding(index))
-                        TextField("Аэропорт вылета", text: $draft[index].departure)
-                            .textInputAutocapitalization(.characters)
-                        TextField("Аэропорт прилёта", text: $draft[index].arrival)
-                            .textInputAutocapitalization(.characters)
-                        TextField("Тип ВС", text: $draft[index].aircraft)
-                        TextField("Борт", text: $draft[index].registration)
-                            .textInputAutocapitalization(.characters)
-
-                        Picker("Тип рейса", selection: scheduleBinding(index)) {
-                            ForEach(FlightScheduleType.allCases) { kind in
-                                Text(kind.rawValue).tag(kind)
-                            }
-                        }
-
-                        ForEach(DutyEditPoint.allCases) { point in
-                            if point != .workEnd || index < draft.count - 1 {
-                                DatePicker(
-                                    point.title,
-                                    selection: timeBinding(index, point),
-                                    displayedComponents: [.date, .hourAndMinute]
-                                )
-                            }
-                        }
-
-                        if index == draft.count - 1 {
-                            Text("Окончание последнего лега = выключение двигателей + 30 минут")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                if !isValid {
-                    Text("Проверьте номера, аэропорты и последовательность временных точек.")
-                        .foregroundStyle(.red)
-                }
-            }
-            .environment(\.timeZone, moscowTimeZone)
-            .navigationTitle("Редактирование задания")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отменить") { dismiss() }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Применить") { showReview = true }
-                        .disabled(!isValid || differences.isEmpty)
-                }
-            }
-            .sheet(isPresented: $showReview) {
-                NavigationStack {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Заменить исходные данные на изменения?")
-                                .font(.headline)
-
-                            ForEach(differences, id: \.self) { item in
-                                Text(item)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(10)
-                                    .background(Color(uiColor: .secondarySystemGroupedBackground),
-                                                in: RoundedRectangle(cornerRadius: 10))
-                            }
-                        }
-                        .padding()
-                    }
-                    .navigationTitle("Проверка изменений")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Отмена") { showReview = false }
-                        }
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Заменить") {
-                                onApply(updatedLegs)
-                                showReview = false
-                                dismiss()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func legNumberBinding(_ index: Int) -> Binding<String> {
-        Binding(
-            get: { draft[index].legNumber ?? "" },
-            set: { draft[index].legNumber = $0.isEmpty ? nil : $0 }
-        )
-    }
-
-    private func scheduleBinding(_ index: Int) -> Binding<FlightScheduleType> {
-        Binding(
-            get: { draft[index].scheduleType ?? .planned },
-            set: { draft[index].scheduleType = $0 }
-        )
-    }
-
-    private func times(for leg: FlightLeg) -> PortalFlightTimes {
-        if let portal = leg.portalTimes { return portal }
-        let t = leg.timeline
-        return PortalFlightTimes(
-            workStart: t.workStart,
-            engineOn: t.engineOn,
-            takeoff: t.takeoff,
-            landing: t.landing,
-            engineOff: t.engineOff,
-            workEnd: t.workEnd ?? moscowCalendar.date(
-                byAdding: .minute, value: 30, to: t.engineOff
-            )!
-        )
-    }
-
-    private func timeBinding(_ index: Int, _ point: DutyEditPoint) -> Binding<Date> {
-        Binding(
-            get: { point.date(in: times(for: draft[index])) },
-            set: { newDate in
-                var leg = draft[index]
-                let previous = times(for: leg)
-                let updated = PortalFlightTimes(
-                    workStart: point == .workStart ? newDate : previous.workStart,
-                    engineOn: point == .engineOn ? newDate : previous.engineOn,
-                    takeoff: point == .takeoff ? newDate : previous.takeoff,
-                    landing: point == .landing ? newDate : previous.landing,
-                    engineOff: point == .engineOff ? newDate : previous.engineOff,
-                    workEnd: point == .workEnd ? newDate :
-                        (point == .engineOff && index == draft.count - 1
-                         ? max(previous.workEnd, newDate)
-                         : previous.workEnd)
-                )
-                leg.portalTimes = updated
-                leg.date = formatDate(updated.engineOn)
-                leg.workStart = formatClock(updated.workStart)
-                leg.engineOn = formatClock(updated.engineOn)
-                leg.takeoff = formatClock(updated.takeoff)
-                leg.landing = formatClock(updated.landing)
-                leg.engineOff = formatClock(updated.engineOff)
-                draft[index] = leg
-            }
-        )
     }
 }
 
