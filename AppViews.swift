@@ -321,61 +321,46 @@ private struct DutyAssignmentOverlay: View {
         GeometryReader { geometry in
             let widthRatio = geometry.size.width >= 800 ? 0.74 : 0.92
             let width = min(geometry.size.width * widthRatio, 940)
+            let maximumHeight = max(320, geometry.size.height - 40)
 
             ZStack {
                 Color.black.opacity(0.65)
                     .ignoresSafeArea()
                     .onTapGesture(perform: onClose)
 
-                ScrollView {
-                    DutyDetailView(duty: duty, onClose: onClose, scrollsAsPage: true)
-                        .environmentObject(store)
-                        .frame(width: width)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.vertical, 20)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: geometry.size.height)
+                // Внешняя карточка больше никогда не является ScrollView.
+                // Если задание помещается — показываем его целиком.
+                // Если не помещается — фиксируем карточку и прокручиваем
+                // только содержимое внутри неё под шапкой.
+                ViewThatFits(in: .vertical) {
+                    DutyDetailView(
+                        duty: duty,
+                        onClose: onClose,
+                        scrollsAsPage: true
+                    )
+                    .environmentObject(store)
+                    .frame(width: width)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    DutyDetailView(
+                        duty: duty,
+                        onClose: onClose,
+                        scrollsAsPage: false
+                    )
+                    .environmentObject(store)
+                    .frame(width: width, height: maximumHeight)
                 }
-                .scrollIndicators(.hidden)
-                .scrollBounceBehavior(.basedOnSize)
-                .background(ScrollBounceDisabler())
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .center
+                )
+                .padding(.vertical, 20)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
-
-
-private struct ScrollBounceDisabler: UIViewRepresentable {
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
-        view.isUserInteractionEnabled = false
-        disableBounce(from: view)
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        disableBounce(from: uiView)
-    }
-
-    private func disableBounce(from view: UIView) {
-        DispatchQueue.main.async {
-            var ancestor: UIView? = view.superview
-
-            while let current = ancestor {
-                if let scrollView = current as? UIScrollView {
-                    scrollView.bounces = false
-                    scrollView.alwaysBounceVertical = false
-                    scrollView.alwaysBounceHorizontal = false
-                    return
-                }
-
-                ancestor = current.superview
-            }
-        }
-    }
-}
-
 
 // MARK: - Строка смены
 
@@ -533,6 +518,7 @@ struct DutyDetailView: View {
                     assignmentContents(current)
                 }
                 .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
             }
         }
         .onChange(of: draft) { _ in recordEdit() }
