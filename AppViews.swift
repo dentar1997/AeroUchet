@@ -301,29 +301,37 @@ struct DutiesListView: View {
             }
 
             if let duty = selectedDuty {
-                GeometryReader { geometry in
-                    ZStack {
-                        Color.black.opacity(0.65)
-                            .ignoresSafeArea()
-                            .onTapGesture { selectedDuty = nil }
-
-                        DutyDetailView(duty: duty, onClose: {
-                            selectedDuty = nil
-                        })
-                        .environmentObject(store)
-                        .frame(
-                            width: min(geometry.size.width - 32, 1500),
-                            height: min(
-                                geometry.size.height - 24,
-                                CGFloat(170 + duty.legs.count * 215
-                                        + max(0, duty.legs.count - 1) * 64)
-                            )
-                        )
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                DutyAssignmentOverlay(duty: duty, store: store) {
+                    selectedDuty = nil
                 }
                 .zIndex(1)
             }
+        }
+    }
+}
+
+private struct DutyAssignmentOverlay: View {
+    let duty: FlightDuty
+    @ObservedObject var store: AppStore
+    let onClose: () -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = min(geometry.size.width - 32, 1500)
+            let rests = max(0, duty.legs.count - 1)
+            let desiredHeight = CGFloat(170 + duty.legs.count * 215 + rests * 64)
+            let height = min(geometry.size.height - 24, desiredHeight)
+
+            ZStack {
+                Color.black.opacity(0.65)
+                    .ignoresSafeArea()
+                    .onTapGesture(perform: onClose)
+
+                DutyDetailView(duty: duty, onClose: onClose)
+                    .environmentObject(store)
+                    .frame(width: width, height: height)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
