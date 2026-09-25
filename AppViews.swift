@@ -720,332 +720,164 @@ struct FlightRow: View {
 // MARK: - Детали лега
 
 struct FlightDetailView: View {
-    
-    @Environment(
-        \.dismiss
-    )
-    private var dismiss
-    
-    
-    @EnvironmentObject
-    private var store:
-    AppStore
-    
-    
-    let flight:
-    FlightLeg
-    
-    
-    @State
-    private var showEdit =
-    false
-    
-    
-    @State
-    private var showDeleteConfirmation =
-    false
-    
-    
-    var currentFlight:
-    FlightLeg {
-        
-        store.flights
-            .first {
-                $0.id == flight.id
-            }
-        ?? flight
-    }
-    
-    
-    var body: some View {
-        
-        let current =
-        currentFlight
-        
-        
-        List {
-            
-            Section("Рейс") {
-                
-                FlightInfoRow(
-                    name:
-                        "Маршрут",
-                    value:
-                        "\(current.departure) → \(current.arrival)"
-                )
-                
-                
-                FlightInfoRow(name: "Номер рейса", value: current.displayedLegNumber)
-                if current.flightNumber != current.displayedLegNumber {
-                    FlightInfoRow(name: "Номера в задании", value: current.flightNumber)
-                }
-                if let assignment = current.assignmentNumber {
-                    FlightInfoRow(name: "Номер задания", value: assignment)
-                }
-                FlightInfoRow(name: "Тип рейса", value: (current.scheduleType ?? .planned).rawValue)
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Тип ВС",
-                    value:
-                        current.aircraft
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Борт",
-                    value:
-                        current.registration
-                )
-            }
-            
-            
-            if current.hasValidStoredDates {
-                
-                Section("Время") {
-                    
-                    FlightInfoRow(
-                        name:
-                            "Начало работы",
-                        value:
-                            formatDateTime(
-                                current.timeline.workStart
-                            )
-                    )
-                    
-                    
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: AppStore
 
-                    FlightInfoRow(
-                        name:
-                            "Включение двигателей",
-                        value:
-                            formatDateTime(
-                                current.timeline.engineOn
-                            )
+    let flight: FlightLeg
+
+    @State private var showEdit = false
+    @State private var showDeleteConfirmation = false
+
+    private let columns = [GridItem(.adaptive(minimum: 175, maximum: 280), spacing: 8)]
+
+    private var currentFlight: FlightLeg {
+        store.flights.first { $0.id == flight.id } ?? flight
+    }
+
+    var body: some View {
+        let current = currentFlight
+
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                header(current)
+
+                if current.hasValidStoredDates {
+                    sectionTitle("Время")
+                    timelineGrid(current)
+
+                    sectionTitle("Расчёт")
+                    calculationGrid(current)
+                } else {
+                    Label(
+                        "Проверьте сохранённые даты и времена. До исправления рейс не участвует в расчётах.",
+                        systemImage: "exclamationmark.triangle.fill"
                     )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Взлёт",
-                        value:
-                            formatDateTime(
-                                current.timeline.takeoff
-                            )
-                    )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Посадка",
-                        value:
-                            formatDateTime(
-                                current.timeline.landing
-                            )
-                    )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Выключение двигателей",
-                        value:
-                            formatDateTime(
-                                current.timeline.engineOff
-                            )
-                    )
-                    if let actualEnd = current.portalTimes?.workEnd {
-                        FlightInfoRow(name: "Завершение работы", value: formatDateTime(actualEnd))
+                    .foregroundStyle(.orange)
+                    sectionTitle("Сохранённые значения")
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                        CompactFlightValue(title: "Дата", value: current.date)
+                        CompactFlightValue(title: "Начало работы", value: current.workStart)
+                        CompactFlightValue(title: "Включение", value: current.engineOn)
+                        CompactFlightValue(title: "Взлёт", value: current.takeoff)
+                        CompactFlightValue(title: "Посадка", value: current.landing)
+                        CompactFlightValue(title: "Выключение", value: current.engineOff)
                     }
                 }
-                
-                
-                Section("Расчёт") {
-                    FlightInfoRow(name: "1. Расчётное время", value: current.calculatedMinutes.map(timeText) ?? "Норма не назначена")
-                    FlightInfoRow(name: "2. Полётное время", value: timeText(current.flightMinutes))
-                    FlightInfoRow(name: "3. Лётное время", value: timeText(current.airMinutes))
-                    FlightInfoRow(name: "4. Рабочее время", value: timeText(current.workMinutes))
-                    FlightInfoRow(name: "5. Полётная ночь", value: timeText(current.flightNightMinutes))
-                    FlightInfoRow(name: "6. Лётная ночь", value: timeText(current.airNightMinutes))
-                    FlightInfoRow(name: "7. Рабочая ночь", value: timeText(current.workNightMinutes))
-                }
-                
-            } else {
-                
-                Section {
-                    
-                    Label(
-                        "Дата или время сохранены в неверном формате. Рейс не участвует в расчётах, пока запись не будет исправлена.",
-                        systemImage:
-                            "exclamationmark.triangle.fill"
-                    )
-                    .foregroundStyle(
-                        .orange
-                    )
-                    
-                } header: {
-                    
-                    Text(
-                        "Требуется проверка"
-                    )
-                }
-                
-                
-                Section(
-                    "Сохранённые значения"
-                ) {
-                    
-                    FlightInfoRow(
-                        name:
-                            "Дата",
-                        value:
-                            current.date
-                    )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Начало работы",
-                        value:
-                            current.workStart
-                    )
-                    
-                    
-
-                    FlightInfoRow(
-                        name:
-                            "Включение двигателей",
-                        value:
-                            current.engineOn
-                    )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Взлёт",
-                        value:
-                            current.takeoff
-                    )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Посадка",
-                        value:
-                            current.landing
-                    )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Выключение двигателей",
-                        value:
-                            current.engineOff
-                    )
+            }
+            .frame(maxWidth: 1100, alignment: .leading)
+            .padding(16)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle("\(current.departure) → \(current.arrival)")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Редактировать", systemImage: "pencil") {
+                    showEdit = true
                 }
             }
-            
-            
-            Section("Действия") {
-                
-                Button {
-                    
-                    showEdit =
-                    true
-                    
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
                 } label: {
-                    
-                    Label(
-                        "Редактировать",
-                        systemImage:
-                            "pencil"
-                    )
-                }
-                
-                
-                Button(
-                    role:
-                            .destructive
-                ) {
-                    
-                    showDeleteConfirmation =
-                    true
-                    
-                } label: {
-                    
-                    Label(
-                        "Удалить рейс",
-                        systemImage:
-                            "trash"
-                    )
+                    Label("Удалить рейс", systemImage: "trash")
                 }
             }
         }
-        
-        
-        .navigationTitle(
-            "\(current.departure) → \(current.arrival)"
-        )
-        
-        
-        .navigationBarTitleDisplayMode(
-            .inline
-        )
-        
-        
-        .sheet(
-            isPresented:
-                $showEdit
-        ) {
-            
-            AddFlightView(
-                flight:
-                    current
-            ) { updatedFlight in
-                
-                store.updateFlight(
-                    updatedFlight
-                )
+        .sheet(isPresented: $showEdit) {
+            AddFlightView(flight: current) { updated in
+                store.updateFlight(updated)
             }
         }
-        
-        
-        .alert(
-            "Удалить рейс?",
-            isPresented:
-                $showDeleteConfirmation
-        ) {
-            
-            Button(
-                "Отмена",
-                role:
-                        .cancel
-            ) {
-            }
-            
-            
-            Button(
-                "Удалить",
-                role:
-                        .destructive
-            ) {
-                
-                store.deleteFlight(
-                    id:
-                        current.id
-                )
-                
-                
+        .alert("Удалить рейс?", isPresented: $showDeleteConfirmation) {
+            Button("Отмена", role: .cancel) {}
+            Button("Удалить", role: .destructive) {
+                store.deleteFlight(id: current.id)
                 dismiss()
             }
-            
         } message: {
-            
-            Text(
-                "\(current.flightNumber)  \(current.departure) → \(current.arrival)\nЭто действие нельзя отменить."
-            )
+            Text("\(current.displayedLegNumber)  \(current.departure) → \(current.arrival)\nЭто действие нельзя отменить.")
         }
+    }
+
+    private func header(_ current: FlightLeg) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("\(current.departure) → \(current.arrival)")
+                    .font(.title2.bold())
+                Text("№ \(current.displayedLegNumber)")
+                    .font(.headline)
+            }
+            HStack(spacing: 10) {
+                Text((current.scheduleType ?? .planned).rawValue)
+                    .foregroundStyle(current.scheduleType == .unscheduled ? Color.orange : Color.secondary)
+                Text(current.aircraft)
+                if !current.registration.isEmpty {
+                    Text(current.registration)
+                }
+            }
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.headline)
+            .padding(.top, 2)
+    }
+
+    private func timelineGrid(_ current: FlightLeg) -> some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            CompactFlightValue(title: "Начало работы", value: formatDateTime(current.timeline.workStart))
+            CompactFlightValue(title: "Включение двигателей", value: formatDateTime(current.timeline.engineOn))
+            CompactFlightValue(title: "Взлёт", value: formatDateTime(current.timeline.takeoff))
+            CompactFlightValue(title: "Посадка", value: formatDateTime(current.timeline.landing))
+            CompactFlightValue(title: "Выключение двигателей", value: formatDateTime(current.timeline.engineOff))
+            if let end = current.timeline.workEnd {
+                CompactFlightValue(title: "Завершение работы", value: formatDateTime(end))
+            }
+        }
+    }
+
+    private func calculationGrid(_ current: FlightLeg) -> some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            CompactFlightValue(title: "Расчётное время", value: current.calculatedMinutes.map(timeText) ?? "Ожидает норму")
+            CompactFlightValue(title: "Полётное время", value: timeText(current.flightMinutes))
+            CompactFlightValue(title: "Лётное время", value: timeText(current.airMinutes))
+            CompactFlightValue(title: "Рабочее время", value: timeText(current.workMinutes))
+            CompactFlightValue(title: "Полётная ночь", value: timeText(current.flightNightMinutes))
+            CompactFlightValue(title: "Лётная ночь", value: timeText(current.airNightMinutes))
+            CompactFlightValue(title: "Рабочая ночь", value: timeText(current.workNightMinutes))
+        }
+    }
+}
+
+private struct CompactFlightValue: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+        .accessibilityElement(children: .combine)
     }
 }
 
