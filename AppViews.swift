@@ -469,6 +469,7 @@ struct DutyDetailView: View {
     private func dutyCard(_ duty: FlightDuty) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             dutyTitle(duty)
+            dutyTotals(duty)
 
             ForEach(duty.legs) { leg in
                 let index = duty.legs.firstIndex(where: { $0.id == leg.id })!
@@ -478,8 +479,6 @@ struct DutyDetailView: View {
                     workEnd: duty.workIntervals[index].end
                 )
             }
-
-            dutyTotals(duty)
 
             if duty.restMinutes > 0 {
                 Label(
@@ -577,10 +576,7 @@ struct DutyDetailView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            Text("\(timeText(total)) · ночь \(timeText(night))")
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
+            timeAndNight(total: total, night: night)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
@@ -590,6 +586,25 @@ struct DutyDetailView: View {
                 .fill(Color(uiColor: .systemGray4))
         )
         .accessibilityElement(children: .combine)
+    }
+
+    private func timeAndNight(total: Int, night: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(timeText(total))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            Text("· ночь")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(timeText(night))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .accessibilityLabel("\(timeText(total)), ночь \(timeText(night))")
     }
 
     // Уровень 2: отдельная карточка каждого лега.
@@ -635,31 +650,23 @@ struct DutyDetailView: View {
 
                 legValueCard(
                     title: "Рабочее время",
-                    value:
-                        timeText(minutesBetween(leg.timeline.workStart, workEnd))
-                        + " · ночь "
-                        + timeText(
-                            nightMinutes(
-                                from: leg.timeline.workStart,
-                                to: workEnd
-                            )
-                        )
+                    total: minutesBetween(leg.timeline.workStart, workEnd),
+                    night: nightMinutes(
+                        from: leg.timeline.workStart,
+                        to: workEnd
+                    )
                 )
 
                 legValueCard(
                     title: "Полётное время",
-                    value:
-                        timeText(leg.flightMinutes)
-                        + " · ночь "
-                        + timeText(leg.flightNightMinutes)
+                    total: leg.flightMinutes,
+                    night: leg.flightNightMinutes
                 )
 
                 legValueCard(
                     title: "Лётное время",
-                    value:
-                        timeText(leg.airMinutes)
-                        + " · ночь "
-                        + timeText(leg.airNightMinutes)
+                    total: leg.airMinutes,
+                    night: leg.airNightMinutes
                 )
             }
         }
@@ -675,75 +682,81 @@ struct DutyDetailView: View {
     }
 
     private func legHeader(_ leg: FlightLeg) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 14) {
-            Text("Рейс № \(leg.displayedLegNumber)")
-                .font(.headline.weight(.bold))
-                .lineLimit(1)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Рейс № \(leg.displayedLegNumber)")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
 
-            Text(
-                "\(airportDisplayName(leg.departure)) → "
-                + "\(airportDisplayName(leg.arrival))"
-            )
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .minimumScaleFactor(0.72)
-            .layoutPriority(1)
+                Spacer(minLength: 8)
 
-            Text(leg.aircraft)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Расчётное время")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-            Text(formattedRegistration(leg.registration))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Text((leg.scheduleType ?? .planned).rawValue)
-                .font(.subheadline)
-                .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("Расчётное")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
-                Text(
-                    leg.calculatedMinutes.map(timeText)
-                    ?? "Ожидает норму"
-                )
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-            }
-
-            Menu {
-                Button(
-                    "Редактировать",
-                    systemImage: "pencil"
-                ) {
-                    editingFlight = leg
-                }
-
-                Button(role: .destructive) {
-                    deletingFlight = leg
-                    showDeleteConfirmation = true
-                } label: {
-                    Label(
-                        "Удалить лег",
-                        systemImage: "trash"
+                    Text(
+                        leg.calculatedMinutes.map(timeText)
+                        ?? "Ожидает норму"
                     )
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
                 }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.title3)
-                    .padding(8)
+
+                Menu {
+                    Button(
+                        "Редактировать",
+                        systemImage: "pencil"
+                    ) {
+                        editingFlight = leg
+                    }
+
+                    Button(role: .destructive) {
+                        deletingFlight = leg
+                        showDeleteConfirmation = true
+                    } label: {
+                        Label(
+                            "Удалить лег",
+                            systemImage: "trash"
+                        )
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title3)
+                        .padding(8)
+                }
+                .accessibilityLabel(
+                    "Действия с рейсом \(leg.displayedLegNumber)"
+                )
             }
-            .accessibilityLabel(
-                "Действия с рейсом \(leg.displayedLegNumber)"
-            )
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(
+                    "\(airportDisplayName(leg.departure)) → "
+                    + "\(airportDisplayName(leg.arrival))"
+                )
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+                .layoutPriority(1)
+
+                Spacer(minLength: 4)
+
+                Text(leg.aircraft)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text(formattedRegistration(leg.registration))
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text((leg.scheduleType ?? .planned).rawValue)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
     }
 
@@ -758,6 +771,7 @@ struct DutyDetailView: View {
 
             Text(value)
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
                 .minimumScaleFactor(0.85)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -769,6 +783,29 @@ struct DutyDetailView: View {
         )
         .accessibilityElement(children: .combine)
     }
+
+    private func legValueCard(
+        title: String,
+        total: Int,
+        night: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            timeAndNight(total: total, night: night)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(uiColor: .systemGray4))
+        )
+        .accessibilityElement(children: .combine)
+    }
+
 }
 
 
