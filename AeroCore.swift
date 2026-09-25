@@ -55,6 +55,15 @@ let weekdayFormatter: DateFormatter = {
 
 // MARK: - Лег
 
+struct PortalFlightTimes: Codable, Equatable {
+    let workStart: Date
+    let engineOn: Date
+    let takeoff: Date
+    let landing: Date
+    let engineOff: Date
+    let workEnd: Date
+}
+
 struct FlightLeg: Identifiable, Codable, Equatable {
     
     var id: UUID
@@ -75,6 +84,7 @@ struct FlightLeg: Identifiable, Codable, Equatable {
     var takeoff: String
     var landing: String
     var engineOff: String
+    var portalTimes: PortalFlightTimes?
     
     init(
         id: UUID = UUID(),
@@ -89,7 +99,8 @@ struct FlightLeg: Identifiable, Codable, Equatable {
         engineOn: String,
         takeoff: String,
         landing: String,
-        engineOff: String
+        engineOff: String,
+        portalTimes: PortalFlightTimes? = nil
     ) {
         self.id = id
         self.date = date
@@ -104,6 +115,7 @@ struct FlightLeg: Identifiable, Codable, Equatable {
         self.takeoff = takeoff
         self.landing = landing
         self.engineOff = engineOff
+        self.portalTimes = portalTimes
     }
 }
 
@@ -120,6 +132,7 @@ struct FlightTimeline {
     let takeoff: Date
     let landing: Date
     let engineOff: Date
+    let workEnd: Date?
 }
 
 
@@ -362,12 +375,8 @@ struct FlightDuty: Identifiable {
     
     
     var end: Date {
-        
-        moscowCalendar.date(
-            byAdding: .minute,
-            value: 30,
-            to: timelines.last!.engineOff
-        )!
+        if let actual = timelines.last!.workEnd { return actual }
+        return moscowCalendar.date(byAdding: .minute, value: 30, to: timelines.last!.engineOff)!
     }
     
     
@@ -655,6 +664,16 @@ final class AppStore: ObservableObject {
     }
     
     
+    func importFlights(_ candidates: [FlightLeg]) -> Int {
+        var known = Set(flights.map { $0.historyKey })
+        var incoming: [FlightLeg] = []
+        for flight in candidates where known.insert(flight.historyKey).inserted {
+            incoming.append(flight)
+        }
+        if !incoming.isEmpty { flights = incoming + flights }
+        return incoming.count
+    }
+
     func addFlight(
         _ flight: FlightLeg
     ) {
@@ -928,6 +947,19 @@ final class AppStore: ObservableObject {
 func makeValidatedTimeline(
     for flight: FlightLeg
 ) -> FlightTimeline? {
+    if let portal = flight.portalTimes {
+        guard portal.workStart <= portal.engineOn,
+              portal.engineOn <= portal.takeoff,
+              portal.takeoff <= portal.landing,
+              portal.landing <= portal.engineOff,
+              portal.engineOff <= portal.workEnd else { return nil }
+        return FlightTimeline(
+            plannedDeparture: portal.engineOn,
+            workStart: portal.workStart, engineOn: portal.engineOn,
+            takeoff: portal.takeoff, landing: portal.landing,
+            engineOff: portal.engineOff, workEnd: portal.workEnd
+        )
+    }
     
     guard
         let planned =
@@ -1044,7 +1076,8 @@ func makeValidatedTimeline(
         landing:
             landing,
         engineOff:
-            engineOff
+            engineOff,
+        workEnd: nil
     )
 }
 
@@ -1073,7 +1106,8 @@ func makeTimeline(
             landing:
                 invalidStoredDatePlaceholder,
             engineOff:
-                invalidStoredDatePlaceholder
+                invalidStoredDatePlaceholder,
+            workEnd: nil
         )
     }
     
@@ -1083,6 +1117,12 @@ func makeTimeline(
 
 
 extension FlightLeg {
+    var historyKey: String {
+        let t = timeline
+        return [flightNumber, departure, arrival, registration,
+                String(Int(t.engineOn.timeIntervalSince1970 / 60)),
+                String(Int(t.engineOff.timeIntervalSince1970 / 60))].joined(separator: "|")
+    }
     
     var validatedTimeline:
     FlightTimeline? {
