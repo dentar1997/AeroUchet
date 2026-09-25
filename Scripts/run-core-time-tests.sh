@@ -56,6 +56,42 @@ func expect(
     print("PASS: \(name)")
 }
 
+expect(
+    parsedDate(
+        date: "24.09.2026",
+        time: "10:15"
+    )
+    != nil,
+    "strict parser accepts valid stored date"
+)
+
+expect(
+    parsedDate(
+        date: "31.02.2026",
+        time: "10:15"
+    )
+    == nil,
+    "strict parser rejects impossible date"
+)
+
+expect(
+    parsedDate(
+        date: "24.09.2026",
+        time: "25:10"
+    )
+    == nil,
+    "strict parser rejects impossible time"
+)
+
+expect(
+    parsedDate(
+        date: "24.9.2026",
+        time: "10:15"
+    )
+    == nil,
+    "strict parser rejects non-canonical stored format"
+)
+
 let d1000 = makeDate(2026, 9, 24, 10, 0)
 let d1130 = makeDate(2026, 9, 24, 11, 30)
 let d0930 = makeDate(2026, 9, 24, 9, 30)
@@ -207,6 +243,10 @@ expect(
 print("All AeroUchet time calculation regression checks passed.")
 SWIFT
 
-xcrun swiftc   "$ROOT_DIR/AeroTimeMath.swift"   "$TMP_DIR/main.swift"   -o "$TMP_DIR/aerouchet-core-tests"
+xcrun swiftc \
+  "$ROOT_DIR/AeroTimeMath.swift" \
+  "$ROOT_DIR/AeroDateParsing.swift" \
+  "$TMP_DIR/main.swift" \
+  -o "$TMP_DIR/aerouchet-core-tests"
 
 "$TMP_DIR/aerouchet-core-tests"
