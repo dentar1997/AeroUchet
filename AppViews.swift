@@ -653,6 +653,20 @@ struct FlightRow: View {
                 .foregroundStyle(
                     .secondary
                 )
+                
+                
+                if !flight.hasValidStoredDates {
+                    
+                    Label(
+                        "Проверьте дату и время",
+                        systemImage:
+                            "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(
+                        .orange
+                    )
+                }
             }
             
             
@@ -751,109 +765,193 @@ struct FlightDetailView: View {
             }
             
             
-            Section("Время") {
+            if current.hasValidStoredDates {
                 
-                FlightInfoRow(
-                    name:
-                        "Начало работы",
-                    value:
-                        formatDateTime(
-                            current.timeline.workStart
-                        )
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Плановое отправление",
-                    value:
-                        formatDateTime(
-                            current.timeline.plannedDeparture
-                        )
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Включение двигателей",
-                    value:
-                        formatDateTime(
-                            current.timeline.engineOn
-                        )
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Взлёт",
-                    value:
-                        formatDateTime(
-                            current.timeline.takeoff
-                        )
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Посадка",
-                    value:
-                        formatDateTime(
-                            current.timeline.landing
-                        )
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Выключение двигателей",
-                    value:
-                        formatDateTime(
-                            current.timeline.engineOff
-                        )
-                )
-            }
-            
-            
-            Section("Расчёт") {
-                
-                FlightInfoRow(
-                    name:
-                        "Полётное",
-                    value:
-                        timeText(
-                            current.flightMinutes
-                        )
-                )
+                Section("Время") {
+                    
+                    FlightInfoRow(
+                        name:
+                            "Начало работы",
+                        value:
+                            formatDateTime(
+                                current.timeline.workStart
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Плановое отправление",
+                        value:
+                            formatDateTime(
+                                current.timeline.plannedDeparture
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Включение двигателей",
+                        value:
+                            formatDateTime(
+                                current.timeline.engineOn
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Взлёт",
+                        value:
+                            formatDateTime(
+                                current.timeline.takeoff
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Посадка",
+                        value:
+                            formatDateTime(
+                                current.timeline.landing
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Выключение двигателей",
+                        value:
+                            formatDateTime(
+                                current.timeline.engineOff
+                            )
+                    )
+                }
                 
                 
-                FlightInfoRow(
-                    name:
-                        "Лётное",
-                    value:
-                        timeText(
-                            current.airMinutes
-                        )
-                )
+                Section("Расчёт") {
+                    
+                    FlightInfoRow(
+                        name:
+                            "Полётное",
+                        value:
+                            timeText(
+                                current.flightMinutes
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Лётное",
+                        value:
+                            timeText(
+                                current.airMinutes
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Полётная ночь",
+                        value:
+                            timeText(
+                                current.flightNightMinutes
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Лётная ночь",
+                        value:
+                            timeText(
+                                current.airNightMinutes
+                            )
+                    )
+                }
+                
+            } else {
+                
+                Section {
+                    
+                    Label(
+                        "Дата или время сохранены в неверном формате. Рейс не участвует в расчётах, пока запись не будет исправлена.",
+                        systemImage:
+                            "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(
+                        .orange
+                    )
+                    
+                } header: {
+                    
+                    Text(
+                        "Требуется проверка"
+                    )
+                }
                 
                 
-                FlightInfoRow(
-                    name:
-                        "Полётная ночь",
-                    value:
-                        timeText(
-                            current.flightNightMinutes
-                        )
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Лётная ночь",
-                    value:
-                        timeText(
-                            current.airNightMinutes
-                        )
-                )
+                Section(
+                    "Сохранённые значения"
+                ) {
+                    
+                    FlightInfoRow(
+                        name:
+                            "Дата",
+                        value:
+                            current.date
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Начало работы",
+                        value:
+                            current.workStart
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Плановое отправление",
+                        value:
+                            current.plannedDeparture
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Включение двигателей",
+                        value:
+                            current.engineOn
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Взлёт",
+                        value:
+                            current.takeoff
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Посадка",
+                        value:
+                            current.landing
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Выключение двигателей",
+                        value:
+                            current.engineOff
+                    )
+                }
             }
             
             
@@ -1669,6 +1767,20 @@ struct WorkEventRow: View {
                 .foregroundStyle(
                     .secondary
                 )
+                
+                
+                if !event.hasValidStoredDates {
+                    
+                    Label(
+                        "Проверьте дату и время",
+                        systemImage:
+                            "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(
+                        .orange
+                    )
+                }
             }
             
             
@@ -1681,23 +1793,36 @@ struct WorkEventRow: View {
                 spacing: 3
             ) {
                 
-                Text(
-                    timeText(
-                        event.creditedMinutes
-                    )
-                )
-                .bold()
-                
-                
-                if event.type
-                    == .homeReserve {
+                if event.hasValidStoredDates {
                     
                     Text(
-                        "\(timeText(event.rawMinutes)) факт."
+                        timeText(
+                            event.creditedMinutes
+                        )
                     )
-                    .font(.caption2)
+                    .bold()
+                    
+                    
+                    if event.type
+                        == .homeReserve {
+                        
+                        Text(
+                            "\(timeText(event.rawMinutes)) факт."
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(
+                            .secondary
+                        )
+                    }
+                    
+                } else {
+                    
+                    Text(
+                        "Не учтено"
+                    )
+                    .font(.caption)
                     .foregroundStyle(
-                        .secondary
+                        .orange
                     )
                 }
             }
@@ -1798,74 +1923,126 @@ struct WorkEventDetailView: View {
             }
             
             
-            Section(
-                "Время"
-            ) {
-                
-                FlightInfoRow(
-                    name:
-                        "Начало",
-                    value:
-                        formatDateTime(
-                            current.startDate
-                        )
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Окончание",
-                    value:
-                        formatDateTime(
-                            current.endDate
-                        )
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Фактически",
-                    value:
-                        timeText(
-                            current.rawMinutes
-                        )
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "В зачёт",
-                    value:
-                        timeText(
-                            current.creditedMinutes
-                        )
-                )
-                
-                
-                FlightInfoRow(
-                    name:
-                        "Ночное",
-                    value:
-                        timeText(
-                            current.creditedNightMinutes
-                        )
-                )
-            }
-            
-            
-            if current.type
-                == .homeReserve {
+            if current.hasValidStoredDates {
                 
                 Section(
-                    "Расчёт"
+                    "Время"
                 ) {
                     
-                    Text(
-                        "Домашний резерв: четыре часа фактического времени дают один час рабочего времени."
+                    FlightInfoRow(
+                        name:
+                            "Начало",
+                        value:
+                            formatDateTime(
+                                current.startDate
+                            )
                     )
-                    .font(.footnote)
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Окончание",
+                        value:
+                            formatDateTime(
+                                current.endDate
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Фактически",
+                        value:
+                            timeText(
+                                current.rawMinutes
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "В зачёт",
+                        value:
+                            timeText(
+                                current.creditedMinutes
+                            )
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Ночное",
+                        value:
+                            timeText(
+                                current.creditedNightMinutes
+                            )
+                    )
+                }
+                
+                
+                if current.type
+                    == .homeReserve {
+                    
+                    Section(
+                        "Расчёт"
+                    ) {
+                        
+                        Text(
+                            "Домашний резерв: четыре часа фактического времени дают один час рабочего времени."
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(
+                            .secondary
+                        )
+                    }
+                }
+                
+            } else {
+                
+                Section {
+                    
+                    Label(
+                        "Дата или время сохранены в неверном формате. Событие не участвует в расчётах, пока запись не будет исправлена.",
+                        systemImage:
+                            "exclamationmark.triangle.fill"
+                    )
                     .foregroundStyle(
-                        .secondary
+                        .orange
+                    )
+                    
+                } header: {
+                    
+                    Text(
+                        "Требуется проверка"
+                    )
+                }
+                
+                
+                Section(
+                    "Сохранённые значения"
+                ) {
+                    
+                    FlightInfoRow(
+                        name:
+                            "Дата",
+                        value:
+                            current.date
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Начало",
+                        value:
+                            current.startTime
+                    )
+                    
+                    
+                    FlightInfoRow(
+                        name:
+                            "Окончание",
+                        value:
+                            current.endTime
                     )
                 }
             }
