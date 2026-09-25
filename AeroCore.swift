@@ -4,14 +4,6 @@ import Foundation
 
 // MARK: - Форматтеры
 
-let parserFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.timeZone = moscowTimeZone
-    formatter.dateFormat = "dd.MM.yyyy HH:mm"
-    return formatter
-}()
-
 let dateFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "ru_RU")
@@ -226,26 +218,27 @@ struct WorkEvent: Identifiable, Codable, Equatable {
     }
     
     
-    var startDate: Date {
+    var validatedDateRange:
+    (start: Date, end: Date)? {
         
-        parseDate(
-            date: date,
-            time: startTime
-        )
-    }
-    
-    
-    var endDate: Date {
-        
-        let start =
-        startDate
-        
-        
-        var end =
-        parseDate(
-            date: date,
-            time: endTime
-        )
+        guard
+            let start =
+                parsedDate(
+                    date:
+                        date,
+                    time:
+                        startTime
+                ),
+            var end =
+                parsedDate(
+                    date:
+                        date,
+                    time:
+                        endTime
+                )
+        else {
+            return nil
+        }
         
         
         if end < start {
@@ -259,7 +252,33 @@ struct WorkEvent: Identifiable, Codable, Equatable {
         }
         
         
-        return end
+        return (
+            start:
+                start,
+            end:
+                end
+        )
+    }
+    
+    
+    var hasValidStoredDates: Bool {
+        validatedDateRange != nil
+    }
+    
+    
+    var startDate: Date {
+        
+        validatedDateRange?.start
+        ??
+        invalidStoredDatePlaceholder
+    }
+    
+    
+    var endDate: Date {
+        
+        validatedDateRange?.end
+        ??
+        invalidStoredDatePlaceholder
     }
     
     
@@ -906,39 +925,56 @@ final class AppStore: ObservableObject {
 
 // MARK: - Даты
 
-func parseDate(
-    date: String,
-    time: String
-) -> Date {
-    
-    parserFormatter.date(
-        from:
-            "\(date) \(time)"
-    )
-    ?? Date()
-}
-
-
-func makeTimeline(
+func makeValidatedTimeline(
     for flight: FlightLeg
-) -> FlightTimeline {
+) -> FlightTimeline? {
     
-    let planned =
-    parseDate(
-        date:
-            flight.date,
-        time:
-            flight.plannedDeparture
-    )
-    
-    
-    var workStart =
-    parseDate(
-        date:
-            flight.date,
-        time:
-            flight.workStart
-    )
+    guard
+        let planned =
+            parsedDate(
+                date:
+                    flight.date,
+                time:
+                    flight.plannedDeparture
+            ),
+        var workStart =
+            parsedDate(
+                date:
+                    flight.date,
+                time:
+                    flight.workStart
+            ),
+        var engineOn =
+            parsedDate(
+                date:
+                    flight.date,
+                time:
+                    flight.engineOn
+            ),
+        var takeoff =
+            parsedDate(
+                date:
+                    flight.date,
+                time:
+                    flight.takeoff
+            ),
+        var landing =
+            parsedDate(
+                date:
+                    flight.date,
+                time:
+                    flight.landing
+            ),
+        var engineOff =
+            parsedDate(
+                date:
+                    flight.date,
+                time:
+                    flight.engineOff
+            )
+    else {
+        return nil
+    }
     
     
     if workStart > planned {
@@ -952,15 +988,6 @@ func makeTimeline(
     }
     
     
-    var engineOn =
-    parseDate(
-        date:
-            flight.date,
-        time:
-            flight.engineOn
-    )
-    
-    
     while engineOn < workStart {
         
         engineOn =
@@ -970,15 +997,6 @@ func makeTimeline(
             to: engineOn
         )!
     }
-    
-    
-    var takeoff =
-    parseDate(
-        date:
-            flight.date,
-        time:
-            flight.takeoff
-    )
     
     
     while takeoff < engineOn {
@@ -992,15 +1010,6 @@ func makeTimeline(
     }
     
     
-    var landing =
-    parseDate(
-        date:
-            flight.date,
-        time:
-            flight.landing
-    )
-    
-    
     while landing < takeoff {
         
         landing =
@@ -1010,15 +1019,6 @@ func makeTimeline(
             to: landing
         )!
     }
-    
-    
-    var engineOff =
-    parseDate(
-        date:
-            flight.date,
-        time:
-            flight.engineOff
-    )
     
     
     while engineOff < landing {
@@ -1049,12 +1049,61 @@ func makeTimeline(
 }
 
 
+func makeTimeline(
+    for flight: FlightLeg
+) -> FlightTimeline {
+    
+    guard
+        let timeline =
+            makeValidatedTimeline(
+                for:
+                    flight
+            )
+    else {
+        
+        return FlightTimeline(
+            plannedDeparture:
+                invalidStoredDatePlaceholder,
+            workStart:
+                invalidStoredDatePlaceholder,
+            engineOn:
+                invalidStoredDatePlaceholder,
+            takeoff:
+                invalidStoredDatePlaceholder,
+            landing:
+                invalidStoredDatePlaceholder,
+            engineOff:
+                invalidStoredDatePlaceholder
+        )
+    }
+    
+    
+    return timeline
+}
+
+
 extension FlightLeg {
+    
+    var validatedTimeline:
+    FlightTimeline? {
+        
+        makeValidatedTimeline(
+            for:
+                self
+        )
+    }
+    
+    
+    var hasValidStoredDates: Bool {
+        validatedTimeline != nil
+    }
+    
     
     var timeline: FlightTimeline {
         
         makeTimeline(
-            for: self
+            for:
+                self
         )
     }
     
@@ -1108,23 +1157,46 @@ private func buildAppDerivedData(
 ) -> AppDerivedData {
     
     let preparedFlights =
-    flights.map {
-        PreparedFlightLeg(
-            flight: $0,
-            timeline:
-                makeTimeline(
-                    for: $0
+    flights.compactMap {
+        
+        guard
+            let timeline =
+                makeValidatedTimeline(
+                    for:
+                        $0
                 )
+        else {
+            return nil
+        }
+        
+        
+        return PreparedFlightLeg(
+            flight:
+                $0,
+            timeline:
+                timeline
         )
     }
     
     
     let preparedWorkEvents =
-    workEvents.map {
-        PreparedWorkEvent(
-            event: $0,
-            start: $0.startDate,
-            end: $0.endDate
+    workEvents.compactMap {
+        
+        guard
+            let range =
+                $0.validatedDateRange
+        else {
+            return nil
+        }
+        
+        
+        return PreparedWorkEvent(
+            event:
+                $0,
+            start:
+                range.start,
+            end:
+                range.end
         )
     }
     
@@ -1482,13 +1554,24 @@ func buildFlightDuties(
     
     let prepared =
     flights
-        .map {
-            (
-                flight: $0,
-                timeline:
-                    makeTimeline(
-                        for: $0
+        .compactMap {
+            
+            guard
+                let timeline =
+                    makeValidatedTimeline(
+                        for:
+                            $0
                     )
+            else {
+                return nil
+            }
+            
+            
+            return (
+                flight:
+                    $0,
+                timeline:
+                    timeline
             )
         }
         .sorted {
@@ -1620,11 +1703,19 @@ func creditedWorkMinutes(
     day: Date
 ) -> Int {
     
-    creditedWorkMinutes(
+    guard
+        let range =
+            event.validatedDateRange
+    else {
+        return 0
+    }
+    
+    
+    return creditedWorkMinutes(
         start:
-            event.startDate,
+            range.start,
         end:
-            event.endDate,
+            range.end,
         type:
             event.type,
         day:
@@ -1657,11 +1748,19 @@ func creditedNightMinutes(
     day: Date
 ) -> Int {
     
-    creditedNightMinutes(
+    guard
+        let range =
+            event.validatedDateRange
+    else {
+        return 0
+    }
+    
+    
+    return creditedNightMinutes(
         start:
-            event.startDate,
+            range.start,
         end:
-            event.endDate,
+            range.end,
         type:
             event.type,
         day:
@@ -1684,8 +1783,12 @@ func buildDailyIndex(
     
     for flight in flights {
         
-        let timeline =
-        flight.timeline
+        guard
+            let timeline =
+                flight.validatedTimeline
+        else {
+            continue
+        }
         
         
         for day in touchedDays(
@@ -1806,11 +1909,19 @@ func buildDailyIndex(
     
     for event in workEvents {
         
+        guard
+            let range =
+                event.validatedDateRange
+        else {
+            continue
+        }
+        
+        
         for day in touchedDays(
             from:
-                event.startDate,
+                range.start,
             to:
-                event.endDate
+                range.end
         ) {
             
             let key =
@@ -1864,8 +1975,12 @@ func buildFlightsByDay(
     
     for flight in flights {
         
-        let timeline =
-        flight.timeline
+        guard
+            let timeline =
+                flight.validatedTimeline
+        else {
+            continue
+        }
         
         
         for day in touchedDays(
@@ -1900,12 +2015,20 @@ func buildWorkEventsByDay(
     
     for event in events {
         
+        guard
+            let range =
+                event.validatedDateRange
+        else {
+            continue
+        }
+        
+        
         let start =
-        event.startDate
+        range.start
         
         
         let end =
-        event.endDate
+        range.end
         
         
         for day in touchedDays(
