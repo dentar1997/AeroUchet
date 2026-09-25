@@ -1322,7 +1322,7 @@ struct DutyDetailView: View {
         HStack(spacing: 8) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .padding(.leading, 6)
+                .padding(.leading, 14)
 
             Spacer()
 
@@ -1335,7 +1335,7 @@ struct DutyDetailView: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.circle)
             .controlSize(.small)
-            .padding(.trailing, 6)
+            .padding(.trailing, 14)
             .accessibilityLabel("Готово")
         }
     }
@@ -1371,40 +1371,42 @@ struct DutyDetailView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         editPopoverHeader(title)
 
-                        HStack(alignment: .top, spacing: 0) {
+                        HStack(alignment: .top, spacing: -16) {
                             DatePicker(
-                                "Дата",
+                                "",
                                 selection: timeBinding(index, point),
                                 displayedComponents: [.date]
                             )
                             .labelsHidden()
                             .datePickerStyle(.graphical)
-                            .scaleEffect(0.74, anchor: .topLeading)
+                            .scaleEffect(0.72, anchor: .topLeading)
                             .frame(
-                                width: 236,
-                                height: 184,
+                                width: 224,
+                                height: 178,
                                 alignment: .topLeading
                             )
                             .clipped()
 
                             DatePicker(
-                                "Время",
+                                "",
                                 selection: timeBinding(index, point),
                                 displayedComponents: [.hourAndMinute]
                             )
                             .labelsHidden()
                             .datePickerStyle(.wheel)
-                            .scaleEffect(0.84)
+                            .scaleEffect(0.82)
                             .frame(
-                                width: 132,
-                                height: 184
+                                width: 126,
+                                height: 178
                             )
                             .clipped()
+                            .offset(x: -8)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
-                    .frame(minWidth: 390)
+                    .frame(minWidth: 365)
                     .fixedSize(horizontal: false, vertical: true)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
