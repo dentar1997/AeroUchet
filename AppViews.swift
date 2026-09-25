@@ -319,7 +319,8 @@ private struct DutyAssignmentOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let width = min(geometry.size.width * 0.80, 1020)
+            let widthRatio = geometry.size.width >= 800 ? 0.74 : 0.92
+            let width = min(geometry.size.width * widthRatio, 940)
 
             ZStack {
                 Color.black.opacity(0.65)
@@ -336,8 +337,41 @@ private struct DutyAssignmentOverlay: View {
                         .frame(minHeight: geometry.size.height)
                 }
                 .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+                .background(ScrollBounceDisabler())
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+
+private struct ScrollBounceDisabler: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        disableBounce(from: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        disableBounce(from: uiView)
+    }
+
+    private func disableBounce(from view: UIView) {
+        DispatchQueue.main.async {
+            var ancestor: UIView? = view.superview
+
+            while let current = ancestor {
+                if let scrollView = current as? UIScrollView {
+                    scrollView.bounces = false
+                    scrollView.alwaysBounceVertical = false
+                    scrollView.alwaysBounceHorizontal = false
+                    return
+                }
+
+                ancestor = current.superview
+            }
         }
     }
 }
@@ -562,61 +596,86 @@ struct DutyDetailView: View {
     }
 
     private func assignmentHeader(_ duty: FlightDuty) -> some View {
-        HStack(spacing: 8) {
-            Button(action: close) { Image(systemName: "xmark.circle") }
+        ZStack {
+            dutyTitle(
+                isEditing && isValid
+                ? FlightDuty(id: duty.id, legs: updatedLegs)
+                : duty
+            )
+            .padding(.horizontal, 180)
+
+            HStack(spacing: 8) {
+                Button(action: close) {
+                    Image(systemName: "xmark.circle")
+                }
                 .accessibilityLabel("Закрыть задание")
 
-            dutyTitle(isEditing && isValid
-                      ? FlightDuty(id: duty.id, legs: updatedLegs) : duty)
+                Spacer()
 
-            if isEditing {
-                Button { restoreEdit(at: historyIndex - 1) } label: {
-                    Image(systemName: "arrow.uturn.backward")
-                }
-                .disabled(historyIndex == 0)
-                .accessibilityLabel("Отменить последнее изменение")
+                if isEditing {
+                    Button {
+                        restoreEdit(at: historyIndex - 1)
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(historyIndex == 0)
+                    .accessibilityLabel("Отменить последнее изменение")
 
-                Button { restoreEdit(at: historyIndex + 1) } label: {
-                    Image(systemName: "arrow.uturn.forward")
-                }
-                .disabled(historyIndex + 1 >= editHistory.count)
-                .accessibilityLabel("Повторить изменение")
+                    Button {
+                        restoreEdit(at: historyIndex + 1)
+                    } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                    }
+                    .disabled(historyIndex + 1 >= editHistory.count)
+                    .accessibilityLabel("Повторить изменение")
 
-                Button { focusedField = nil; showReview = true } label: {
-                    Image(systemName: "checkmark")
-                }
-                .disabled(!isValid || differences.isEmpty)
-                .accessibilityLabel("Применить изменения")
+                    Button {
+                        focusedField = nil
+                        showReview = true
+                    } label: {
+                        Image(systemName: "checkmark")
+                    }
+                    .disabled(!isValid || differences.isEmpty)
+                    .accessibilityLabel("Применить изменения")
 
-                Button {
-                    focusedField = nil
-                    isEditing = false
-                    draft = []
-                    original = []
-                    editHistory = []
-                } label: {
-                    Image(systemName: "xmark")
-                }
-                .accessibilityLabel("Отменить все изменения")
-            } else {
-                Button {
-                    original = duty.legs
-                    draft = duty.legs
-                    assignmentNumber = duty.firstLeg.assignmentNumber ?? ""
-                    editHistory = [DutyEditSnapshot(legs: draft, assignment: assignmentNumber)]
-                    historyIndex = 0
-                    isEditing = true
-                } label: {
-                    Image(systemName: "wrench")
-                }
-                .accessibilityLabel("Редактировать задание на полёт")
+                    Button {
+                        focusedField = nil
+                        isEditing = false
+                        draft = []
+                        original = []
+                        editHistory = []
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Отменить все изменения")
+                } else {
+                    Button {
+                        original = duty.legs
+                        draft = duty.legs
+                        assignmentNumber = duty.firstLeg.assignmentNumber ?? ""
+                        editHistory = [
+                            DutyEditSnapshot(
+                                legs: draft,
+                                assignment: assignmentNumber
+                            )
+                        ]
+                        historyIndex = 0
+                        isEditing = true
+                    } label: {
+                        Image(systemName: "wrench")
+                    }
+                    .accessibilityLabel("Редактировать задание на полёт")
 
-                Button(role: .destructive) { showDeleteConfirmation = true } label: {
-                    Image(systemName: "trash")
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .accessibilityLabel("Удалить задание на полёт")
                 }
-                .accessibilityLabel("Удалить задание на полёт")
             }
         }
+        .frame(maxWidth: .infinity)
         .buttonStyle(.bordered)
     }
 
@@ -971,9 +1030,9 @@ struct DutyDetailView: View {
                 )
                 timeCell(
                     title: "Завершение работы",
-                    value: formatDateTime(workEnd),
+                    value: formatDateTime(times(for: leg).workEnd),
                     index: index,
-                    point: index == draft.count - 1 ? nil : .workEnd
+                    point: .workEnd
                 )
                 timeCell(
                     title: "Выключение двигателей",
