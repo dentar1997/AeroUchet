@@ -1122,7 +1122,13 @@ struct AddFlightView: View {
     @State
     private var flightNumber:
     String
-    
+
+    @State private var chosenLegNumber: String
+
+    private var numberParts: [String] {
+        flightNumber.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+    }
+
     
     @State
     private var departure:
@@ -1205,8 +1211,8 @@ struct AddFlightView: View {
                 initialValue:
                     flight.flightNumber
             )
-            
-            
+            _chosenLegNumber = State(initialValue: flight.legNumber ?? flight.flightNumber.components(separatedBy: "/").first ?? "")
+
             _departure =
             State(
                 initialValue:
@@ -1285,8 +1291,8 @@ struct AddFlightView: View {
                 initialValue:
                     ""
             )
-            
-            
+            _chosenLegNumber = State(initialValue: "")
+
             _departure =
             State(
                 initialValue:
@@ -1368,6 +1374,11 @@ struct AddFlightView: View {
                 in: .whitespaces
             )
             .isEmpty
+        &&
+        numberParts.allSatisfy({ part in
+            part.count >= 1 && part.count <= 4 &&
+            part.utf8.allSatisfy({ byte in byte >= 48 && byte <= 57 })
+        })
     }
     
     
@@ -1394,7 +1405,13 @@ struct AddFlightView: View {
                         placeholder: "Номер рейса"
                     )
                     .frame(minHeight: 22)
-                    
+                    if numberParts.count > 1 {
+                        Picker("Номер этого лега", selection: $chosenLegNumber) {
+                            ForEach(numberParts, id: \.self) { number in
+                                Text(number).tag(number)
+                            }
+                        }
+                    }
                     
                     TextField(
                         "Аэропорт вылета",
@@ -1578,7 +1595,7 @@ struct AddFlightView: View {
                 ),
             portalTimes: flightToEdit?.portalTimes,
             assignmentNumber: flightToEdit?.assignmentNumber,
-            legNumber: flightToEdit?.flightNumber == flightNumber ? flightToEdit?.legNumber : nil,
+            legNumber: numberParts.contains(chosenLegNumber) ? chosenLegNumber : numberParts.first,
             scheduleType: scheduleType
         )
         
