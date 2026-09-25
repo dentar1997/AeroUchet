@@ -1118,6 +1118,12 @@ func makeTimeline(
 
 extension FlightLeg {
     var historyKey: String {
+        if let source = portalTimes {
+            return "portal|" + [source.workStart, source.engineOn, source.takeoff,
+                                source.landing, source.engineOff, source.workEnd]
+                .map { String(Int($0.timeIntervalSince1970 / 60)) }
+                .joined(separator: "|")
+        }
         let t = timeline
         return [flightNumber, departure, arrival, registration,
                 String(Int(t.engineOn.timeIntervalSince1970 / 60)),
