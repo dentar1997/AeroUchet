@@ -208,6 +208,7 @@ struct FlightsView: View {
     @State private var showImportResult = false
     @State private var importMessage = ""
     @State private var pendingFlights: [FlightLeg] = []
+    @State private var verificationStatus = ""
 
     var body: some View {
         
@@ -280,7 +281,9 @@ struct FlightsView: View {
                     let url = try result.get()
                     let access = url.startAccessingSecurityScopedResource()
                     defer { if access { url.stopAccessingSecurityScopedResource() } }
-                    pendingFlights = try PortalFlightHistory.parse(Data(contentsOf: url))
+                    let checked = try PortalFlightHistory.parse(Data(contentsOf: url))
+                    pendingFlights = checked.flights
+                    verificationStatus = checked.status
                     showImportConfirmation = true
                 } catch {
                     importMessage = error.localizedDescription
@@ -290,15 +293,15 @@ struct FlightsView: View {
             .alert("Импорт истории рейсов", isPresented: $showImportConfirmation) {
                 Button("Отмена", role: .cancel) { pendingFlights = [] }
                 Button("Импортировать") {
-                    let added = store.importFlights(pendingFlights)
-                    importMessage = "Добавлено: \(added). Уже были в приложении: \(pendingFlights.count - added)."
+                    let result = store.importFlights(pendingFlights)
+                    importMessage = "Добавлено: \(result.added). Обновлены поля ранее импортированных: \(result.updated). Уже были в приложении: \(pendingFlights.count - result.added)."
                     pendingFlights = []
                     showImportResult = true
                 }
             } message: {
                 let known = Set(store.flights.map { $0.historyKey })
                 let unique = Set(pendingFlights.map { $0.historyKey })
-                Text("В файле \(pendingFlights.count) рейсов. Новых: \(unique.subtracting(known).count). Повторная загрузка не создаст копии.")
+                Text("\(verificationStatus) В файле \(pendingFlights.count) легов, новых: \(unique.subtracting(known).count).")
             }
             .alert("История рейсов", isPresented: $showImportResult) {
                 Button("OK", role: .cancel) { }
@@ -672,7 +675,7 @@ struct FlightRow: View {
                 
                 
                 Text(
-                    "\(flight.flightNumber) • \(flight.aircraft)"
+                    "\(flight.displayedLegNumber) • \(flight.aircraft)"
                 )
                 .font(.caption)
                 .foregroundStyle(
@@ -707,7 +710,7 @@ struct FlightRow: View {
             Spacer()
             
             
-            Text(flight.portalTimes == nil ? flight.plannedDeparture : flight.engineOn)
+            Text(flight.engineOn)
             .bold()
         }
     }
@@ -772,12 +775,14 @@ struct FlightDetailView: View {
                 )
                 
                 
-                FlightInfoRow(
-                    name:
-                        "Номер",
-                    value:
-                        current.flightNumber
-                )
+                FlightInfoRow(name: "Номер рейса", value: current.displayedLegNumber)
+                if current.flightNumber != current.displayedLegNumber {
+                    FlightInfoRow(name: "Номера в задании", value: current.flightNumber)
+                }
+                if let assignment = current.assignmentNumber {
+                    FlightInfoRow(name: "Номер задания", value: assignment)
+                }
+                FlightInfoRow(name: "Тип рейса", value: (current.scheduleType ?? .planned).rawValue)
                 
                 
                 FlightInfoRow(
@@ -811,14 +816,7 @@ struct FlightDetailView: View {
                     )
                     
                     
-                    FlightInfoRow(
-                        name: "Плановое отправление",
-                        value: current.portalTimes == nil
-                            ? formatDateTime(current.timeline.plannedDeparture)
-                            : "Нет в выгрузке"
-                    )
-                    
-                    
+
                     FlightInfoRow(
                         name:
                             "Включение двигателей",
@@ -864,45 +862,13 @@ struct FlightDetailView: View {
                 
                 
                 Section("Расчёт") {
-                    
-                    FlightInfoRow(
-                        name:
-                            "Полётное",
-                        value:
-                            timeText(
-                                current.flightMinutes
-                            )
-                    )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Лётное",
-                        value:
-                            timeText(
-                                current.airMinutes
-                            )
-                    )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Полётная ночь",
-                        value:
-                            timeText(
-                                current.flightNightMinutes
-                            )
-                    )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Лётная ночь",
-                        value:
-                            timeText(
-                                current.airNightMinutes
-                            )
-                    )
+                    FlightInfoRow(name: "1. Расчётное время", value: current.calculatedMinutes.map(timeText) ?? "Норма не назначена")
+                    FlightInfoRow(name: "2. Полётное время", value: timeText(current.flightMinutes))
+                    FlightInfoRow(name: "3. Лётное время", value: timeText(current.airMinutes))
+                    FlightInfoRow(name: "4. Рабочее время", value: timeText(current.workMinutes))
+                    FlightInfoRow(name: "5. Полётная ночь", value: timeText(current.flightNightMinutes))
+                    FlightInfoRow(name: "6. Лётная ночь", value: timeText(current.airNightMinutes))
+                    FlightInfoRow(name: "7. Рабочая ночь", value: timeText(current.workNightMinutes))
                 }
                 
             } else {
@@ -946,14 +912,7 @@ struct FlightDetailView: View {
                     )
                     
                     
-                    FlightInfoRow(
-                        name:
-                            "Плановое отправление",
-                        value:
-                            current.plannedDeparture
-                    )
-                    
-                    
+
                     FlightInfoRow(
                         name:
                             "Включение двигателей",
@@ -1163,7 +1122,13 @@ struct AddFlightView: View {
     @State
     private var flightNumber:
     String
-    
+
+    @State private var chosenLegNumber: String
+
+    private var numberParts: [String] {
+        flightNumber.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+    }
+
     
     @State
     private var departure:
@@ -1185,11 +1150,8 @@ struct AddFlightView: View {
     String
     
     
-    @State
-    private var plannedDeparture:
-    Date
-    
-    
+    @State private var scheduleType: FlightScheduleType
+
     @State
     private var workStart:
     Date
@@ -1249,8 +1211,8 @@ struct AddFlightView: View {
                 initialValue:
                     flight.flightNumber
             )
-            
-            
+            _chosenLegNumber = State(initialValue: flight.legNumber ?? flight.flightNumber.components(separatedBy: "/").first ?? "")
+
             _departure =
             State(
                 initialValue:
@@ -1279,13 +1241,8 @@ struct AddFlightView: View {
             )
             
             
-            _plannedDeparture =
-            State(
-                initialValue:
-                    flight.timeline.plannedDeparture
-            )
-            
-            
+            _scheduleType = State(initialValue: flight.scheduleType ?? .planned)
+
             _workStart =
             State(
                 initialValue:
@@ -1334,8 +1291,8 @@ struct AddFlightView: View {
                 initialValue:
                     ""
             )
-            
-            
+            _chosenLegNumber = State(initialValue: "")
+
             _departure =
             State(
                 initialValue:
@@ -1364,13 +1321,8 @@ struct AddFlightView: View {
             )
             
             
-            _plannedDeparture =
-            State(
-                initialValue:
-                    now
-            )
-            
-            
+            _scheduleType = State(initialValue: .planned)
+
             _workStart =
             State(
                 initialValue:
@@ -1422,6 +1374,11 @@ struct AddFlightView: View {
                 in: .whitespaces
             )
             .isEmpty
+        &&
+        numberParts.allSatisfy({ part in
+            part.count >= 1 && part.count <= 4 &&
+            part.utf8.allSatisfy({ byte in byte >= 48 && byte <= 57 })
+        })
     }
     
     
@@ -1448,7 +1405,13 @@ struct AddFlightView: View {
                         placeholder: "Номер рейса"
                     )
                     .frame(minHeight: 22)
-                    
+                    if numberParts.count > 1 {
+                        Picker("Номер этого лега", selection: $chosenLegNumber) {
+                            ForEach(numberParts, id: \.self) { number in
+                                Text(number).tag(number)
+                            }
+                        }
+                    }
                     
                     TextField(
                         "Аэропорт вылета",
@@ -1476,23 +1439,17 @@ struct AddFlightView: View {
                         text:
                             $registration
                     )
+                    Picker("Тип рейса", selection: $scheduleType) {
+                        ForEach(FlightScheduleType.allCases) { kind in
+                            Text(kind.rawValue).tag(kind)
+                        }
+                    }
                 }
                 
                 
                 Section(
                     "Рабочее время"
                 ) {
-                    
-                    if flightToEdit?.portalTimes == nil {
-                        AeroTimePickerRow(
-                            title: "Плановое отправление",
-                            selection: $plannedDeparture
-                        )
-                    } else {
-                        Text("Плановое время отсутствует в истории портала")
-                            .foregroundStyle(.secondary)
-                    }
-                    
                     
                     AeroTimePickerRow(
                         title: "Начало работы",
@@ -1615,7 +1572,7 @@ struct AddFlightView: View {
                 registration
                 .uppercased(),
             plannedDeparture:
-                flightToEdit?.portalTimes == nil ? formatClock(plannedDeparture) : "",
+                flightToEdit?.plannedDeparture ?? "",
             workStart:
                 formatClock(
                     workStart
@@ -1636,7 +1593,10 @@ struct AddFlightView: View {
                 formatClock(
                     engineOff
                 ),
-            portalTimes: flightToEdit?.portalTimes
+            portalTimes: flightToEdit?.portalTimes,
+            assignmentNumber: flightToEdit?.assignmentNumber,
+            legNumber: numberParts.contains(chosenLegNumber) ? chosenLegNumber : numberParts.first,
+            scheduleType: scheduleType
         )
         
         

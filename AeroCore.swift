@@ -64,6 +64,12 @@ struct PortalFlightTimes: Codable, Equatable {
     let workEnd: Date
 }
 
+enum FlightScheduleType: String, Codable, CaseIterable, Identifiable {
+    case planned = "Плановый"
+    case unscheduled = "Внеплановый"
+    var id: String { rawValue }
+}
+
 struct FlightLeg: Identifiable, Codable, Equatable {
     
     var id: UUID
@@ -85,6 +91,9 @@ struct FlightLeg: Identifiable, Codable, Equatable {
     var landing: String
     var engineOff: String
     var portalTimes: PortalFlightTimes?
+    var assignmentNumber: String?
+    var legNumber: String?
+    var scheduleType: FlightScheduleType?
     
     init(
         id: UUID = UUID(),
@@ -100,7 +109,10 @@ struct FlightLeg: Identifiable, Codable, Equatable {
         takeoff: String,
         landing: String,
         engineOff: String,
-        portalTimes: PortalFlightTimes? = nil
+        portalTimes: PortalFlightTimes? = nil,
+        assignmentNumber: String? = nil,
+        legNumber: String? = nil,
+        scheduleType: FlightScheduleType? = nil
     ) {
         self.id = id
         self.date = date
@@ -116,6 +128,9 @@ struct FlightLeg: Identifiable, Codable, Equatable {
         self.landing = landing
         self.engineOff = engineOff
         self.portalTimes = portalTimes
+        self.assignmentNumber = assignmentNumber
+        self.legNumber = legNumber
+        self.scheduleType = scheduleType
     }
 }
 
@@ -664,14 +679,32 @@ final class AppStore: ObservableObject {
     }
     
     
-    func importFlights(_ candidates: [FlightLeg]) -> Int {
-        var known = Set(flights.map { $0.historyKey })
-        var incoming: [FlightLeg] = []
-        for flight in candidates where known.insert(flight.historyKey).inserted {
-            incoming.append(flight)
+    func importFlights(_ candidates: [FlightLeg]) -> (added: Int, updated: Int) {
+        var updatedFlights = flights
+        var existing: [String: Int] = [:]
+        for (index, flight) in flights.enumerated() {
+            existing[flight.historyKey] = index
         }
-        if !incoming.isEmpty { flights = incoming + flights }
-        return incoming.count
+        var known = Set(existing.keys)
+        var incoming: [FlightLeg] = []
+        var refreshed = 0
+        for candidate in candidates {
+            let key = candidate.historyKey
+            if let index = existing[key], updatedFlights[index].portalTimes != nil {
+                var saved = updatedFlights[index]
+                if saved.assignmentNumber == nil { saved.assignmentNumber = candidate.assignmentNumber }
+                if saved.legNumber == nil { saved.legNumber = candidate.legNumber }
+                if saved.scheduleType == nil { saved.scheduleType = candidate.scheduleType }
+                if saved != updatedFlights[index] {
+                    updatedFlights[index] = saved
+                    refreshed += 1
+                }
+            } else if known.insert(key).inserted {
+                incoming.append(candidate)
+            }
+        }
+        if !incoming.isEmpty || refreshed > 0 { flights = incoming + updatedFlights }
+        return (incoming.count, refreshed)
     }
 
     func addFlight(
@@ -962,13 +995,6 @@ func makeValidatedTimeline(
     }
     
     guard
-        let planned =
-            parsedDate(
-                date:
-                    flight.date,
-                time:
-                    flight.plannedDeparture
-            ),
         var workStart =
             parsedDate(
                 date:
@@ -1009,6 +1035,8 @@ func makeValidatedTimeline(
     }
     
     
+    let planned = parsedDate(date: flight.date, time: flight.plannedDeparture) ?? engineOn
+
     if workStart > planned {
         
         workStart =
@@ -1160,6 +1188,29 @@ extension FlightLeg {
             timeline.engineOn,
             timeline.engineOff
         )
+    }
+
+    var workMinutes: Int {
+        guard let t = validatedTimeline else { return 0 }
+        let end = t.workEnd
+            ?? moscowCalendar.date(byAdding: .minute, value: 30, to: t.engineOff)!
+        return minutesBetween(t.workStart, end)
+    }
+
+    var workNightMinutes: Int {
+        guard let t = validatedTimeline else { return 0 }
+        let end = t.workEnd
+            ?? moscowCalendar.date(byAdding: .minute, value: 30, to: t.engineOff)!
+        return nightMinutes(from: t.workStart, to: end)
+    }
+
+    var calculatedMinutes: Int? {
+        if scheduleType == .unscheduled { return flightMinutes }
+        return nil
+    }
+
+    var displayedLegNumber: String {
+        legNumber ?? flightNumber
     }
     
     
