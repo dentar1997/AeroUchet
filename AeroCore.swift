@@ -679,14 +679,32 @@ final class AppStore: ObservableObject {
     }
     
     
-    func importFlights(_ candidates: [FlightLeg]) -> Int {
-        var known = Set(flights.map { $0.historyKey })
-        var incoming: [FlightLeg] = []
-        for flight in candidates where known.insert(flight.historyKey).inserted {
-            incoming.append(flight)
+    func importFlights(_ candidates: [FlightLeg]) -> (added: Int, updated: Int) {
+        var updatedFlights = flights
+        var existing: [String: Int] = [:]
+        for (index, flight) in flights.enumerated() {
+            existing[flight.historyKey] = index
         }
-        if !incoming.isEmpty { flights = incoming + flights }
-        return incoming.count
+        var known = Set(existing.keys)
+        var incoming: [FlightLeg] = []
+        var refreshed = 0
+        for candidate in candidates {
+            let key = candidate.historyKey
+            if let index = existing[key], updatedFlights[index].portalTimes != nil {
+                var saved = updatedFlights[index]
+                if saved.assignmentNumber == nil { saved.assignmentNumber = candidate.assignmentNumber }
+                if saved.legNumber == nil { saved.legNumber = candidate.legNumber }
+                if saved.scheduleType == nil { saved.scheduleType = candidate.scheduleType }
+                if saved != updatedFlights[index] {
+                    updatedFlights[index] = saved
+                    refreshed += 1
+                }
+            } else if known.insert(key).inserted {
+                incoming.append(candidate)
+            }
+        }
+        if !incoming.isEmpty || refreshed > 0 { flights = incoming + updatedFlights }
+        return (incoming.count, refreshed)
     }
 
     func addFlight(
