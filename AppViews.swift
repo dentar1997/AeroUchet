@@ -671,10 +671,10 @@ struct DutyDetailView: View {
     private func restCard(start: Date, end: Date) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Image(systemName: "moon.zzz")
-                    .foregroundStyle(.secondary)
                 Text("Перерыв без работы")
                     .font(.subheadline.weight(.semibold))
+                Image(systemName: "moon.zzz")
+                    .foregroundStyle(.secondary)
                 Text(timeText(minutesBetween(start, end)))
                     .font(.subheadline.weight(.semibold))
             }
@@ -684,7 +684,9 @@ struct DutyDetailView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(.leading, 22)
+        .padding(.trailing, 12)
+        .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color(uiColor: .tertiarySystemGroupedBackground))
@@ -885,7 +887,7 @@ struct DutyDetailView: View {
                             .frame(width: 155)
                     }
 
-                    identityField("Маршрут") {
+                    identityField("Маршрут", field: .route(index)) {
                         routeIdentity(leg, index: index)
                     }
 
@@ -899,7 +901,7 @@ struct DutyDetailView: View {
                 HStack(alignment: .top, spacing: 10) {
                     flightNumber(leg, index: index)
                         .frame(width: 95)
-                    identityField("Маршрут") {
+                    identityField("Маршрут", field: .route(index)) {
                         routeIdentity(leg, index: index)
                     }
                     .frame(maxWidth: .infinity)
@@ -918,7 +920,7 @@ struct DutyDetailView: View {
     }
 
     private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
-        identityField("Рейс") {
+        identityField("Рейс", field: .legNumber(index)) {
             editableValue(leg.displayedLegNumber, field: .legNumber(index)) {
                 TextField("Номер лега", text: legNumberBinding(index))
                     .multilineTextAlignment(.center)
@@ -928,25 +930,26 @@ struct DutyDetailView: View {
     }
 
     private func flightKindField(_ leg: FlightLeg, index: Int) -> some View {
-        identityField("Вид полёта") {
+        identityField("Вид полёта", field: .flightKind(index)) {
             flightKindIdentity(leg, index: index)
         }
     }
 
     private func aircraftField(_ leg: FlightLeg, index: Int) -> some View {
-        identityField("Тип ВС") {
+        identityField("Тип ВС", field: .aircraft(index)) {
             aircraftIdentity(leg, index: index)
         }
     }
 
     private func registrationField(_ leg: FlightLeg, index: Int) -> some View {
-        identityField("Бортовой номер") {
+        identityField("Бортовой номер", field: .registration(index)) {
             registrationIdentity(leg, index: index)
         }
     }
 
     private func identityField<Content: View>(
         _ title: String,
+        field: DutyFocusedField,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .center, spacing: 3) {
@@ -964,6 +967,23 @@ struct DutyDetailView: View {
         }
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 8)
+        .background {
+            if isEditing {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.accentColor.opacity(0.08))
+            }
+        }
+        .overlay {
+            if isEditing {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isEditing { focusedField = field }
+        }
     }
 
     private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {
@@ -1022,14 +1042,18 @@ struct DutyDetailView: View {
             if isEditing {
                 Button { focusedField = field } label: {
                     Text(value)
-                        .background(
-                            Color.accentColor.opacity(0.14),
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-                        )
+                        .background {
+                            if field == .assignment {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.accentColor.opacity(0.14))
+                            }
+                        }
+                        .overlay {
+                            if field == .assignment {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Нажмите, чтобы изменить")
@@ -1077,17 +1101,21 @@ struct DutyDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .popover(isPresented: focusBinding(.time(index, point))) {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
                         DatePicker(
                             title,
                             selection: timeBinding(index, point),
                             displayedComponents: [.date, .hourAndMinute]
                         )
-                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
                         Button("Готово") { focusedField = nil }
                     }
-                    .padding()
+                    .padding(12)
                     .frame(minWidth: 290)
+                    .fixedSize(horizontal: false, vertical: true)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
                 }
