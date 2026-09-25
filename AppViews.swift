@@ -373,7 +373,9 @@ struct DutyRow: View {
             ) {
                 
                 Text(
-                    duty.routeText
+                    AirportDatabase.routeDisplayName(
+                        [duty.firstLeg.departure] + duty.legs.map(\.arrival)
+                    )
                 )
                 .bold()
                 
@@ -1356,36 +1358,7 @@ private enum DutyEditPoint: CaseIterable, Identifiable, Hashable {
 }
 
 private func airportDisplayName(_ rawCode: String) -> String {
-    let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-    let baseCode = code.split(separator: "/", maxSplits: 1).first.map(String.init) ?? code
-
-    let names: [String: String] = [
-        "SVO": "Шереметьево",
-        "GYD": "Баку",
-        "MQF": "Магнитогорск",
-        "BAX": "Барнаул",
-        "OVB": "Новосибирск",
-        "AER": "Сочи",
-        "KGD": "Калининград",
-        "LED": "Санкт-Петербург",
-        "KZN": "Казань",
-        "SVX": "Екатеринбург",
-        "UFA": "Уфа",
-        "CEK": "Челябинск",
-        "OMS": "Омск",
-        "KUF": "Самара",
-        "GOJ": "Нижний Новгород",
-        "MRV": "Минеральные Воды",
-        "MCX": "Махачкала",
-        "VVO": "Владивосток",
-        "KHV": "Хабаровск",
-        "IKT": "Иркутск",
-        "UUS": "Южно-Сахалинск",
-        "PKC": "Петропавловск-Камчатский"
-    ]
-
-    guard let name = names[baseCode] else { return code }
-    return "\(name) (\(code))"
+    AirportDatabase.displayName(for: rawCode)
 }
 
 private func formattedRegistration(_ rawValue: String) -> String {
