@@ -429,20 +429,43 @@ struct DutyDetailView: View {
         let current = current
 
         ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                dutyCard(isEditing && isValid
-                         ? FlightDuty(id: current.id, legs: updatedLegs)
-                         : current)
-                actionBar()
-            }
-            .frame(maxWidth: 1100, alignment: .leading)
-            .padding(16)
-            .frame(maxWidth: .infinity)
+            dutyCard(isEditing && isValid
+                     ? FlightDuty(id: current.id, legs: updatedLegs)
+                     : current)
+                .frame(maxWidth: 1100, alignment: .leading)
+                .padding(16)
+                .frame(maxWidth: .infinity)
         }
         .environment(\.timeZone, moscowTimeZone)
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Полёты")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if isEditing {
+                    Button("Применить") { showReview = true }
+                        .disabled(!isValid || differences.isEmpty)
+                    Button("Отмена") {
+                        isEditing = false
+                        draft = []
+                        original = []
+                    }
+                } else {
+                    Button("Редактировать") {
+                        original = current.legs
+                        draft = current.legs
+                        assignmentNumber = current.firstLeg.assignmentNumber ?? ""
+                        isEditing = true
+                    }
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .accessibilityLabel("Удалить полётное задание")
+                }
+            }
+        }
         .sheet(isPresented: $showReview) {
             NavigationStack {
                 ScrollView {
@@ -605,46 +628,6 @@ struct DutyDetailView: View {
             }
         )
     }
-    private func actionBar() -> some View {
-        HStack(spacing: 12) {
-            if isEditing {
-                Button("Применить", systemImage: "checkmark") {
-                    showReview = true
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!isValid || differences.isEmpty)
-
-                Button("Отменить", systemImage: "xmark") {
-                    isEditing = false
-                    draft = []
-                    original = []
-                }
-                .buttonStyle(.bordered)
-
-                if !isValid {
-                    Text("Проверьте порядок временных точек и обязательные поля.")
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-            } else {
-                Button("Редактировать", systemImage: "pencil") {
-                    original = current.legs
-                    draft = current.legs
-                    assignmentNumber = current.firstLeg.assignmentNumber ?? ""
-                    isEditing = true
-                }
-                .buttonStyle(.bordered)
-
-                Button("Удалить", systemImage: "trash", role: .destructive) {
-                    showDeleteConfirmation = true
-                }
-                .buttonStyle(.bordered)
-                .tint(.red)
-            }
-        }
-        .padding(.horizontal, 16)
-    }
-
     // Уровень 1: одна общая карточка полётного задания.
     private func dutyCard(_ duty: FlightDuty) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -681,24 +664,21 @@ struct DutyDetailView: View {
     }
 
     private func restCard(start: Date, end: Date) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "moon.zzz")
-                .foregroundStyle(.secondary)
-
-            VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "moon.zzz")
+                    .foregroundStyle(.secondary)
                 Text("Перерыв без работы")
                     .font(.subheadline.weight(.semibold))
-
-                Text("\(formatDateTime(start)) → \(formatDateTime(end))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(timeText(minutesBetween(start, end)))
+                    .font(.subheadline.weight(.semibold))
             }
 
-            Spacer()
-
-            Text(timeText(minutesBetween(start, end)))
-                .font(.headline)
+            Text("\(formatDateTime(start)) → \(formatDateTime(end))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 16)
@@ -901,19 +881,19 @@ struct DutyDetailView: View {
         Group {
             if sizeClass == .compact {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
+                    HStack(spacing: 8) {
                         flightNumber(leg, index: index)
                         Spacer(minLength: 8)
                         calculatedTime(leg)
+                            .frame(width: 155)
                     }
-                    flightIdentity(leg, index: index)
+                    flightInfoCards(leg, index: index)
                 }
             } else {
-                HStack(alignment: .center, spacing: 12) {
+                HStack(alignment: .top, spacing: 8) {
                     flightNumber(leg, index: index)
-                        .frame(width: 155, alignment: .leading)
-                    flightIdentity(leg, index: index)
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 150, alignment: .leading)
+                    flightInfoCards(leg, index: index)
                     calculatedTime(leg)
                         .frame(width: 155)
                 }
@@ -939,41 +919,99 @@ struct DutyDetailView: View {
         .minimumScaleFactor(0.8)
     }
 
-    private func flightIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        HStack(spacing: 6) {
+    private func flightInfoCards(_ leg: FlightLeg, index: Int) -> some View {
+        Group {
+            if sizeClass == .compact {
+                VStack(spacing: 8) {
+                    routeCard(leg, index: index)
+                    HStack(spacing: 8) {
+                        aircraftCard(leg, index: index)
+                        flightTypeCard(leg, index: index)
+                            .frame(width: 110)
+                    }
+                }
+            } else {
+                HStack(spacing: 8) {
+                    routeCard(leg, index: index)
+                    aircraftCard(leg, index: index)
+                    flightTypeCard(leg, index: index)
+                        .frame(width: 125)
+                }
+            }
+        }
+    }
+
+    private func routeCard(_ leg: FlightLeg, index: Int) -> some View {
+        infoCard("Маршрут") {
             if isEditing {
-                TextField("Вылет", text: $draft[index].departure)
-                    .frame(minWidth: 52)
-                Image(systemName: "arrow.right")
-                    .font(.caption)
-                TextField("Прилёт", text: $draft[index].arrival)
-                    .frame(minWidth: 52)
-                TextField("Тип ВС", text: $draft[index].aircraft)
-                    .frame(minWidth: 55)
-                TextField("Борт", text: $draft[index].registration)
-                    .frame(minWidth: 75)
-                Picker("Тип рейса", selection: scheduleBinding(index)) {
+                HStack(spacing: 4) {
+                    TextField("Вылет", text: $draft[index].departure)
+                    Image(systemName: "arrow.right")
+                        .font(.caption)
+                    TextField("Прилёт", text: $draft[index].arrival)
+                }
+            } else {
+                Text(
+                    "\(airportDisplayName(leg.departure)) → "
+                    + "\(airportDisplayName(leg.arrival))"
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            }
+        }
+    }
+
+    private func aircraftCard(_ leg: FlightLeg, index: Int) -> some View {
+        infoCard("ВС · борт") {
+            if isEditing {
+                HStack(spacing: 4) {
+                    TextField("Тип ВС", text: $draft[index].aircraft)
+                    TextField("Борт", text: $draft[index].registration)
+                }
+            } else {
+                Text("\(leg.aircraft) · \(formattedRegistration(leg.registration))")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+    }
+
+    private func flightTypeCard(_ leg: FlightLeg, index: Int) -> some View {
+        infoCard("Вид полёта") {
+            if isEditing {
+                Picker("Вид полёта", selection: scheduleBinding(index)) {
                     ForEach(FlightScheduleType.allCases) { kind in
                         Text(kind.rawValue).tag(kind)
                     }
                 }
                 .labelsHidden()
             } else {
-                Text(
-                    "\(airportDisplayName(leg.departure)) → "
-                    + "\(airportDisplayName(leg.arrival))"
-                )
-                .layoutPriority(1)
-                Text("· \(leg.aircraft)")
-                Text("· \(formattedRegistration(leg.registration))")
-                Text("· \((leg.scheduleType ?? .planned).rawValue)")
+                Text((leg.scheduleType ?? .planned).rawValue)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.primary)
-        .lineLimit(1)
-        .minimumScaleFactor(0.7)
-        .frame(maxWidth: .infinity)
+    }
+
+    private func infoCard<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            content()
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(uiColor: .systemGray4))
+        )
     }
 
     private func calculatedTime(_ leg: FlightLeg) -> some View {
