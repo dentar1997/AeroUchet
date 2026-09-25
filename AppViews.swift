@@ -293,8 +293,8 @@ struct FlightsView: View {
             .alert("Импорт истории рейсов", isPresented: $showImportConfirmation) {
                 Button("Отмена", role: .cancel) { pendingFlights = [] }
                 Button("Импортировать") {
-                    let added = store.importFlights(pendingFlights)
-                    importMessage = "Добавлено: \(added). Уже были в приложении: \(pendingFlights.count - added)."
+                    let result = store.importFlights(pendingFlights)
+                    importMessage = "Добавлено: \(result.added). Обновлены поля ранее импортированных: \(result.updated). Уже были в приложении: \(pendingFlights.count - result.added)."
                     pendingFlights = []
                     showImportResult = true
                 }
