@@ -211,9 +211,7 @@ struct FlightsView: View {
             
             DutiesListView(store: store)
             
-                        .navigationTitle(
-                "Полёты"
-            )
+
             
             
             .toolbar {
@@ -299,6 +297,9 @@ struct DutiesListView: View {
                 }
                 .buttonStyle(.plain)
             }
+            .scrollDisabled(selectedDuty != nil)
+            .allowsHitTesting(selectedDuty == nil)
+            .accessibilityHidden(selectedDuty != nil)
 
             if let duty = selectedDuty {
                 DutyAssignmentOverlay(duty: duty, store: store) {
@@ -307,6 +308,7 @@ struct DutiesListView: View {
                 .zIndex(1)
             }
         }
+        .navigationTitle(selectedDuty == nil ? "Полёты" : "")
     }
 }
 
@@ -317,7 +319,7 @@ private struct DutyAssignmentOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let width = min(geometry.size.width * 0.86, 1100)
+            let width = min(geometry.size.width * 0.80, 1020)
 
             ZStack {
                 Color.black.opacity(0.65)
@@ -333,6 +335,7 @@ private struct DutyAssignmentOverlay: View {
                         .frame(maxWidth: .infinity)
                         .frame(minHeight: geometry.size.height)
                 }
+                .scrollIndicators(.hidden)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -454,6 +457,8 @@ struct DutyDetailView: View {
     @State private var showReview = false
     @State private var showDeleteConfirmation = false
     @State private var focusedField: DutyFocusedField?
+    @State private var editHistory: [DutyEditSnapshot] = []
+    @State private var historyIndex = 0
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private let timeColumns = Array(
@@ -481,39 +486,9 @@ struct DutyDetailView: View {
         let current = current
 
         VStack(spacing: 0) {
-            HStack(spacing: 14) {
-                Button("Закрыть") { close() }
-                Spacer()
-                if isEditing {
-                    Button("Применить") { showReview = true }
-                        .disabled(!isValid || differences.isEmpty)
-                    Button("Отмена") {
-                        focusedField = nil
-                        isEditing = false
-                        draft = []
-                        original = []
-                    }
-                } else {
-                    Button {
-                        original = current.legs
-                        draft = current.legs
-                        assignmentNumber = current.firstLeg.assignmentNumber ?? ""
-                        isEditing = true
-                    } label: {
-                        Image(systemName: "wrench")
-                    }
-                    .accessibilityLabel("Редактировать задание на полёт")
-                    Button(role: .destructive) {
-                        showDeleteConfirmation = true
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .accessibilityLabel("Удалить задание на полёт")
-                }
-            }
-            .buttonStyle(.bordered)
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+            assignmentHeader(current)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
 
             if scrollsAsPage {
                 assignmentContents(current)
@@ -521,8 +496,11 @@ struct DutyDetailView: View {
                 ScrollView {
                     assignmentContents(current)
                 }
+                .scrollIndicators(.hidden)
             }
         }
+        .onChange(of: draft) { _ in recordEdit() }
+        .onChange(of: assignmentNumber) { _ in recordEdit() }
         .environment(\.timeZone, moscowTimeZone)
         .background(
             Color(uiColor: .secondarySystemGroupedBackground),
@@ -579,6 +557,83 @@ struct DutyDetailView: View {
         } message: {
             Text("Задание и \(legCountText(current.legs.count)) будут удалены.")
         }
+    }
+
+    private func assignmentHeader(_ duty: FlightDuty) -> some View {
+        HStack(spacing: 8) {
+            Button(action: close) { Image(systemName: "xmark.circle") }
+                .accessibilityLabel("Закрыть задание")
+
+            dutyTitle(isEditing && isValid
+                      ? FlightDuty(id: duty.id, legs: updatedLegs) : duty)
+
+            if isEditing {
+                Button { restoreEdit(at: historyIndex - 1) } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .disabled(historyIndex == 0)
+                .accessibilityLabel("Отменить последнее изменение")
+
+                Button { restoreEdit(at: historyIndex + 1) } label: {
+                    Image(systemName: "arrow.uturn.forward")
+                }
+                .disabled(historyIndex + 1 >= editHistory.count)
+                .accessibilityLabel("Повторить изменение")
+
+                Button { focusedField = nil; showReview = true } label: {
+                    Image(systemName: "checkmark")
+                }
+                .disabled(!isValid || differences.isEmpty)
+                .accessibilityLabel("Применить изменения")
+
+                Button {
+                    focusedField = nil
+                    isEditing = false
+                    draft = []
+                    original = []
+                    editHistory = []
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .accessibilityLabel("Отменить все изменения")
+            } else {
+                Button {
+                    original = duty.legs
+                    draft = duty.legs
+                    assignmentNumber = duty.firstLeg.assignmentNumber ?? ""
+                    editHistory = [DutyEditSnapshot(legs: draft, assignment: assignmentNumber)]
+                    historyIndex = 0
+                    isEditing = true
+                } label: {
+                    Image(systemName: "wrench")
+                }
+                .accessibilityLabel("Редактировать задание на полёт")
+
+                Button(role: .destructive) { showDeleteConfirmation = true } label: {
+                    Image(systemName: "trash")
+                }
+                .accessibilityLabel("Удалить задание на полёт")
+            }
+        }
+        .buttonStyle(.bordered)
+    }
+
+    private func recordEdit() {
+        guard isEditing else { return }
+        let snapshot = DutyEditSnapshot(legs: draft, assignment: assignmentNumber)
+        guard editHistory.indices.contains(historyIndex),
+              editHistory[historyIndex] != snapshot else { return }
+        editHistory = Array(editHistory.prefix(historyIndex + 1))
+        editHistory.append(snapshot)
+        historyIndex = editHistory.count - 1
+    }
+
+    private func restoreEdit(at index: Int) {
+        guard editHistory.indices.contains(index) else { return }
+        focusedField = nil
+        historyIndex = index
+        draft = editHistory[index].legs
+        assignmentNumber = editHistory[index].assignment
     }
 
     private func assignmentContents(_ duty: FlightDuty) -> some View {
@@ -706,7 +761,6 @@ struct DutyDetailView: View {
     // Уровень 1: одна общая карточка полётного задания.
     private func dutyCard(_ duty: FlightDuty) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            dutyTitle(duty)
             dutyTotals(duty)
 
 
@@ -802,12 +856,6 @@ struct DutyDetailView: View {
             .minimumScaleFactor(0.85)
             .frame(maxWidth: .infinity)
 
-            HStack {
-                Spacer()
-                Text(legCountText(duty.legs.count))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -1263,6 +1311,11 @@ struct DutyDetailView: View {
 
 }
 
+
+private struct DutyEditSnapshot: Equatable {
+    let legs: [FlightLeg]
+    let assignment: String
+}
 
 private enum DutyFocusedField: Hashable {
     case assignment
