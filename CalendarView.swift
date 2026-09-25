@@ -2454,10 +2454,40 @@ struct CalendarDayTotalsCard: View {
             
             CalendarTotalRow(
                 title:
+                    "Лётная ночь",
+                value:
+                    timeText(
+                        totals.airNightMinutes
+                    )
+            )
+            
+            
+            CalendarTotalRow(
+                title:
                     "Рабочая ночь",
                 value:
                     timeText(
                         totals.workNightMinutes
+                    )
+            )
+            
+            
+            CalendarTotalRow(
+                title:
+                    "Рабочая ночь — рейсы",
+                value:
+                    timeText(
+                        totals.flightWorkNightMinutes
+                    )
+            )
+            
+            
+            CalendarTotalRow(
+                title:
+                    "Рабочая ночь — земля",
+                value:
+                    timeText(
+                        totals.groundWorkNightMinutes
                     )
             )
         }
