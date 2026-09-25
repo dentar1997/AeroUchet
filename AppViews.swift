@@ -307,9 +307,9 @@ struct DutiesListView: View {
                             .ignoresSafeArea()
                             .onTapGesture { selectedDuty = nil }
 
-                        DutyDetailView(duty: duty) {
+                        DutyDetailView(duty: duty, onClose: {
                             selectedDuty = nil
-                        }
+                        })
                         .environmentObject(store)
                         .frame(
                             width: min(geometry.size.width - 32, 1500),
@@ -415,10 +415,24 @@ struct DutyRow: View {
 // MARK: - Детали смены
 
 struct DutyDetailView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: AppStore
 
     let duty: FlightDuty
-    let onClose: () -> Void
+    let onClose: (() -> Void)?
+
+    init(duty: FlightDuty, onClose: (() -> Void)? = nil) {
+        self.duty = duty
+        self.onClose = onClose
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
+    }
 
     @State private var isEditing = false
     @State private var draft: [FlightLeg] = []
@@ -455,7 +469,7 @@ struct DutyDetailView: View {
 
         VStack(spacing: 0) {
             HStack(spacing: 14) {
-                Button("Закрыть", action: onClose)
+                Button("Закрыть") { close() }
                 Spacer()
                 if isEditing {
                     Button("Применить") { showReview = true }
@@ -547,7 +561,7 @@ struct DutyDetailView: View {
             Button("Отмена", role: .cancel) {}
             Button("Удалить задание", role: .destructive) {
                 store.deleteDutyLegs(ids: Set(current.legs.map(\.id)))
-                onClose()
+                close()
             }
         } message: {
             Text("Задание и \(legCountText(current.legs.count)) будут удалены.")
