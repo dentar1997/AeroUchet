@@ -1156,14 +1156,16 @@ private func buildAppDerivedData(
     workEvents: [WorkEvent]
 ) -> AppDerivedData {
     
-    let preparedFlights =
+    let preparedFlights:
+    [PreparedFlightLeg] =
     flights.compactMap {
+        flight -> PreparedFlightLeg? in
         
         guard
             let timeline =
                 makeValidatedTimeline(
                     for:
-                        $0
+                        flight
                 )
         else {
             return nil
@@ -1172,19 +1174,21 @@ private func buildAppDerivedData(
         
         return PreparedFlightLeg(
             flight:
-                $0,
+                flight,
             timeline:
                 timeline
         )
     }
     
     
-    let preparedWorkEvents =
+    let preparedWorkEvents:
+    [PreparedWorkEvent] =
     workEvents.compactMap {
+        event -> PreparedWorkEvent? in
         
         guard
             let range =
-                $0.validatedDateRange
+                event.validatedDateRange
         else {
             return nil
         }
@@ -1192,7 +1196,7 @@ private func buildAppDerivedData(
         
         return PreparedWorkEvent(
             event:
-                $0,
+                event,
             start:
                 range.start,
             end:
@@ -1552,15 +1556,18 @@ func buildFlightDuties(
     from flights: [FlightLeg]
 ) -> [FlightDuty] {
     
-    let prepared =
+    let prepared:
+    [(flight: FlightLeg, timeline: FlightTimeline)] =
     flights
         .compactMap {
+            flight
+            -> (flight: FlightLeg, timeline: FlightTimeline)? in
             
             guard
                 let timeline =
                     makeValidatedTimeline(
                         for:
-                            $0
+                            flight
                     )
             else {
                 return nil
@@ -1569,7 +1576,7 @@ func buildFlightDuties(
             
             return (
                 flight:
-                    $0,
+                    flight,
                 timeline:
                     timeline
             )
