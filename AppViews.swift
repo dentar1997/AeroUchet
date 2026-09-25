@@ -1016,7 +1016,7 @@ struct DutyDetailView: View {
     private func editableValue<Editor: View>(
         _ value: String,
         field: DutyFocusedField,
-        @ViewBuilder editor: () -> Editor
+        @ViewBuilder editor: @escaping () -> Editor
     ) -> some View {
         Group {
             if isEditing {
