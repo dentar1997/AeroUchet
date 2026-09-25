@@ -1329,20 +1329,50 @@ struct DutyDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .popover(isPresented: focusBinding(.time(index, point))) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text(title)
-                            .font(.subheadline.weight(.semibold))
-                        DatePicker(
-                            title,
-                            selection: timeBinding(index, point),
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
-                        .labelsHidden()
-                        .datePickerStyle(.compact)
-                        Button("Готово") { focusedField = nil }
+                            .font(.headline)
+
+                        HStack(alignment: .top, spacing: 18) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Дата")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                DatePicker(
+                                    "Дата",
+                                    selection: timeBinding(index, point),
+                                    displayedComponents: [.date]
+                                )
+                                .labelsHidden()
+                                .datePickerStyle(.graphical)
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Время")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                DatePicker(
+                                    "Время",
+                                    selection: timeBinding(index, point),
+                                    displayedComponents: [.hourAndMinute]
+                                )
+                                .labelsHidden()
+                                .datePickerStyle(.wheel)
+                                .frame(width: 180, height: 180)
+                                .clipped()
+                            }
+                        }
+
+                        HStack {
+                            Spacer()
+                            Button("Готово") { focusedField = nil }
+                                .buttonStyle(.borderedProminent)
+                        }
                     }
-                    .padding(12)
-                    .frame(minWidth: 290)
+                    .padding(14)
+                    .frame(minWidth: 560)
                     .fixedSize(horizontal: false, vertical: true)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
