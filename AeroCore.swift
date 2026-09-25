@@ -390,26 +390,41 @@ struct FlightDuty: Identifiable {
     
     
     var end: Date {
-        if let actual = timelines.last!.workEnd { return actual }
-        return moscowCalendar.date(byAdding: .minute, value: 30, to: timelines.last!.engineOff)!
+        moscowCalendar.date(byAdding: .minute, value: 30, to: timelines.last!.engineOff)!
     }
-    
-    
+
+    // One assignment may contain several work periods separated by rest.
+    var workIntervals: [(start: Date, end: Date)] {
+        timelines.indices.map { index in
+            let item = timelines[index]
+            let periodEnd: Date
+            if index == timelines.count - 1 {
+                periodEnd = end
+            } else if let actual = item.workEnd {
+                periodEnd = actual
+            } else {
+                let nextStart = timelines[index + 1].workStart
+                let connects = abs(signedMinutesBetween(item.engineOff, nextStart)) <= 5
+                periodEnd = connects ? item.engineOff :
+                    moscowCalendar.date(byAdding: .minute, value: 30, to: item.engineOff)!
+            }
+            return (start: item.workStart, end: max(item.workStart, periodEnd))
+        }
+    }
+
     var workMinutes: Int {
-        
-        minutesBetween(
-            start,
-            end
-        )
+        workIntervals.reduce(0) { $0 + minutesBetween($1.start, $1.end) }
     }
-    
-    
+
     var workNightMinutes: Int {
-        
-        nightMinutes(
-            from: start,
-            to: end
-        )
+        workIntervals.reduce(0) { $0 + nightMinutes(from: $1.start, to: $1.end) }
+    }
+
+    var restMinutes: Int {
+        guard workIntervals.count > 1 else { return 0 }
+        return zip(workIntervals, workIntervals.dropFirst()).reduce(0) { total, pair in
+            total + minutesBetween(pair.0.end, pair.1.start)
+        }
     }
     
     
@@ -1395,12 +1410,12 @@ private func buildAppDerivedData(
     
     
     for duty in duties {
-        
+        for period in duty.workIntervals {
         for day in touchedDays(
             from:
-                duty.start,
+                period.start,
             to:
-                duty.end
+                period.end
         ) {
             
             let key =
@@ -1415,9 +1430,9 @@ private func buildAppDerivedData(
             totals.flightWorkMinutes +=
             minutesInDay(
                 from:
-                    duty.start,
+                    period.start,
                 to:
-                    duty.end,
+                    period.end,
                 day:
                     day
             )
@@ -1426,9 +1441,9 @@ private func buildAppDerivedData(
             totals.flightWorkNightMinutes +=
             nightMinutesInDay(
                 from:
-                    duty.start,
+                    period.start,
                 to:
-                    duty.end,
+                    period.end,
                 day:
                     day
             )
@@ -1436,6 +1451,7 @@ private func buildAppDerivedData(
             
             dailyIndex[key] =
             totals
+        }
         }
     }
     
@@ -1534,118 +1550,41 @@ private func buildAppDerivedData(
 // MARK: - Полётные смены
 
 private func buildFlightDuties(
-    fromPrepared flights:
-    [PreparedFlightLeg]
+    fromPrepared flights: [PreparedFlightLeg]
 ) -> [FlightDuty] {
-    
-    let sorted =
-    flights.sorted {
-        $0.timeline.workStart
-        <
-        $1.timeline.workStart
-    }
-    
-    
-    guard !sorted.isEmpty
-    else {
-        return []
-    }
-    
-    
-    var result:
-    [FlightDuty] = []
-    
-    
-    var current:
-    [PreparedFlightLeg] = []
-    
-    
-    for item in sorted {
-        
-        if current.isEmpty {
-            
-            current =
-            [item]
-            
-            continue
-        }
-        
-        
-        let previous =
-        current.last!
-        
-        
-        let difference =
-        signedMinutesBetween(
-            previous.timeline.engineOff,
-            item.timeline.workStart
-        )
-        
-        
-        let routeContinues =
-        previous.flight.arrival
-        ==
-        item.flight.departure
-        
-        
-        if routeContinues
-            &&
-            difference >= -5
-            &&
-            difference <= 5 {
-            
-            current.append(
-                item
-            )
-            
-        } else {
-            
-            result.append(
-                FlightDuty(
-                    id:
-                        current.first!.flight.id,
-                    legs:
-                        current.map {
-                            $0.flight
-                        },
-                    timelines:
-                        current.map {
-                            $0.timeline
-                        }
-                )
-            )
-            
-            
-            current =
-            [item]
-        }
-    }
-    
-    
-    if !current.isEmpty {
-        
-        result.append(
-            FlightDuty(
-                id:
-                    current.first!.flight.id,
-                legs:
-                    current.map {
-                        $0.flight
-                    },
-                timelines:
-                    current.map {
-                        $0.timeline
-                    }
-            )
+    func duty(_ items: [PreparedFlightLeg]) -> FlightDuty {
+        let ordered = items.sorted { $0.timeline.workStart < $1.timeline.workStart }
+        return FlightDuty(
+            id: ordered[0].flight.id,
+            legs: ordered.map { $0.flight },
+            timelines: ordered.map { $0.timeline }
         )
     }
-    
-    
-    return result.sorted {
-        $0.start
-        >
-        $1.start
+
+    let assigned = flights.filter { !($0.flight.assignmentNumber ?? "").isEmpty }
+    let grouped = Dictionary(grouping: assigned) { $0.flight.assignmentNumber! }
+    var result = grouped.values.map(duty)
+
+    let legacy = flights
+        .filter { ($0.flight.assignmentNumber ?? "").isEmpty }
+        .sorted { $0.timeline.workStart < $1.timeline.workStart }
+    var current: [PreparedFlightLeg] = []
+
+    for item in legacy {
+        if let previous = current.last {
+            let gap = signedMinutesBetween(previous.timeline.engineOff, item.timeline.workStart)
+            let connects = previous.flight.arrival == item.flight.departure
+                && (-5...5).contains(gap)
+            if !connects {
+                result.append(duty(current))
+                current = []
+            }
+        }
+        current.append(item)
     }
+    if !current.isEmpty { result.append(duty(current)) }
+
+    return result.sorted { $0.start > $1.start }
 }
 
 
@@ -1964,12 +1903,12 @@ func buildDailyIndex(
     
     
     for duty in duties {
-        
+        for period in duty.workIntervals {
         for day in touchedDays(
             from:
-                duty.start,
+                period.start,
             to:
-                duty.end
+                period.end
         ) {
             
             let key =
@@ -1986,9 +1925,9 @@ func buildDailyIndex(
             totals.flightWorkMinutes +=
             minutesInDay(
                 from:
-                    duty.start,
+                    period.start,
                 to:
-                    duty.end,
+                    period.end,
                 day:
                     day
             )
@@ -1997,9 +1936,9 @@ func buildDailyIndex(
             totals.flightWorkNightMinutes +=
             nightMinutesInDay(
                 from:
-                    duty.start,
+                    period.start,
                 to:
-                    duty.end,
+                    period.end,
                 day:
                     day
             )
@@ -2007,6 +1946,7 @@ func buildDailyIndex(
             
             result[key] =
             totals
+        }
         }
     }
     
