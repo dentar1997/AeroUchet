@@ -412,6 +412,7 @@ struct DutyDetailView: View {
     @State private var assignmentNumber = ""
     @State private var showReview = false
     @State private var showDeleteConfirmation = false
+    @State private var focusedField: DutyFocusedField?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private let timeColumns = Array(
@@ -446,6 +447,7 @@ struct DutyDetailView: View {
                     Button("Применить") { showReview = true }
                         .disabled(!isValid || differences.isEmpty)
                     Button("Отмена") {
+                        focusedField = nil
                         isEditing = false
                         draft = []
                         original = []
@@ -692,21 +694,14 @@ struct DutyDetailView: View {
 
     private func dutyTitle(_ duty: FlightDuty) -> some View {
         ZStack {
-            Group {
-                if isEditing {
-                    HStack {
-                        Text("Полётное задание №")
-                        TextField("Номер", text: $assignmentNumber)
-                            .textInputAutocapitalization(.characters)
-                            .frame(width: 145)
-                    }
-                } else {
-                    Text(
-                        duty.firstLeg.assignmentNumber.map {
-                            "Полётное задание № \($0)"
-                        } ?? "Полётное задание"
-                    )
-                }
+            editableValue(
+                duty.firstLeg.assignmentNumber.map {
+                    "Полётное задание № \($0)"
+                } ?? "Полётное задание",
+                field: .assignment
+            ) {
+                TextField("Номер задания", text: $assignmentNumber)
+                    .textInputAutocapitalization(.characters)
             }
             .font(.title2.bold())
             .lineLimit(1)
@@ -715,7 +710,6 @@ struct DutyDetailView: View {
 
             HStack {
                 Spacer()
-
                 Text(legCountText(duty.legs.count))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -925,14 +919,10 @@ struct DutyDetailView: View {
 
     private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
         identityField("Рейс") {
-            if isEditing {
-                VStack(spacing: 2) {
-                    TextField("Рейс", text: $draft[index].flightNumber)
-                    TextField("Номер лега", text: legNumberBinding(index))
-                        .font(.caption2)
-                }
-            } else {
-                Text(leg.displayedLegNumber)
+            editableValue(leg.displayedLegNumber, field: .legNumber(index)) {
+                TextField("Номер лега", text: legNumberBinding(index))
+                    .multilineTextAlignment(.center)
+                    .keyboardType(.numberPad)
             }
         }
     }
@@ -977,56 +967,84 @@ struct DutyDetailView: View {
     }
 
     private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        Group {
-            if isEditing {
-                HStack(spacing: 4) {
-                    TextField("Вылет", text: $draft[index].departure)
-                        .frame(minWidth: 52)
-                    Image(systemName: "arrow.right")
-                        .font(.caption)
-                    TextField("Прилёт", text: $draft[index].arrival)
-                        .frame(minWidth: 52)
-                }
-            } else {
-                Text(
-                    "\(airportDisplayName(leg.departure)) → "
-                    + "\(airportDisplayName(leg.arrival))"
-                )
+        editableValue(
+            "\(airportDisplayName(leg.departure)) → \(airportDisplayName(leg.arrival))",
+            field: .route(index)
+        ) {
+            HStack(spacing: 8) {
+                TextField("Вылет", text: $draft[index].departure)
+                    .textInputAutocapitalization(.characters)
+                Image(systemName: "arrow.right")
+                TextField("Прилёт", text: $draft[index].arrival)
+                    .textInputAutocapitalization(.characters)
             }
         }
     }
 
     private func flightKindIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        Group {
-            if isEditing {
-                Picker("Вид полёта", selection: scheduleBinding(index)) {
-                    ForEach(FlightScheduleType.allCases) { kind in
-                        Text(kind.rawValue).tag(kind)
-                    }
+        editableValue((leg.scheduleType ?? .planned).rawValue,
+                      field: .flightKind(index)) {
+            Picker("Вид полёта", selection: scheduleBinding(index)) {
+                ForEach(FlightScheduleType.allCases) { kind in
+                    Text(kind.rawValue).tag(kind)
                 }
-                .labelsHidden()
-            } else {
-                Text((leg.scheduleType ?? .planned).rawValue)
             }
         }
     }
 
     private func aircraftIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        Group {
-            if isEditing {
-                TextField("Тип ВС", text: $draft[index].aircraft)
-            } else {
-                Text(leg.aircraft)
-            }
+        editableValue(leg.aircraft, field: .aircraft(index)) {
+            TextField("Тип ВС", text: $draft[index].aircraft)
         }
     }
 
     private func registrationIdentity(_ leg: FlightLeg, index: Int) -> some View {
+        editableValue(formattedRegistration(leg.registration),
+                      field: .registration(index)) {
+            TextField("Бортовой номер", text: $draft[index].registration)
+                .textInputAutocapitalization(.characters)
+        }
+    }
+
+    private func focusBinding(_ field: DutyFocusedField) -> Binding<Bool> {
+        Binding(
+            get: { focusedField == field },
+            set: { if !$0 { focusedField = nil } }
+        )
+    }
+
+    private func editableValue<Editor: View>(
+        _ value: String,
+        field: DutyFocusedField,
+        @ViewBuilder editor: () -> Editor
+    ) -> some View {
         Group {
             if isEditing {
-                TextField("Борт", text: $draft[index].registration)
+                Button { focusedField = field } label: {
+                    Text(value)
+                        .background(
+                            Color.accentColor.opacity(0.14),
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Нажмите, чтобы изменить")
+                .popover(isPresented: focusBinding(field)) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        editor()
+                        Button("Готово") { focusedField = nil }
+                    }
+                    .padding()
+                    .frame(minWidth: 270)
+                    .environment(\.locale, Locale(identifier: "ru_RU"))
+                    .environment(\.timeZone, moscowTimeZone)
+                }
             } else {
-                Text(formattedRegistration(leg.registration))
+                Text(value)
             }
         }
     }
@@ -1046,25 +1064,33 @@ struct DutyDetailView: View {
     ) -> some View {
         Group {
             if isEditing, let point {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    DatePicker(
-                        title,
-                        selection: timeBinding(index, point),
-                        displayedComponents: [.date, .hourAndMinute]
+                Button {
+                    focusedField = .time(index, point)
+                } label: {
+                    legValueCard(title: title, value: formatDateTime(
+                        point.date(in: times(for: draft[index]))
+                    ))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
                     )
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(uiColor: .systemGray4))
-                )
+                .buttonStyle(.plain)
+                .popover(isPresented: focusBinding(.time(index, point))) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        DatePicker(
+                            title,
+                            selection: timeBinding(index, point),
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .datePickerStyle(.graphical)
+                        Button("Готово") { focusedField = nil }
+                    }
+                    .padding()
+                    .frame(minWidth: 290)
+                    .environment(\.locale, Locale(identifier: "ru_RU"))
+                    .environment(\.timeZone, moscowTimeZone)
+                }
             } else {
                 legValueCard(title: title, value: value)
             }
@@ -1120,7 +1146,17 @@ struct DutyDetailView: View {
 }
 
 
-private enum DutyEditPoint: CaseIterable, Identifiable {
+private enum DutyFocusedField: Hashable {
+    case assignment
+    case legNumber(Int)
+    case route(Int)
+    case flightKind(Int)
+    case aircraft(Int)
+    case registration(Int)
+    case time(Int, DutyEditPoint)
+}
+
+private enum DutyEditPoint: CaseIterable, Identifiable, Hashable {
     case workStart, engineOn, takeoff, landing, engineOff, workEnd
 
     var id: Self { self }
