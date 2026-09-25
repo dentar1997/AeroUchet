@@ -419,6 +419,7 @@ struct DutyDetailView: View {
         if let number = duty.firstLeg.assignmentNumber {
             return store.duties.first { $0.firstLeg.assignmentNumber == number } ?? duty
         }
+
         return store.duties.first { $0.id == duty.id } ?? duty
     }
 
@@ -464,20 +465,19 @@ struct DutyDetailView: View {
         }
     }
 
+    // Уровень 1: одна общая карточка полётного задания.
     private func dutyCard(_ duty: FlightDuty) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             dutyTitle(duty)
 
             ForEach(duty.legs) { leg in
                 let index = duty.legs.firstIndex(where: { $0.id == leg.id })!
+
                 legCard(
                     leg,
                     workEnd: duty.workIntervals[index].end
                 )
             }
-
-            Divider()
-                .padding(.vertical, 2)
 
             dutyTotals(duty)
 
@@ -542,31 +542,29 @@ struct DutyDetailView: View {
         }
     }
 
+    // Итоги задания без отдельного заголовка.
+    // Общее время и ночь снова находятся в одной ячейке.
     private func dutyTotals(_ duty: FlightDuty) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Итого за полётную смену")
-                .font(.headline)
+        HStack(spacing: 8) {
+            dutyTotalCell(
+                title: "Рабочее время",
+                total: duty.workMinutes,
+                night: duty.workNightMinutes
+            )
 
-            HStack(spacing: 8) {
-                dutyTotalCell(
-                    title: "Рабочее время",
-                    total: duty.workMinutes,
-                    night: duty.workNightMinutes
-                )
+            dutyTotalCell(
+                title: "Полётное время",
+                total: duty.flightMinutes,
+                night: duty.flightNightMinutes
+            )
 
-                dutyTotalCell(
-                    title: "Полётное время",
-                    total: duty.flightMinutes,
-                    night: duty.flightNightMinutes
-                )
-
-                dutyTotalCell(
-                    title: "Лётное время",
-                    total: duty.airMinutes,
-                    night: duty.airNightMinutes
-                )
-            }
+            dutyTotalCell(
+                title: "Лётное время",
+                total: duty.airMinutes,
+                night: duty.airNightMinutes
+            )
         }
+        .padding(.top, 2)
     }
 
     private func dutyTotalCell(
@@ -574,75 +572,68 @@ struct DutyDetailView: View {
         total: Int,
         night: Int
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-                Text(timeText(total))
-                    .font(.subheadline.weight(.semibold))
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Ночь")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text(timeText(night))
-                    .font(.subheadline.weight(.semibold))
-            }
+            Text("\(timeText(total)) · ночь \(timeText(night))")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+                .fill(Color(uiColor: .systemGray4))
         )
         .accessibilityElement(children: .combine)
     }
 
+    // Уровень 2: отдельная карточка каждого лега.
     private func legCard(_ leg: FlightLeg, workEnd: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             legHeader(leg)
 
+            // Уровень 3: светлые карточки временных точек и времён лега.
             LazyVGrid(
                 columns: timeColumns,
                 alignment: .leading,
                 spacing: 8
             ) {
-                CompactFlightValue(
+                legValueCard(
                     title: "Начало работы",
                     value: formatDateTime(leg.timeline.workStart)
                 )
 
-                CompactFlightValue(
+                legValueCard(
                     title: "Включение двигателей",
                     value: formatDateTime(leg.timeline.engineOn)
                 )
 
-                CompactFlightValue(
+                legValueCard(
                     title: "Взлёт",
                     value: formatDateTime(leg.timeline.takeoff)
                 )
 
-                CompactFlightValue(
+                legValueCard(
                     title: "Завершение работы",
                     value: formatDateTime(workEnd)
                 )
 
-                CompactFlightValue(
+                legValueCard(
                     title: "Выключение двигателей",
                     value: formatDateTime(leg.timeline.engineOff)
                 )
 
-                CompactFlightValue(
+                legValueCard(
                     title: "Посадка",
                     value: formatDateTime(leg.timeline.landing)
                 )
 
-                CompactFlightValue(
+                legValueCard(
                     title: "Рабочее время",
                     value:
                         timeText(minutesBetween(leg.timeline.workStart, workEnd))
@@ -655,7 +646,7 @@ struct DutyDetailView: View {
                         )
                 )
 
-                CompactFlightValue(
+                legValueCard(
                     title: "Полётное время",
                     value:
                         timeText(leg.flightMinutes)
@@ -663,7 +654,7 @@ struct DutyDetailView: View {
                         + timeText(leg.flightNightMinutes)
                 )
 
-                CompactFlightValue(
+                legValueCard(
                     title: "Лётное время",
                     value:
                         timeText(leg.airMinutes)
@@ -684,31 +675,33 @@ struct DutyDetailView: View {
     }
 
     private func legHeader(_ leg: FlightLeg) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
+        HStack(alignment: .firstTextBaseline, spacing: 14) {
             Text("Рейс № \(leg.displayedLegNumber)")
-                .font(.title2.bold())
+                .font(.headline.weight(.bold))
                 .lineLimit(1)
 
             Text(
                 "\(airportDisplayName(leg.departure)) → "
                 + "\(airportDisplayName(leg.arrival))"
             )
-            .font(.subheadline.weight(.semibold))
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
             .lineLimit(1)
             .minimumScaleFactor(0.72)
             .layoutPriority(1)
 
             Text(leg.aircraft)
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             Text(formattedRegistration(leg.registration))
-                .font(.subheadline.weight(.semibold))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             Text((leg.scheduleType ?? .planned).rawValue)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             Spacer(minLength: 8)
@@ -752,6 +745,29 @@ struct DutyDetailView: View {
                 "Действия с рейсом \(leg.displayedLegNumber)"
             )
         }
+    }
+
+    private func legValueCard(
+        title: String,
+        value: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(uiColor: .systemGray4))
+        )
+        .accessibilityElement(children: .combine)
     }
 }
 
