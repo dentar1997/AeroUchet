@@ -409,6 +409,7 @@ struct DutyDetailView: View {
     @State private var editingFlight: FlightLeg?
     @State private var deletingFlight: FlightLeg?
     @State private var showDeleteConfirmation = false
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     private let timeColumns = Array(
         repeating: GridItem(.flexible(minimum: 0), spacing: 8),
@@ -563,6 +564,7 @@ struct DutyDetailView: View {
                 night: duty.airNightMinutes
             )
         }
+        .padding(.horizontal, 12)
         .padding(.top, 2)
     }
 
@@ -682,82 +684,99 @@ struct DutyDetailView: View {
     }
 
     private func legHeader(_ leg: FlightLeg) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text("Рейс № \(leg.displayedLegNumber)")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("Расчётное время")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Text(
-                        leg.calculatedMinutes.map(timeText)
-                        ?? "Ожидает норму"
-                    )
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                }
-
-                Menu {
-                    Button(
-                        "Редактировать",
-                        systemImage: "pencil"
-                    ) {
-                        editingFlight = leg
+        Group {
+            if sizeClass == .compact {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .top, spacing: 8) {
+                        flightNumber(leg)
+                        Spacer(minLength: 4)
+                        calculatedTime(leg)
+                        legActions(leg)
                     }
 
-                    Button(role: .destructive) {
-                        deletingFlight = leg
-                        showDeleteConfirmation = true
-                    } label: {
-                        Label(
-                            "Удалить лег",
-                            systemImage: "trash"
-                        )
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.title3)
-                        .padding(8)
+                    flightIdentity(leg)
                 }
-                .accessibilityLabel(
-                    "Действия с рейсом \(leg.displayedLegNumber)"
-                )
-            }
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    flightNumber(leg)
+                        .frame(width: 155, alignment: .leading)
 
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(
-                    "\(airportDisplayName(leg.departure)) → "
-                    + "\(airportDisplayName(leg.arrival))"
-                )
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.primary)
-                .layoutPriority(1)
+                    flightIdentity(leg)
+                        .frame(maxWidth: .infinity, alignment: .center)
 
-                Spacer(minLength: 4)
+                    calculatedTime(leg)
+                        .frame(width: 140, alignment: .trailing)
 
-                Text(leg.aircraft)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                Text(formattedRegistration(leg.registration))
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                Text((leg.scheduleType ?? .planned).rawValue)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    legActions(leg)
+                }
             }
         }
+    }
+
+    private func flightNumber(_ leg: FlightLeg) -> some View {
+        Text("Рейс № \(leg.displayedLegNumber)")
+            .font(.headline)
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+    }
+
+    private func flightIdentity(_ leg: FlightLeg) -> some View {
+        VStack(alignment: .center, spacing: 3) {
+            Text(
+                "\(airportDisplayName(leg.departure)) → "
+                + "\(airportDisplayName(leg.arrival))"
+            )
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.primary)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+
+            HStack(spacing: 8) {
+                Text(leg.aircraft)
+                Text(formattedRegistration(leg.registration))
+                Text((leg.scheduleType ?? .planned).rawValue)
+                    .foregroundStyle(.secondary)
+            }
+            .font(.caption)
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func calculatedTime(_ leg: FlightLeg) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text("Расчётное время")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(leg.calculatedMinutes.map(timeText) ?? "Ожидает норму")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+        }
+    }
+
+    private func legActions(_ leg: FlightLeg) -> some View {
+        Menu {
+            Button("Редактировать", systemImage: "pencil") {
+                editingFlight = leg
+            }
+
+            Button(role: .destructive) {
+                deletingFlight = leg
+                showDeleteConfirmation = true
+            } label: {
+                Label("Удалить лег", systemImage: "trash")
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.title3)
+                .padding(8)
+        }
+        .accessibilityLabel("Действия с рейсом \(leg.displayedLegNumber)")
     }
 
     private func legValueCard(
