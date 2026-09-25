@@ -351,7 +351,7 @@ struct DutyRow: View {
                 
                 
                 Text(
-                    "\(duty.firstLeg.assignmentNumber.map { "№ \($0) • " } ?? "")\(duty.legs.count) лег. • \(formatDate(duty.start))"
+                    "\(duty.firstLeg.assignmentNumber.map { "Полётное задание № \($0) • " } ?? "")\(duty.legs.count) лег. • \(formatDate(duty.start))"
                 )
                 .font(.caption)
                 .foregroundStyle(
@@ -410,7 +410,11 @@ struct DutyDetailView: View {
     @State private var deletingFlight: FlightLeg?
     @State private var showDeleteConfirmation = false
 
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
     private let columns = [GridItem(.adaptive(minimum: 175, maximum: 280), spacing: 8)]
+    private let timeColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
+    private let calculationColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 4)
 
     private var current: FlightDuty {
         if let number = duty.firstLeg.assignmentNumber {
@@ -423,7 +427,7 @@ struct DutyDetailView: View {
         let current = current
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(current.firstLeg.assignmentNumber.map { "Задание № \($0)" } ?? "Полётная смена")
+                Text(current.firstLeg.assignmentNumber.map { "Полётное задание № \($0)" } ?? "Полётное задание")
                     .font(.title2.bold())
                 Text(current.routeText)
                     .font(.subheadline)
@@ -460,7 +464,7 @@ struct DutyDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle(current.firstLeg.assignmentNumber.map { "Задание № \($0)" } ?? "Полётная смена")
+        .navigationTitle(current.firstLeg.assignmentNumber.map { "Полётное задание № \($0)" } ?? "Полётное задание")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editingFlight) { flight in
             AddFlightView(flight: flight) { updated in
@@ -508,15 +512,24 @@ struct DutyDetailView: View {
                 .accessibilityLabel("Действия с рейсом \(leg.displayedLegNumber)")
             }
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            Text("Временные точки").font(.subheadline.bold())
+            LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
                 CompactFlightValue(title: "Начало работы", value: formatDateTime(leg.timeline.workStart))
-                CompactFlightValue(title: "Включение", value: formatDateTime(leg.timeline.engineOn))
+                CompactFlightValue(title: "Включение двигателей", value: formatDateTime(leg.timeline.engineOn))
                 CompactFlightValue(title: "Взлёт", value: formatDateTime(leg.timeline.takeoff))
+                CompactFlightValue(title: "Завершение работы", value: formatDateTime(workEnd))
+                CompactFlightValue(title: "Выключение двигателей", value: formatDateTime(leg.timeline.engineOff))
                 CompactFlightValue(title: "Посадка", value: formatDateTime(leg.timeline.landing))
-                CompactFlightValue(title: "Выключение", value: formatDateTime(leg.timeline.engineOff))
-                CompactFlightValue(title: "Окончание работы", value: formatDateTime(workEnd))
-                CompactFlightValue(title: "Полётное", value: timeText(leg.flightMinutes))
-                CompactFlightValue(title: "Лётное", value: timeText(leg.airMinutes))
+            }
+
+            Text("Расчёт времени").font(.subheadline.bold())
+            if sizeClass == .compact {
+                ScrollView(.horizontal) {
+                    legCalculations(leg, workEnd: workEnd)
+                        .frame(width: 680)
+                }
+            } else {
+                legCalculations(leg, workEnd: workEnd)
             }
         }
         .padding(12)
@@ -524,6 +537,22 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 14)
                 .fill(Color(uiColor: .secondarySystemGroupedBackground))
         )
+    }
+
+    private func legCalculations(_ leg: FlightLeg, workEnd: Date) -> some View {
+        LazyVGrid(columns: calculationColumns, alignment: .leading, spacing: 8) {
+            CompactFlightValue(title: "Расчётное время", value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму")
+            CompactFlightValue(title: "Рабочее время",
+                               value: timeText(minutesBetween(leg.timeline.workStart, workEnd)))
+            CompactFlightValue(title: "Полётное время", value: timeText(leg.flightMinutes))
+            CompactFlightValue(title: "Лётное время", value: timeText(leg.airMinutes))
+
+            Color.clear.frame(height: 1).accessibilityHidden(true)
+            CompactFlightValue(title: "Рабочая ночь",
+                               value: timeText(nightMinutes(from: leg.timeline.workStart, to: workEnd)))
+            CompactFlightValue(title: "Полётная ночь", value: timeText(leg.flightNightMinutes))
+            CompactFlightValue(title: "Лётная ночь", value: timeText(leg.airNightMinutes))
+        }
     }
 }
 
