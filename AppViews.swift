@@ -925,12 +925,13 @@ struct DutyDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .popover(isPresented: focusBinding(.assignment)) {
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            editPopoverHeader("Номер задания")
+
                             TextField("Номер задания", text: $assignmentNumber)
                                 .textInputAutocapitalization(.characters)
-                            Button("Готово") { focusedField = nil }
                         }
-                        .padding()
+                        .padding(12)
                         .frame(minWidth: 270)
                         .environment(\.locale, Locale(identifier: "ru_RU"))
                     }
@@ -1149,7 +1150,11 @@ struct DutyDetailView: View {
 
     private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
         identityField("Рейс", field: .legNumber(index)) {
-            editableValue(leg.displayedLegNumber, field: .legNumber(index)) {
+            editableValue(
+                leg.displayedLegNumber,
+                title: "Рейс",
+                field: .legNumber(index)
+            ) {
                 TextField("Номер лега", text: legNumberBinding(index))
                     .multilineTextAlignment(.center)
                     .keyboardType(.numberPad)
@@ -1217,6 +1222,7 @@ struct DutyDetailView: View {
     private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {
         editableValue(
             "\(airportDisplayName(leg.departure)) → \(airportDisplayName(leg.arrival))",
+            title: "Маршрут",
             field: .route(index)
         ) {
             HStack(spacing: 8) {
@@ -1230,8 +1236,11 @@ struct DutyDetailView: View {
     }
 
     private func flightKindIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        editableValue((leg.scheduleType ?? .planned).rawValue,
-                      field: .flightKind(index)) {
+        editableValue(
+            (leg.scheduleType ?? .planned).rawValue,
+            title: "Вид полёта",
+            field: .flightKind(index)
+        ) {
             Picker("Вид полёта", selection: scheduleBinding(index)) {
                 ForEach(FlightScheduleType.allCases) { kind in
                     Text(kind.rawValue).tag(kind)
@@ -1241,14 +1250,21 @@ struct DutyDetailView: View {
     }
 
     private func aircraftIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        editableValue(leg.aircraft, field: .aircraft(index)) {
+        editableValue(
+            leg.aircraft,
+            title: "Тип ВС",
+            field: .aircraft(index)
+        ) {
             TextField("Тип ВС", text: $draft[index].aircraft)
         }
     }
 
     private func registrationIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        editableValue(formattedRegistration(leg.registration),
-                      field: .registration(index)) {
+        editableValue(
+            formattedRegistration(leg.registration),
+            title: "Бортовой номер",
+            field: .registration(index)
+        ) {
             TextField("Бортовой номер", text: $draft[index].registration)
                 .textInputAutocapitalization(.characters)
         }
@@ -1263,6 +1279,7 @@ struct DutyDetailView: View {
 
     private func editableValue<Editor: View>(
         _ value: String,
+        title: String,
         field: DutyFocusedField,
         @ViewBuilder editor: @escaping () -> Editor
     ) -> some View {
@@ -1286,11 +1303,11 @@ struct DutyDetailView: View {
                 .buttonStyle(.plain)
                 .accessibilityHint("Нажмите, чтобы изменить")
                 .popover(isPresented: focusBinding(field)) {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        editPopoverHeader(title)
                         editor()
-                        Button("Готово") { focusedField = nil }
                     }
-                    .padding()
+                    .padding(12)
                     .frame(minWidth: 270)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
@@ -1298,6 +1315,28 @@ struct DutyDetailView: View {
             } else {
                 Text(value)
             }
+        }
+    }
+
+    private func editPopoverHeader(_ title: String) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .padding(.leading, 6)
+
+            Spacer()
+
+            Button {
+                focusedField = nil
+            } label: {
+                Image(systemName: "checkmark")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.circle)
+            .controlSize(.small)
+            .padding(.trailing, 6)
+            .accessibilityLabel("Готово")
         }
     }
 
@@ -1329,72 +1368,43 @@ struct DutyDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .popover(isPresented: focusBinding(.time(index, point))) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            Text(title)
-                                .font(.subheadline.weight(.semibold))
+                    VStack(alignment: .leading, spacing: 6) {
+                        editPopoverHeader(title)
 
-                            Spacer()
+                        HStack(alignment: .top, spacing: 0) {
+                            DatePicker(
+                                "Дата",
+                                selection: timeBinding(index, point),
+                                displayedComponents: [.date]
+                            )
+                            .labelsHidden()
+                            .datePickerStyle(.graphical)
+                            .scaleEffect(0.74, anchor: .topLeading)
+                            .frame(
+                                width: 236,
+                                height: 184,
+                                alignment: .topLeading
+                            )
+                            .clipped()
 
-                            Button {
-                                focusedField = nil
-                            } label: {
-                                Image(systemName: "checkmark")
-                                    .font(.subheadline.weight(.semibold))
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .buttonBorderShape(.circle)
-                            .controlSize(.small)
-                            .accessibilityLabel("Готово")
-                        }
-
-                        HStack(alignment: .top, spacing: 10) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Дата")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-
-                                DatePicker(
-                                    "Дата",
-                                    selection: timeBinding(index, point),
-                                    displayedComponents: [.date]
-                                )
-                                .labelsHidden()
-                                .datePickerStyle(.graphical)
-                                .scaleEffect(0.78, anchor: .topLeading)
-                                .frame(
-                                    width: 250,
-                                    height: 190,
-                                    alignment: .topLeading
-                                )
-                                .clipped()
-                            }
-                            .frame(height: 212, alignment: .top)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Время")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-
-                                DatePicker(
-                                    "Время",
-                                    selection: timeBinding(index, point),
-                                    displayedComponents: [.hourAndMinute]
-                                )
-                                .labelsHidden()
-                                .datePickerStyle(.wheel)
-                                .scaleEffect(0.88)
-                                .frame(
-                                    width: 145,
-                                    height: 190
-                                )
-                                .clipped()
-                            }
-                            .frame(height: 212, alignment: .top)
+                            DatePicker(
+                                "Время",
+                                selection: timeBinding(index, point),
+                                displayedComponents: [.hourAndMinute]
+                            )
+                            .labelsHidden()
+                            .datePickerStyle(.wheel)
+                            .scaleEffect(0.84)
+                            .frame(
+                                width: 132,
+                                height: 184
+                            )
+                            .clipped()
                         }
                     }
-                    .padding(10)
-                    .frame(minWidth: 430)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(minWidth: 390)
                     .fixedSize(horizontal: false, vertical: true)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
