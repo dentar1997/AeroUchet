@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import UIKit
+import UniformTypeIdentifiers
 
 
 // MARK: - Главная
@@ -201,8 +202,13 @@ struct FlightsView: View {
     @State
     private var showAddFlight =
     false
-    
-    
+
+    @State private var showImport = false
+    @State private var showImportConfirmation = false
+    @State private var showImportResult = false
+    @State private var importMessage = ""
+    @State private var pendingFlights: [FlightLeg] = []
+
     var body: some View {
         
         NavigationStack {
@@ -253,7 +259,7 @@ struct FlightsView: View {
             
             
             .toolbar {
-                
+                Button("Импорт истории", systemImage: "square.and.arrow.down") { showImport = true }
                 Button {
                     
                     showAddFlight =
@@ -269,6 +275,34 @@ struct FlightsView: View {
             }
             
             
+            .fileImporter(isPresented: $showImport, allowedContentTypes: [UTType(filenameExtension: "xls") ?? .data]) { result in
+                do {
+                    let url = try result.get()
+                    let access = url.startAccessingSecurityScopedResource()
+                    defer { if access { url.stopAccessingSecurityScopedResource() } }
+                    pendingFlights = try PortalFlightHistory.parse(Data(contentsOf: url))
+                    showImportConfirmation = true
+                } catch {
+                    importMessage = error.localizedDescription
+                    showImportResult = true
+                }
+            }
+            .alert("Импорт истории рейсов", isPresented: $showImportConfirmation) {
+                Button("Отмена", role: .cancel) { pendingFlights = [] }
+                Button("Импортировать") {
+                    let added = store.importFlights(pendingFlights)
+                    importMessage = "Добавлено: \(added). Уже были в приложении: \(pendingFlights.count - added)."
+                    pendingFlights = []
+                    showImportResult = true
+                }
+            } message: {
+                let known = Set(store.flights.map { $0.historyKey })
+                let unique = Set(pendingFlights.map { $0.historyKey })
+                Text("В файле \(pendingFlights.count) рейсов. Новых: \(unique.subtracting(known).count). Повторная загрузка не создаст копии.")
+            }
+            .alert("История рейсов", isPresented: $showImportResult) {
+                Button("OK", role: .cancel) { }
+            } message: { Text(importMessage) }
             .sheet(
                 isPresented:
                     $showAddFlight
@@ -673,9 +707,7 @@ struct FlightRow: View {
             Spacer()
             
             
-            Text(
-                flight.plannedDeparture
-            )
+            Text(flight.portalTimes == nil ? flight.plannedDeparture : flight.engineOn)
             .bold()
         }
     }
@@ -780,12 +812,10 @@ struct FlightDetailView: View {
                     
                     
                     FlightInfoRow(
-                        name:
-                            "Плановое отправление",
-                        value:
-                            formatDateTime(
-                                current.timeline.plannedDeparture
-                            )
+                        name: "Плановое отправление",
+                        value: current.portalTimes == nil
+                            ? formatDateTime(current.timeline.plannedDeparture)
+                            : "Нет в выгрузке"
                     )
                     
                     
@@ -827,6 +857,9 @@ struct FlightDetailView: View {
                                 current.timeline.engineOff
                             )
                     )
+                    if let actualEnd = current.portalTimes?.workEnd {
+                        FlightInfoRow(name: "Завершение работы", value: formatDateTime(actualEnd))
+                    }
                 }
                 
                 
@@ -1206,7 +1239,7 @@ struct AddFlightView: View {
                     moscowCalendar
                     .startOfDay(
                         for:
-                            flight.timeline.plannedDeparture
+                            (flight.portalTimes == nil ? flight.timeline.plannedDeparture : flight.timeline.engineOn)
                     )
             )
             
@@ -1407,6 +1440,7 @@ struct AddFlightView: View {
                         displayedComponents:
                                 .date
                     )
+                    .disabled(flightToEdit?.portalTimes != nil)
                     
                     
                     HardwareKeyboardTextField(
@@ -1449,16 +1483,22 @@ struct AddFlightView: View {
                     "Рабочее время"
                 ) {
                     
-                    AeroTimePickerRow(
-                        title: "Плановое отправление",
-                        selection: $plannedDeparture
-                    )
+                    if flightToEdit?.portalTimes == nil {
+                        AeroTimePickerRow(
+                            title: "Плановое отправление",
+                            selection: $plannedDeparture
+                        )
+                    } else {
+                        Text("Плановое время отсутствует в истории портала")
+                            .foregroundStyle(.secondary)
+                    }
                     
                     
                     AeroTimePickerRow(
                         title: "Начало работы",
                         selection: $workStart
                     )
+                    .disabled(flightToEdit?.portalTimes != nil)
                 }
                 
                 
@@ -1468,24 +1508,28 @@ struct AddFlightView: View {
                         title: "Включение двигателей",
                         selection: $engineOn
                     )
+                    .disabled(flightToEdit?.portalTimes != nil)
                     
                     
                     AeroTimePickerRow(
                         title: "Взлёт",
                         selection: $takeoff
                     )
+                    .disabled(flightToEdit?.portalTimes != nil)
                     
                     
                     AeroTimePickerRow(
                         title: "Посадка",
                         selection: $landing
                     )
+                    .disabled(flightToEdit?.portalTimes != nil)
                     
                     
                     AeroTimePickerRow(
                         title: "Выключение двигателей",
                         selection: $engineOff
                     )
+                    .disabled(flightToEdit?.portalTimes != nil)
                 }
             }
             
@@ -1571,9 +1615,7 @@ struct AddFlightView: View {
                 registration
                 .uppercased(),
             plannedDeparture:
-                formatClock(
-                    plannedDeparture
-                ),
+                flightToEdit?.portalTimes == nil ? formatClock(plannedDeparture) : "",
             workStart:
                 formatClock(
                     workStart
@@ -1593,7 +1635,8 @@ struct AddFlightView: View {
             engineOff:
                 formatClock(
                     engineOff
-                )
+                ),
+            portalTimes: flightToEdit?.portalTimes
         )
         
         
