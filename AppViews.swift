@@ -285,31 +285,26 @@ struct FlightsView: View {
 // MARK: - Список смен
 
 struct DutiesListView: View {
-    
-    @ObservedObject
-    var store: AppStore
-    
-    
+    @ObservedObject var store: AppStore
+    @State private var selectedDuty: FlightDuty?
+
     var body: some View {
-        
-        List(
-            store.duties
-        ) { duty in
-            
-            NavigationLink {
-                
-                DutyDetailView(
-                    duty:
-                        duty
-                )
-                
+        List(store.duties) { duty in
+            Button {
+                selectedDuty = duty
             } label: {
-                
-                DutyRow(
-                    duty:
-                        duty
-                )
+                DutyRow(duty: duty)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+        }
+        .sheet(item: $selectedDuty) { duty in
+            NavigationStack {
+                DutyDetailView(duty: duty)
+                    .environmentObject(store)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
     }
 }
@@ -351,7 +346,7 @@ struct DutyRow: View {
                 
                 
                 Text(
-                    "\(duty.firstLeg.assignmentNumber.map { "Полётное задание № \($0) • " } ?? "")\(duty.legs.count) лег. • \(formatDate(duty.start))"
+                    "\(duty.firstLeg.assignmentNumber.map { "Задание на полёт № \($0) • " } ?? "")\(duty.legs.count) лег. • \(formatDate(duty.start))"
                 )
                 .font(.caption)
                 .foregroundStyle(
@@ -442,6 +437,9 @@ struct DutyDetailView: View {
         .navigationTitle("Полёты")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Закрыть") { dismiss() }
+            }
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if isEditing {
                     Button("Применить") { showReview = true }
@@ -461,13 +459,13 @@ struct DutyDetailView: View {
                     } label: {
                         Image(systemName: "wrench")
                     }
-                    .accessibilityLabel("Редактировать полётное задание")
+                    .accessibilityLabel("Редактировать задание на полёт")
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
                         Image(systemName: "trash")
                     }
-                    .accessibilityLabel("Удалить полётное задание")
+                    .accessibilityLabel("Удалить задание на полёт")
                 }
             }
         }
@@ -508,7 +506,7 @@ struct DutyDetailView: View {
                 }
             }
         }
-        .alert("Удалить полётное задание?", isPresented: $showDeleteConfirmation) {
+        .alert("Удалить задание на полёт?", isPresented: $showDeleteConfirmation) {
             Button("Отмена", role: .cancel) {}
             Button("Удалить задание", role: .destructive) {
                 store.deleteDutyLegs(ids: Set(current.legs.map(\.id)))
@@ -695,15 +693,46 @@ struct DutyDetailView: View {
     }
 
     private func dutyTitle(_ duty: FlightDuty) -> some View {
-        ZStack {
-            editableValue(
-                duty.firstLeg.assignmentNumber.map {
-                    "Полётное задание № \($0)"
-                } ?? "Полётное задание",
-                field: .assignment
-            ) {
-                TextField("Номер задания", text: $assignmentNumber)
-                    .textInputAutocapitalization(.characters)
+        let title = duty.firstLeg.assignmentNumber.map {
+            "Задание на полёт № \($0)"
+        } ?? "Задание на полёт"
+
+        return ZStack {
+            Group {
+                if isEditing {
+                    Button {
+                        focusedField = .assignment
+                    } label: {
+                        Text(title)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.accentColor.opacity(0.08))
+                            }
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                            }
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: focusBinding(.assignment)) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            TextField("Номер задания", text: $assignmentNumber)
+                                .textInputAutocapitalization(.characters)
+                            Button("Готово") { focusedField = nil }
+                        }
+                        .padding()
+                        .frame(minWidth: 270)
+                        .environment(\.locale, Locale(identifier: "ru_RU"))
+                    }
+                    .accessibilityHint("Нажмите, чтобы изменить номер задания")
+                } else {
+                    Text(title)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                }
             }
             .font(.title2.bold())
             .lineLimit(1)
