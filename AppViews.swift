@@ -1239,7 +1239,7 @@ struct AddFlightView: View {
                     moscowCalendar
                     .startOfDay(
                         for:
-                            flight.timeline.engineOn
+                            (flight.portalTimes == nil ? flight.timeline.plannedDeparture : flight.timeline.engineOn)
                     )
             )
             
