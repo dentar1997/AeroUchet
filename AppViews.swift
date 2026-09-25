@@ -921,36 +921,28 @@ struct DutyDetailView: View {
         .foregroundStyle(.primary)
         .lineLimit(1)
         .minimumScaleFactor(0.8)
+        .padding(.leading, 10)
     }
 
     private func flightIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        HStack(spacing: 6) {
-            if isEditing {
-                TextField("Вылет", text: $draft[index].departure)
-                    .frame(minWidth: 52)
-                Image(systemName: "arrow.right")
-                    .font(.caption)
-                TextField("Прилёт", text: $draft[index].arrival)
-                    .frame(minWidth: 52)
-                TextField("Тип ВС", text: $draft[index].aircraft)
-                    .frame(minWidth: 55)
-                TextField("Борт", text: $draft[index].registration)
-                    .frame(minWidth: 75)
-                Picker("Тип рейса", selection: scheduleBinding(index)) {
-                    ForEach(FlightScheduleType.allCases) { kind in
-                        Text(kind.rawValue).tag(kind)
+        Group {
+            if sizeClass == .compact {
+                VStack(alignment: .leading, spacing: 6) {
+                    routeIdentity(leg, index: index)
+                    HStack(spacing: 24) {
+                        flightKindIdentity(leg, index: index)
+                        aircraftIdentity(leg, index: index)
                     }
                 }
-                .labelsHidden()
             } else {
-                Text(
-                    "\(airportDisplayName(leg.departure)) → "
-                    + "\(airportDisplayName(leg.arrival))"
-                )
-                .layoutPriority(1)
-                Text("· \(leg.aircraft)")
-                Text("· \(formattedRegistration(leg.registration))")
-                Text("· \((leg.scheduleType ?? .planned).rawValue)")
+                HStack(spacing: 24) {
+                    routeIdentity(leg, index: index)
+                        .layoutPriority(1)
+                    Spacer(minLength: 12)
+                    flightKindIdentity(leg, index: index)
+                    Spacer(minLength: 12)
+                    aircraftIdentity(leg, index: index)
+                }
             }
         }
         .font(.caption.weight(.medium))
@@ -958,6 +950,56 @@ struct DutyDetailView: View {
         .lineLimit(1)
         .minimumScaleFactor(0.7)
         .frame(maxWidth: .infinity)
+    }
+
+    private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {
+        Group {
+            if isEditing {
+                HStack(spacing: 4) {
+                    TextField("Вылет", text: $draft[index].departure)
+                        .frame(minWidth: 52)
+                    Image(systemName: "arrow.right")
+                        .font(.caption)
+                    TextField("Прилёт", text: $draft[index].arrival)
+                        .frame(minWidth: 52)
+                }
+            } else {
+                Text(
+                    "\(airportDisplayName(leg.departure)) → "
+                    + "\(airportDisplayName(leg.arrival))"
+                )
+            }
+        }
+    }
+
+    private func flightKindIdentity(_ leg: FlightLeg, index: Int) -> some View {
+        Group {
+            if isEditing {
+                Picker("Тип рейса", selection: scheduleBinding(index)) {
+                    ForEach(FlightScheduleType.allCases) { kind in
+                        Text(kind.rawValue).tag(kind)
+                    }
+                }
+                .labelsHidden()
+            } else {
+                Text((leg.scheduleType ?? .planned).rawValue)
+            }
+        }
+    }
+
+    private func aircraftIdentity(_ leg: FlightLeg, index: Int) -> some View {
+        Group {
+            if isEditing {
+                HStack(spacing: 6) {
+                    TextField("Тип ВС", text: $draft[index].aircraft)
+                        .frame(minWidth: 55)
+                    TextField("Борт", text: $draft[index].registration)
+                        .frame(minWidth: 75)
+                }
+            } else {
+                Text("\(leg.aircraft)  \(formattedRegistration(leg.registration))")
+            }
+        }
     }
 
     private func calculatedTime(_ leg: FlightLeg) -> some View {
