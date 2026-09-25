@@ -424,11 +424,7 @@ struct DutyDetailView: View {
         let current = current
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text(current.firstLeg.assignmentNumber.map { "Полётное задание № \($0)" } ?? "Полётное задание")
-                    .font(.title2.bold())
-                Text(current.routeText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                dutyHeader(current)
 
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                     CompactFlightValue(title: "Начало смены", value: formatDateTime(current.start))
@@ -458,7 +454,7 @@ struct DutyDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle(current.firstLeg.assignmentNumber.map { "Полётное задание № \($0)" } ?? "Полётное задание")
+        .navigationTitle("Полёты")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editingFlight) { flight in
             AddFlightView(flight: flight) { updated in
@@ -479,13 +475,62 @@ struct DutyDetailView: View {
         }
     }
 
+    private func dutyHeader(_ duty: FlightDuty) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Полётное задание")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(duty.firstLeg.assignmentNumber.map { "№ \($0)" } ?? "Без номера")
+                        .font(.title2.bold())
+                }
+
+                Spacer()
+
+                Label("\(duty.legs.count) лег.", systemImage: "airplane")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(dutyAirportRoute(duty))
+                .font(.title3.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Label(formatDate(duty.start), systemImage: "calendar")
+                Text("•")
+                Text("\(formatClock(duty.start)) – \(formatClock(duty.end))")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func dutyAirportRoute(_ duty: FlightDuty) -> String {
+        guard let first = duty.legs.first else { return duty.routeText }
+        let codes = [first.departure] + duty.legs.map(\.arrival)
+        return codes.map(airportDisplayName).joined(separator: "  →  ")
+    }
+
     private func legCard(_ leg: FlightLeg, workEnd: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Рейс № \(leg.displayedLegNumber)  \(leg.departure) → \(leg.arrival)")
+                    Text("Рейс № \(leg.displayedLegNumber)")
                         .font(.headline)
-                    Text("\((leg.scheduleType ?? .planned).rawValue) • \(leg.aircraft) • \(leg.registration)")
+                    Text("\(airportDisplayName(leg.departure)) → \(airportDisplayName(leg.arrival))")
+                        .font(.subheadline.weight(.semibold))
+                    Text("\((leg.scheduleType ?? .planned).rawValue) • \(leg.aircraft) • \(formattedRegistration(leg.registration))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -526,13 +571,69 @@ struct DutyDetailView: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: 16)
                 .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         )
     }
 
 
 }
+
+private func airportDisplayName(_ rawCode: String) -> String {
+    let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    let baseCode = code.split(separator: "/", maxSplits: 1).first.map(String.init) ?? code
+
+    let names: [String: String] = [
+        "SVO": "Шереметьево",
+        "GYD": "Баку",
+        "MQF": "Магнитогорск",
+        "BAX": "Барнаул",
+        "OVB": "Новосибирск",
+        "AER": "Сочи",
+        "KGD": "Калининград",
+        "LED": "Санкт-Петербург",
+        "KZN": "Казань",
+        "SVX": "Екатеринбург",
+        "UFA": "Уфа",
+        "CEK": "Челябинск",
+        "OMS": "Омск",
+        "KUF": "Самара",
+        "GOJ": "Нижний Новгород",
+        "MRV": "Минеральные Воды",
+        "MCX": "Махачкала",
+        "VVO": "Владивосток",
+        "KHV": "Хабаровск",
+        "IKT": "Иркутск",
+        "UUS": "Южно-Сахалинск",
+        "PKC": "Петропавловск-Камчатский"
+    ]
+
+    guard let name = names[baseCode] else { return code }
+    return "\(name) (\(code))"
+}
+
+private func formattedRegistration(_ rawValue: String) -> String {
+    let raw = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    let compact = raw.replacingOccurrences(of: "-", with: "")
+
+    if compact.hasPrefix("RA") {
+        let number = String(compact.dropFirst(2))
+        if !number.isEmpty && number.allSatisfy(\.isNumber) {
+            return "RA-\(number)"
+        }
+    }
+
+    if compact.count == 5 && compact.allSatisfy(\.isNumber) {
+        return "RA-\(compact)"
+    }
+
+    return raw
+}
+
 
 private struct CompactFlightValue: View {
     let title: String
