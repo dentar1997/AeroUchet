@@ -883,21 +883,39 @@ struct DutyDetailView: View {
     private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
         Group {
             if sizeClass == .compact {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
+                VStack(spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
                         flightNumber(leg, index: index)
-                        Spacer(minLength: 8)
+                            .frame(maxWidth: .infinity)
                         calculatedTime(leg)
                             .frame(width: 155)
                     }
-                    flightIdentity(leg, index: index)
+
+                    identityField("Маршрут") {
+                        routeIdentity(leg, index: index)
+                    }
+
+                    HStack(alignment: .top, spacing: 8) {
+                        flightKindField(leg, index: index)
+                        aircraftField(leg, index: index)
+                        registrationField(leg, index: index)
+                    }
                 }
             } else {
-                HStack(alignment: .center, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
                     flightNumber(leg, index: index)
-                        .frame(width: 155, alignment: .leading)
-                    flightIdentity(leg, index: index)
-                        .frame(maxWidth: .infinity)
+                        .frame(width: 95)
+                    identityField("Маршрут") {
+                        routeIdentity(leg, index: index)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .layoutPriority(1)
+                    flightKindField(leg, index: index)
+                        .frame(width: 95)
+                    aircraftField(leg, index: index)
+                        .frame(width: 80)
+                    registrationField(leg, index: index)
+                        .frame(width: 110)
                     calculatedTime(leg)
                         .frame(width: 155)
                 }
@@ -906,79 +924,47 @@ struct DutyDetailView: View {
     }
 
     private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
-        Group {
+        identityField("Рейс") {
             if isEditing {
-                VStack(alignment: .leading, spacing: 3) {
-                    TextField("Номер рейса", text: $draft[index].flightNumber)
+                VStack(spacing: 2) {
+                    TextField("Рейс", text: $draft[index].flightNumber)
                     TextField("Номер лега", text: legNumberBinding(index))
-                        .font(.caption)
+                        .font(.caption2)
                 }
             } else {
-                Text("Рейс № \(leg.displayedLegNumber)")
+                Text(leg.displayedLegNumber)
             }
         }
-        .font(.headline)
-        .foregroundStyle(.primary)
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
-        .padding(.leading, 10)
     }
 
-    private func flightIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        Group {
-            if sizeClass == .compact {
-                VStack(alignment: .leading, spacing: 8) {
-                    identityField("Маршрут") {
-                        routeIdentity(leg, index: index)
-                    }
-                    HStack(alignment: .top, spacing: 18) {
-                        identityField("Тип ВС") {
-                            aircraftIdentity(leg, index: index)
-                        }
-                        identityField("Вид полёта") {
-                            flightKindIdentity(leg, index: index)
-                        }
-                        identityField("Бортовой номер") {
-                            registrationIdentity(leg, index: index)
-                        }
-                    }
-                }
-            } else {
-                HStack(alignment: .top, spacing: 18) {
-                    identityField("Тип ВС") {
-                        aircraftIdentity(leg, index: index)
-                    }
-                    .frame(width: 68, alignment: .leading)
-
-                    identityField("Маршрут") {
-                        routeIdentity(leg, index: index)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .layoutPriority(1)
-
-                    identityField("Вид полёта") {
-                        flightKindIdentity(leg, index: index)
-                    }
-                    .frame(width: 86, alignment: .leading)
-
-                    identityField("Бортовой номер") {
-                        registrationIdentity(leg, index: index)
-                    }
-                    .frame(width: 100, alignment: .leading)
-                }
-            }
+    private func flightKindField(_ leg: FlightLeg, index: Int) -> some View {
+        identityField("Вид полёта") {
+            flightKindIdentity(leg, index: index)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func aircraftField(_ leg: FlightLeg, index: Int) -> some View {
+        identityField("Тип ВС") {
+            aircraftIdentity(leg, index: index)
+        }
+    }
+
+    private func registrationField(_ leg: FlightLeg, index: Int) -> some View {
+        identityField("Бортовой номер") {
+            registrationIdentity(leg, index: index)
+        }
     }
 
     private func identityField<Content: View>(
         _ title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .center, spacing: 3) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
 
             content()
                 .font(.subheadline.weight(.semibold))
@@ -986,6 +972,8 @@ struct DutyDetailView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {
