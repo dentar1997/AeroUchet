@@ -761,6 +761,18 @@ final class AppStore: ObservableObject {
     }
     
     
+    // One assignment is committed in a single published change.
+    func updateDutyLegs(_ updated: [FlightLeg]) {
+        let replacements = Dictionary(
+            uniqueKeysWithValues: updated.map { ($0.id, $0) }
+        )
+        flights = flights.map { replacements[$0.id] ?? $0 }
+    }
+
+    func deleteDutyLegs(ids: Set<UUID>) {
+        flights.removeAll { ids.contains($0.id) }
+    }
+
     func addWorkEvent(
         _ event: WorkEvent
     ) {
