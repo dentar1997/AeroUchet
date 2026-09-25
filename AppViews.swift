@@ -289,22 +289,49 @@ struct DutiesListView: View {
     @State private var selectedDuty: FlightDuty?
 
     var body: some View {
-        List(store.duties) { duty in
-            Button {
-                selectedDuty = duty
-            } label: {
-                DutyRow(duty: duty)
-                    .contentShape(Rectangle())
+        ZStack {
+            List(store.duties) { duty in
+                Button {
+                    selectedDuty = duty
+                } label: {
+                    DutyRow(duty: duty)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+
+            if let duty = selectedDuty {
+                DutyAssignmentOverlay(duty: duty, store: store) {
+                    selectedDuty = nil
+                }
+                .zIndex(1)
+            }
         }
-        .sheet(item: $selectedDuty) { duty in
-            NavigationStack {
-                DutyDetailView(duty: duty)
+    }
+}
+
+private struct DutyAssignmentOverlay: View {
+    let duty: FlightDuty
+    @ObservedObject var store: AppStore
+    let onClose: () -> Void
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = min(geometry.size.width - 32, 1500)
+            let rests = max(0, duty.legs.count - 1)
+            let desiredHeight = CGFloat(170 + duty.legs.count * 215 + rests * 64)
+            let height = min(geometry.size.height - 24, desiredHeight)
+
+            ZStack {
+                Color.black.opacity(0.65)
+                    .ignoresSafeArea()
+                    .onTapGesture(perform: onClose)
+
+                DutyDetailView(duty: duty, onClose: onClose)
                     .environmentObject(store)
+                    .frame(width: width, height: height)
             }
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }
@@ -400,6 +427,20 @@ struct DutyDetailView: View {
     @EnvironmentObject private var store: AppStore
 
     let duty: FlightDuty
+    let onClose: (() -> Void)?
+
+    init(duty: FlightDuty, onClose: (() -> Void)? = nil) {
+        self.duty = duty
+        self.onClose = onClose
+    }
+
+    private func close() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
+    }
 
     @State private var isEditing = false
     @State private var draft: [FlightLeg] = []
@@ -434,23 +475,10 @@ struct DutyDetailView: View {
     var body: some View {
         let current = current
 
-        ScrollView {
-            dutyCard(isEditing && isValid
-                     ? FlightDuty(id: current.id, legs: updatedLegs)
-                     : current)
-                .frame(maxWidth: 1100, alignment: .leading)
-                .padding(16)
-                .frame(maxWidth: .infinity)
-        }
-        .environment(\.timeZone, moscowTimeZone)
-        .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Закрыть") { dismiss() }
-            }
-            ToolbarItemGroup(placement: .topBarTrailing) {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Button("Закрыть") { close() }
+                Spacer()
                 if isEditing {
                     Button("Применить") { showReview = true }
                         .disabled(!isValid || differences.isEmpty)
@@ -478,7 +506,28 @@ struct DutyDetailView: View {
                     .accessibilityLabel("Удалить задание на полёт")
                 }
             }
+            .buttonStyle(.bordered)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
+            ScrollView {
+                dutyCard(isEditing && isValid
+                         ? FlightDuty(id: current.id, legs: updatedLegs)
+                         : current)
+                    .padding(16)
+                    .frame(maxWidth: .infinity)
+            }
         }
+        .environment(\.timeZone, moscowTimeZone)
+        .background(
+            Color(uiColor: .secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: 20)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20))
         .sheet(isPresented: $showReview) {
             NavigationStack {
                 ScrollView {
@@ -520,7 +569,7 @@ struct DutyDetailView: View {
             Button("Отмена", role: .cancel) {}
             Button("Удалить задание", role: .destructive) {
                 store.deleteDutyLegs(ids: Set(current.legs.map(\.id)))
-                dismiss()
+                close()
             }
         } message: {
             Text("Задание и \(legCountText(current.legs.count)) будут удалены.")
@@ -665,15 +714,6 @@ struct DutyDetailView: View {
                 }
             }
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
-        )
     }
 
     private func restCard(start: Date, end: Date) -> some View {
