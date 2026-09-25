@@ -49,26 +49,43 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             analyze
 
-      - name: Inspect simulator build products
+      - name: Package simulator app
         run: |
-          find "$RUNNER_TEMP/AeroUchetDerivedData/Build/Products/Debug-iphonesimulator" -maxdepth 2 -print | sort
-
-      - name: Package simulator app when available
-        id: package_app
-        run: |
-          APP_PATH="$(find "$RUNNER_TEMP/AeroUchetDerivedData/Build/Products/Debug-iphonesimulator" -type d -name '*.app' -print -quit)"
-          if [ -n "$APP_PATH" ]; then
-            echo "Simulator app: $APP_PATH"
-            ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/AeroUchet-Simulator.zip"
-            echo "app_found=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No .app wrapper was emitted by the Swift Playgrounds package build."
-            echo "The compile check still passed; simulator packaging will be handled separately."
-            echo "app_found=false" >> "$GITHUB_OUTPUT"
+          PRODUCTS="$RUNNER_TEMP/AeroUchetDerivedData/Build/Products/Debug-iphonesimulator"
+          APP_PATH="$(find "$PRODUCTS" -type d -name '*.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            EXECUTABLE="$PRODUCTS/АэроУчёт"
+            test -f "$EXECUTABLE"
+            APP_PATH="$RUNNER_TEMP/АэроУчёт.app"
+            mkdir -p "$APP_PATH"
+            cp "$EXECUTABLE" "$APP_PATH/АэроУчёт"
+            chmod +x "$APP_PATH/АэроУчёт"
+            cat > "$APP_PATH/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key><string>ru</string>
+            <key>CFBundleDisplayName</key><string>АэроУчёт</string>
+            <key>CFBundleExecutable</key><string>АэроУчёт</string>
+            <key>CFBundleIdentifier</key><string>local.aerouchet.simulator</string>
+            <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+            <key>CFBundleName</key><string>АэроУчёт</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>LSRequiresIPhoneOS</key><true/>
+            <key>MinimumOSVersion</key><string>26.0</string>
+            <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+          </dict>
+          </plist>
+          PLIST
+            plutil -lint "$APP_PATH/Info.plist"
           fi
+          echo "Simulator app: $APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/AeroUchet-Simulator.zip"
 
       - name: Upload simulator app
-        if: steps.package_app.outputs.app_found == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: AeroUchet-Simulator
