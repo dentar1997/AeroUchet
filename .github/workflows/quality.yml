@@ -1,36 +1,35 @@
-name: PR61 Apply patch
+name: AeroUchet Quality
 
 on:
-  push:
+  pull_request:
     branches:
-      - ui/pr61-time-editor-overlay-and-font
+      - main
+  workflow_dispatch:
 
-permissions:
-  contents: write
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  patch:
-    runs-on: ubuntu-latest
+  quality:
+    name: Swift quality checks
+    runs-on: macos-26
+    timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ui/pr61-time-editor-overlay-and-font
-          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      - name: Apply patch
+      - name: Install quality tools
         run: |
-          python3 .github/pr61_fix_patch.py
-          python3 .github/pr61_patch.py
+          brew install swiftlint swiftformat
 
-      - name: Restore workflow and remove patch scripts
+      - name: SwiftLint
+        continue-on-error: true
         run: |
-          git show origin/main:.github/workflows/quality.yml > .github/workflows/quality.yml
-          rm .github/pr61_patch.py .github/pr61_fix_patch.py
+          swiftlint lint --config .swiftlint.yml
 
-      - name: Commit
+      - name: SwiftFormat lint
+        continue-on-error: true
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add AppViews.swift AppVersion.swift Package.swift .github/workflows/quality.yml .github/pr61_patch.py .github/pr61_fix_patch.py
-          git commit -m "[PR #61] Fix time editor overlay dismissal and font stability"
-          git push origin HEAD:ui/pr61-time-editor-overlay-and-font
+          swiftformat --lint . --exclude .swiftpm,.build
