@@ -1394,18 +1394,28 @@ struct DutyDetailView: View {
         maxLength: Int? = nil
     ) -> some View {
         ZStack {
-            Text(prefix + text.wrappedValue)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
-                .background {
-                    if isActive.wrappedValue {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.accentColor.opacity(0.22))
-                    }
+            HStack(spacing: 0) {
+                if !prefix.isEmpty {
+                    Text(prefix)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
                 }
+
+                Text(text.wrappedValue)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 2)
+                    .background {
+                        if isActive.wrappedValue {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.accentColor.opacity(0.22))
+                        }
+                    }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
 
             InlineSelectAllTextField(
                 text: text,
