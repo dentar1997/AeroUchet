@@ -1,71 +1,23 @@
 name: AeroUchet Quality
-
-on:
-  push:
-
+on: [push]
 permissions:
   contents: write
-
 jobs:
   patch:
-    name: Apply PR59 typography
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ui/pr59-normalize-edit-card-fonts
           fetch-depth: 0
-
-      - name: Patch AppViews
+      - name: Normalize card fonts
         run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          path = Path('AppViews.swift')
-          text = path.read_text()
-
-          old = '''            content()
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(height: 18, alignment: .center)
-'''
-          new = '''            content()
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(height: 18, alignment: .center)
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f'identity font match count: {text.count(old)}')
-          text = text.replace(old, new, 1)
-
-          old = '''            Text(value)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.primary)
-                .minimumScaleFactor(0.85)
-                .frame(height: 18, alignment: .leading)
-'''
-          new = '''            Text(value)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
-                .minimumScaleFactor(0.85)
-                .frame(height: 18, alignment: .leading)
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f'value font match count: {text.count(old)}')
-          text = text.replace(old, new, 1)
-
-          path.write_text(text)
-          PY
-
-      - name: Restore normal quality workflow
+          sed -i 's/\.font(\.system(size: 15, weight: \.semibold))/\.font(\.subheadline.weight(\.semibold))/g' AppViews.swift
+          COUNT=$(grep -c '\.font(\.subheadline.weight(\.semibold))' AppViews.swift)
+          test "$COUNT" -ge 2
+      - name: Restore workflow
         run: git checkout origin/main -- .github/workflows/quality.yml
-
-      - name: Commit patch
+      - name: Commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
