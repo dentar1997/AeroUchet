@@ -567,6 +567,15 @@ struct DutyDetailView: View {
         } ?? duty
     }
 
+    private var editorCoversHeader: Bool {
+        switch focusedField {
+        case .time, .calculatedTime, .route:
+            return true
+        default:
+            return false
+        }
+    }
+
     var body: some View {
         let current = current
 
@@ -574,16 +583,19 @@ struct DutyDetailView: View {
             assignmentHeader(current)
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
-                .zIndex(focusedField == .assignment ? 1000 : 1)
+                .zIndex(editorCoversHeader ? 0 : 1)
+                .allowsHitTesting(!editorCoversHeader)
 
             if scrollsAsPage {
                 assignmentContents(current)
+                    .zIndex(editorCoversHeader ? 100 : 0)
             } else {
                 ScrollView {
                     assignmentContents(current)
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.basedOnSize)
+                .zIndex(editorCoversHeader ? 100 : 0)
             }
         }
         .onChange(of: draft) { _ in recordEdit() }
@@ -826,9 +838,33 @@ struct DutyDetailView: View {
 
     private func legNumberBinding(_ index: Int) -> Binding<String> {
         Binding(
-            get: { draft[index].legNumber ?? "" },
+            get: { draft[index].legNumber ?? draft[index].flightNumber },
             set: { draft[index].legNumber = $0.isEmpty ? nil : $0 }
         )
+    }
+
+    private func registrationDigitsBinding(_ index: Int) -> Binding<String> {
+        Binding(
+            get: {
+                let compact = draft[index].registration
+                    .uppercased()
+                    .replacingOccurrences(of: "-", with: "")
+                if compact.hasPrefix("RA") {
+                    return String(compact.dropFirst(2).filter(\.isNumber).prefix(5))
+                }
+                return String(compact.filter(\.isNumber).prefix(5))
+            },
+            set: { newValue in
+                let digits = String(newValue.filter(\.isNumber).prefix(5))
+                draft[index].registration = "RA-" + digits
+            }
+        )
+    }
+
+    private func toggleScheduleType(_ index: Int) {
+        let current = draft[index].scheduleType ?? .planned
+        draft[index].scheduleType = current == .planned ? .unscheduled : .planned
+        focusedField = nil
     }
 
     private func scheduleBinding(_ index: Int) -> Binding<FlightScheduleType> {
@@ -938,61 +974,49 @@ struct DutyDetailView: View {
             "Задание на полёт № \($0)"
         } ?? "Задание на полёт"
 
-        return ZStack {
-            Group {
-                if isEditing {
-                    ZStack {
-                        Button {
-                            focusedField = .assignment
-                        } label: {
-                            Text(title)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background {
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color.accentColor.opacity(0.08))
-                                }
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-                                }
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .overlay(alignment: .top) {
-                        if focusedField == .assignment {
-                            floatingEditor(width: 230) {
-                                VStack(alignment: .leading, spacing: 5) {
-                                    editPopoverHeader(
-                                        "Задание на полёт №",
-                                        extraHorizontalInset: 0
-                                    )
+        return Group {
+            if isEditing {
+                HStack(spacing: 4) {
+                    Text("Задание на полёт №")
 
-                                    TextField("Номер", text: $assignmentNumber)
-                                        .textInputAutocapitalization(.characters)
-                                        .textFieldStyle(.plain)
-                                        .font(.headline)
-                                        .multilineTextAlignment(.leading)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                            .offset(y: 42)
-                        }
+                    if focusedField == .assignment {
+                        InlineSelectAllTextField(
+                            text: $assignmentNumber,
+                            isActive: focusBinding(.assignment),
+                            keyboardType: .numberPad,
+                            capitalization: .none,
+                            textAlignment: .center,
+                            font: .boldSystemFont(ofSize: 22)
+                        )
+                        .frame(width: 112, height: 30)
+                    } else {
+                        Text(assignmentNumber.isEmpty ? "—" : assignmentNumber)
                     }
-                    .zIndex(focusedField == .assignment ? 1000 : 0)
-                    .accessibilityHint("Нажмите, чтобы изменить номер задания")
-                } else {
-                    Text(title)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.accentColor.opacity(0.08))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    focusedField = .assignment
+                }
+                .accessibilityHint("Нажмите, чтобы изменить номер задания")
+            } else {
+                Text(title)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
             }
-            .font(.title2.bold())
-            .lineLimit(1)
-            .minimumScaleFactor(0.85)
-            .frame(maxWidth: .infinity)
         }
+        .font(.title2.bold())
+        .lineLimit(1)
+        .minimumScaleFactor(0.85)
         .frame(maxWidth: .infinity)
     }
 
@@ -1225,33 +1249,67 @@ struct DutyDetailView: View {
 
     private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
         identityField("Рейс", field: .legNumber(index)) {
-            editableValue(
-                leg.displayedLegNumber,
-                title: "Рейс",
-                field: .legNumber(index)
-            ) {
-                TextField("Номер лега", text: legNumberBinding(index))
-                    .multilineTextAlignment(.leading)
-                    .keyboardType(.numberPad)
+            if focusedField == .legNumber(index) {
+                InlineSelectAllTextField(
+                    text: legNumberBinding(index),
+                    isActive: focusBinding(.legNumber(index)),
+                    keyboardType: .numbersAndPunctuation,
+                    capitalization: .allCharacters,
+                    textAlignment: .center,
+                    font: .systemFont(ofSize: 15, weight: .semibold)
+                )
+                .frame(maxWidth: .infinity, minHeight: 22)
+            } else {
+                Text(leg.displayedLegNumber)
             }
         }
     }
 
     private func flightKindField(_ leg: FlightLeg, index: Int) -> some View {
         identityField("Вид полёта", field: .flightKind(index)) {
-            flightKindIdentity(leg, index: index)
+            Text((leg.scheduleType ?? .planned).rawValue)
         }
     }
 
     private func aircraftField(_ leg: FlightLeg, index: Int) -> some View {
         identityField("Тип ВС", field: .aircraft(index)) {
-            aircraftIdentity(leg, index: index)
+            if focusedField == .aircraft(index) {
+                InlineSelectAllTextField(
+                    text: $draft[index].aircraft,
+                    isActive: focusBinding(.aircraft(index)),
+                    keyboardType: .default,
+                    capitalization: .allCharacters,
+                    textAlignment: .center,
+                    font: .systemFont(ofSize: 15, weight: .semibold)
+                )
+                .frame(maxWidth: .infinity, minHeight: 22)
+            } else {
+                Text(leg.aircraft)
+            }
         }
     }
 
     private func registrationField(_ leg: FlightLeg, index: Int) -> some View {
         identityField("Бортовой номер", field: .registration(index)) {
-            registrationIdentity(leg, index: index)
+            if focusedField == .registration(index) {
+                HStack(spacing: 0) {
+                    Text("RA-")
+
+                    InlineSelectAllTextField(
+                        text: registrationDigitsBinding(index),
+                        isActive: focusBinding(.registration(index)),
+                        keyboardType: .numberPad,
+                        capitalization: .none,
+                        textAlignment: .left,
+                        font: .systemFont(ofSize: 15, weight: .semibold),
+                        maxLength: 5
+                    )
+                    .frame(width: 58, height: 22)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+            } else {
+                Text(formattedRegistration(leg.registration))
+            }
         }
     }
 
@@ -1290,7 +1348,12 @@ struct DutyDetailView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if isEditing { focusedField = field }
+            guard isEditing else { return }
+            if case .flightKind(let index) = field {
+                toggleScheduleType(index)
+            } else {
+                focusedField = field
+            }
         }
     }
 
@@ -1310,49 +1373,16 @@ struct DutyDetailView: View {
         }
     }
 
-    private func flightKindIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        editableValue(
-            (leg.scheduleType ?? .planned).rawValue,
-            title: "Вид полёта",
-            field: .flightKind(index)
-        ) {
-            Picker("Вид полёта", selection: scheduleBinding(index)) {
-                ForEach(FlightScheduleType.allCases) { kind in
-                    Text(kind.rawValue).tag(kind)
-                }
-            }
-            .pickerStyle(.menu)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private func aircraftIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        editableValue(
-            leg.aircraft,
-            title: "Тип ВС",
-            field: .aircraft(index)
-        ) {
-            TextField("Тип ВС", text: $draft[index].aircraft)
-                .multilineTextAlignment(.leading)
-        }
-    }
-
-    private func registrationIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        editableValue(
-            formattedRegistration(leg.registration),
-            title: "Бортовой номер",
-            field: .registration(index)
-        ) {
-            TextField("Бортовой номер", text: $draft[index].registration)
-                .textInputAutocapitalization(.characters)
-                .multilineTextAlignment(.leading)
-        }
-    }
-
     private func focusBinding(_ field: DutyFocusedField) -> Binding<Bool> {
         Binding(
             get: { focusedField == field },
-            set: { if !$0 { focusedField = nil } }
+            set: { active in
+                if active {
+                    focusedField = field
+                } else if focusedField == field {
+                    focusedField = nil
+                }
+            }
         )
     }
 
@@ -1500,7 +1530,7 @@ struct DutyDetailView: View {
         case .route:
             return 350
         case .calculatedTime:
-            return 230
+            return 204
         default:
             return 260
         }
@@ -1526,63 +1556,66 @@ struct DutyDetailView: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     if focusedField == .calculatedTime(index) {
-                        floatingEditor(width: 230) {
+                        floatingEditor(width: 204) {
                             VStack(alignment: .leading, spacing: 6) {
                                 editPopoverHeader(
                                     "Расчётное время",
                                     extraHorizontalInset: 0
                                 )
-                                .zIndex(60)
+                                .zIndex(200)
 
-                                HStack(spacing: 8) {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                            .stroke(Color.secondary, lineWidth: 1.2)
-                                            .frame(width: 20, height: 20)
-
-                                        if draft[index].calculatedMinutesOverride == nil {
-                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                .fill(Color.accentColor)
-                                                .frame(width: 20, height: 20)
-
-                                            Image(systemName: "checkmark")
-                                                .font(.caption2.weight(.bold))
-                                                .foregroundStyle(.white)
+                                ZStack(alignment: .topLeading) {
+                                    Group {
+                                        if draft[index].calculatedMinutesOverride != nil {
+                                            DatePicker(
+                                                "",
+                                                selection: calculatedTimeBinding(index),
+                                                displayedComponents: [.hourAndMinute]
+                                            )
+                                            .labelsHidden()
+                                            .datePickerStyle(.wheel)
+                                            .frame(width: 166, height: 116)
+                                            .clipped()
+                                        } else {
+                                            Text(
+                                                draft[index].calculatedMinutes.map(timeText)
+                                                ?? "Ожидает норму"
+                                            )
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 166, height: 40, alignment: .leading)
                                         }
                                     }
-
-                                    Text("Из таблицы")
-                                }
-                                .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
-                                .background(Color.clear)
-                                .contentShape(Rectangle())
-                                .zIndex(50)
-                                .highPriorityGesture(
-                                    TapGesture().onEnded {
-                                        toggleCalculatedTimeSource(index)
-                                    }
-                                )
-
-                                if draft[index].calculatedMinutesOverride != nil {
-                                    DatePicker(
-                                        "",
-                                        selection: calculatedTimeBinding(index),
-                                        displayedComponents: [.hourAndMinute]
-                                    )
-                                    .labelsHidden()
-                                    .datePickerStyle(.wheel)
-                                    .frame(width: 172, height: 118)
-                                    .clipped()
-                                    .contentShape(Rectangle())
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.top, 42)
                                     .zIndex(0)
-                                } else {
-                                    Text(
-                                        draft[index].calculatedMinutes.map(timeText)
-                                        ?? "Ожидает норму"
-                                    )
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.secondary)
+
+                                    Button {
+                                        toggleCalculatedTimeSource(index)
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            ZStack {
+                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                    .stroke(Color.secondary, lineWidth: 1.2)
+                                                    .frame(width: 20, height: 20)
+
+                                                if draft[index].calculatedMinutesOverride == nil {
+                                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                        .fill(Color.accentColor)
+                                                        .frame(width: 20, height: 20)
+
+                                                    Image(systemName: "checkmark")
+                                                        .font(.caption2.weight(.bold))
+                                                        .foregroundStyle(.white)
+                                                }
+                                            }
+
+                                            Text("Из таблицы")
+                                        }
+                                        .frame(width: 166, minHeight: 38, alignment: .leading)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .zIndex(100)
                                 }
                             }
                         }
@@ -1860,6 +1893,100 @@ private struct CompactFlightValue: View {
 
 
 // MARK: - Тест физической клавиатуры
+
+private struct InlineSelectAllTextField: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isActive: Bool
+    let keyboardType: UIKeyboardType
+    let capitalization: UITextAutocapitalizationType
+    let textAlignment: NSTextAlignment
+    let font: UIFont
+    var maxLength: Int? = nil
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            text: $text,
+            isActive: $isActive,
+            maxLength: maxLength
+        )
+    }
+
+    func makeUIView(context: Context) -> UITextField {
+        let field = UITextField(frame: .zero)
+        field.borderStyle = .none
+        field.backgroundColor = .clear
+        field.textColor = .label
+        field.tintColor = .systemBlue
+        field.keyboardType = keyboardType
+        field.autocorrectionType = .no
+        field.autocapitalizationType = capitalization
+        field.textAlignment = textAlignment
+        field.font = font
+        field.adjustsFontForContentSizeCategory = true
+        field.delegate = context.coordinator
+        field.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.textChanged(_:)),
+            for: .editingChanged
+        )
+        return field
+    }
+
+    func updateUIView(_ field: UITextField, context: Context) {
+        context.coordinator.text = $text
+        context.coordinator.isActive = $isActive
+        context.coordinator.maxLength = maxLength
+
+        if field.text != text && !field.isFirstResponder {
+            field.text = text
+        }
+
+        if isActive && !field.isFirstResponder {
+            DispatchQueue.main.async {
+                field.becomeFirstResponder()
+                field.selectAll(nil)
+            }
+        } else if !isActive && field.isFirstResponder {
+            field.resignFirstResponder()
+        }
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var text: Binding<String>
+        var isActive: Binding<Bool>
+        var maxLength: Int?
+
+        init(
+            text: Binding<String>,
+            isActive: Binding<Bool>,
+            maxLength: Int?
+        ) {
+            self.text = text
+            self.isActive = isActive
+            self.maxLength = maxLength
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            isActive.wrappedValue = true
+            DispatchQueue.main.async {
+                textField.selectAll(nil)
+            }
+        }
+
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            isActive.wrappedValue = false
+        }
+
+        @objc func textChanged(_ field: UITextField) {
+            var value = field.text ?? ""
+            if let maxLength, value.count > maxLength {
+                value = String(value.prefix(maxLength))
+                field.text = value
+            }
+            text.wrappedValue = value
+        }
+    }
+}
 
 private struct HardwareKeyboardTextField: UIViewRepresentable {
     @Binding var text: String
