@@ -550,6 +550,7 @@ struct DutyDetailView: View {
             assignmentHeader(current)
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
+                .zIndex(focusedField == .assignment ? 1000 : 1)
 
             if scrollsAsPage {
                 assignmentContents(current)
@@ -909,48 +910,46 @@ struct DutyDetailView: View {
         return ZStack {
             Group {
                 if isEditing {
-                    Button {
-                        focusedField = .assignment
-                    } label: {
-                        Text(title)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.accentColor.opacity(0.08))
-                            }
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-                            }
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: focusBinding(.assignment)) {
-                        VStack(alignment: .leading, spacing: 5) {
-                            editPopoverHeader(
-                                "Задание на полёт №",
-                                extraHorizontalInset: 0
-                            )
-
-                            TextField("Номер", text: $assignmentNumber)
-                                .textInputAutocapitalization(.characters)
-                                .textFieldStyle(.plain)
-                                .font(.headline)
-                                .multilineTextAlignment(.leading)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                    ZStack {
+                        Button {
+                            focusedField = .assignment
+                        } label: {
+                            Text(title)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .fill(Color.accentColor.opacity(0.08))
+                                }
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                                }
+                                .contentShape(Rectangle())
                         }
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .frame(width: 230)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .presentationBackground(.clear)
-                        .environment(\.locale, Locale(identifier: "ru_RU"))
+                        .buttonStyle(.plain)
                     }
+                    .overlay(alignment: .top) {
+                        if focusedField == .assignment {
+                            floatingEditor(width: 230) {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    editPopoverHeader(
+                                        "Задание на полёт №",
+                                        extraHorizontalInset: 0
+                                    )
+
+                                    TextField("Номер", text: $assignmentNumber)
+                                        .textInputAutocapitalization(.characters)
+                                        .textFieldStyle(.plain)
+                                        .font(.headline)
+                                        .multilineTextAlignment(.leading)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                            .offset(y: 42)
+                        }
+                    }
+                    .zIndex(focusedField == .assignment ? 1000 : 0)
                     .accessibilityHint("Нажмите, чтобы изменить номер задания")
                 } else {
                     Text(title)
@@ -962,7 +961,6 @@ struct DutyDetailView: View {
             .lineLimit(1)
             .minimumScaleFactor(0.85)
             .frame(maxWidth: .infinity)
-
         }
         .frame(maxWidth: .infinity)
     }
@@ -1056,6 +1054,7 @@ struct DutyDetailView: View {
     private func legCard(_ leg: FlightLeg, index: Int, workEnd: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             legHeader(leg, index: index)
+                .zIndex(headerEditorZIndex(index))
 
             // Все исходные точки редактируются на месте. Итоги остаются вычисляемыми.
             LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
@@ -1121,6 +1120,20 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         )
+    }
+
+    private func headerEditorZIndex(_ index: Int) -> Double {
+        switch focusedField {
+        case .legNumber(let value),
+             .route(let value),
+             .flightKind(let value),
+             .aircraft(let value),
+             .registration(let value),
+             .calculatedTime(let value):
+            return value == index ? 1000 : 0
+        default:
+            return 0
+        }
     }
 
     private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
@@ -1305,45 +1318,42 @@ struct DutyDetailView: View {
     ) -> some View {
         Group {
             if isEditing {
-                Button { focusedField = field } label: {
-                    Text(value)
-                        .background {
-                            if field == .assignment {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.accentColor.opacity(0.14))
+                ZStack {
+                    Button { focusedField = field } label: {
+                        Text(value)
+                            .background {
+                                if field == .assignment {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.accentColor.opacity(0.14))
+                                }
                             }
-                        }
-                        .overlay {
-                            if field == .assignment {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                            .overlay {
+                                if field == .assignment {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                                }
                             }
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("Нажмите, чтобы изменить")
-                .popover(isPresented: focusBinding(field)) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        editPopoverHeader(
-                            title,
-                            extraHorizontalInset: 0
-                        )
-
-                        editor()
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .frame(width: editPopoverWidth(for: field))
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .presentationBackground(.clear)
-                    .environment(\.locale, Locale(identifier: "ru_RU"))
-                    .environment(\.timeZone, moscowTimeZone)
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Нажмите, чтобы изменить")
                 }
+                .overlay(alignment: floatingEditorAlignment(for: field)) {
+                    if focusedField == field {
+                        floatingEditor(width: editPopoverWidth(for: field)) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                editPopoverHeader(
+                                    title,
+                                    extraHorizontalInset: 0
+                                )
+
+                                editor()
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        .offset(y: 28)
+                    }
+                }
+                .zIndex(focusedField == field ? 1000 : 0)
             } else {
                 Text(value)
             }
@@ -1359,7 +1369,7 @@ struct DutyDetailView: View {
                 .font(.subheadline.weight(.semibold))
                 .padding(.leading, extraHorizontalInset)
 
-            Spacer()
+            Spacer(minLength: 6)
 
             Button {
                 focusedField = nil
@@ -1372,6 +1382,62 @@ struct DutyDetailView: View {
             .controlSize(.small)
             .padding(.trailing, extraHorizontalInset)
             .accessibilityLabel("Готово")
+        }
+    }
+
+    private func floatingEditor<Content: View>(
+        width: CGFloat,
+        height: CGFloat? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(width: width, height: height, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 4)
+            .environment(\.locale, Locale(identifier: "ru_RU"))
+            .environment(\.timeZone, moscowTimeZone)
+    }
+
+    private func floatingEditorAlignment(for field: DutyFocusedField) -> Alignment {
+        switch field {
+        case .legNumber, .aircraft, .registration:
+            return .topLeading
+        case .route:
+            return .top
+        case .flightKind, .calculatedTime:
+            return .topTrailing
+        default:
+            return .top
+        }
+    }
+
+    private func timeEditorAlignment(for point: DutyEditPoint) -> Alignment {
+        switch point {
+        case .workStart, .workEnd:
+            return .topLeading
+        case .engineOn, .engineOff:
+            return .top
+        case .takeoff, .landing:
+            return .topTrailing
+        }
+    }
+
+    private func timeEditorVerticalOffset(for point: DutyEditPoint) -> CGFloat {
+        switch point {
+        case .workStart, .engineOn, .takeoff:
+            return 46
+        case .workEnd, .engineOff, .landing:
+            return -226
         }
     }
 
@@ -1388,7 +1454,7 @@ struct DutyDetailView: View {
         case .route:
             return 350
         case .calculatedTime:
-            return 245
+            return 190
         default:
             return 260
         }
@@ -1397,89 +1463,82 @@ struct DutyDetailView: View {
     private func calculatedTime(_ leg: FlightLeg, index: Int) -> some View {
         Group {
             if isEditing {
-                Button {
-                    focusedField = .calculatedTime(index)
-                } label: {
-                    legValueCard(
-                        title: "Расчётное время",
-                        value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму"
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: focusBinding(.calculatedTime(index))) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        editPopoverHeader(
-                            "Расчётное время",
-                            extraHorizontalInset: 0
+                ZStack {
+                    Button {
+                        focusedField = .calculatedTime(index)
+                    } label: {
+                        legValueCard(
+                            title: "Расчётное время",
+                            value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму"
                         )
-
-                        Button {
-                            toggleCalculatedTimeSource(index)
-                        } label: {
-                            HStack(spacing: 8) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                        .stroke(Color.secondary, lineWidth: 1.2)
-                                        .frame(width: 20, height: 20)
-
-                                    if draft[index].calculatedMinutesOverride == nil {
-                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                            .fill(Color.accentColor)
-                                            .frame(width: 20, height: 20)
-
-                                        Image(systemName: "checkmark")
-                                            .font(.caption2.weight(.bold))
-                                            .foregroundStyle(.white)
-                                    }
-                                }
-
-                                Text("Из таблицы")
-                            }
-                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .zIndex(10)
-
-                        if draft[index].calculatedMinutesOverride != nil {
-                            DatePicker(
-                                "",
-                                selection: calculatedTimeBinding(index),
-                                displayedComponents: [.hourAndMinute]
-                            )
-                            .labelsHidden()
-                            .datePickerStyle(.wheel)
-                            .frame(width: 160, height: 112)
-                            .clipped()
-                            .padding(.top, 10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .zIndex(0)
-                        } else {
-                            Text(
-                                draft[index].calculatedMinutes.map(timeText)
-                                ?? "Ожидает норму"
-                            )
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 6)
-                        }
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                        )
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .frame(width: 245)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .presentationBackground(.clear)
-                    .environment(\.locale, Locale(identifier: "ru_RU"))
-                    .environment(\.timeZone, moscowTimeZone)
+                    .buttonStyle(.plain)
                 }
+                .overlay(alignment: .topTrailing) {
+                    if focusedField == .calculatedTime(index) {
+                        floatingEditor(width: 190) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                editPopoverHeader(
+                                    "Расчётное время",
+                                    extraHorizontalInset: 0
+                                )
+
+                                Button {
+                                    toggleCalculatedTimeSource(index)
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                .stroke(Color.secondary, lineWidth: 1.2)
+                                                .frame(width: 20, height: 20)
+
+                                            if draft[index].calculatedMinutesOverride == nil {
+                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                    .fill(Color.accentColor)
+                                                    .frame(width: 20, height: 20)
+
+                                                Image(systemName: "checkmark")
+                                                    .font(.caption2.weight(.bold))
+                                                    .foregroundStyle(.white)
+                                            }
+                                        }
+
+                                        Text("Из таблицы")
+                                    }
+                                    .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+
+                                if draft[index].calculatedMinutesOverride != nil {
+                                    DatePicker(
+                                        "",
+                                        selection: calculatedTimeBinding(index),
+                                        displayedComponents: [.hourAndMinute]
+                                    )
+                                    .labelsHidden()
+                                    .datePickerStyle(.wheel)
+                                    .frame(width: 150, height: 108)
+                                    .clipped()
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                } else {
+                                    Text(
+                                        draft[index].calculatedMinutes.map(timeText)
+                                        ?? "Ожидает норму"
+                                    )
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .offset(y: 46)
+                    }
+                }
+                .zIndex(focusedField == .calculatedTime(index) ? 1000 : 0)
             } else {
                 legValueCard(
                     title: "Расчётное время",
@@ -1532,78 +1591,71 @@ struct DutyDetailView: View {
     ) -> some View {
         Group {
             if isEditing, let point {
-                Button {
-                    focusedField = .time(index, point)
-                } label: {
-                    legValueCard(title: title, value: formatDateTime(
-                        point.date(in: times(for: draft[index]))
-                    ))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: focusBinding(.time(index, point))) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        editPopoverHeader(title)
-
-                        HStack(alignment: .top, spacing: -28) {
-                            ZStack(alignment: .topLeading) {
-                                DatePicker(
-                                    "",
-                                    selection: timeBinding(index, point),
-                                    displayedComponents: [.date]
-                                )
-                                .labelsHidden()
-                                .datePickerStyle(.graphical)
-                                .frame(width: 302, height: 246, alignment: .topLeading)
-                                .clipped()
-                                .transaction { transaction in
-                                    transaction.animation = nil
-                                }
-                                .animation(
-                                    nil,
-                                    value: point.date(in: times(for: draft[index]))
-                                )
-                                .scaleEffect(0.72, anchor: .topLeading)
-                            }
-                            .frame(
-                                width: 218,
-                                height: 178,
-                                alignment: .topLeading
-                            )
-                            .clipped()
-
-                            DatePicker(
-                                "",
-                                selection: timeBinding(index, point),
-                                displayedComponents: [.hourAndMinute]
-                            )
-                            .labelsHidden()
-                            .datePickerStyle(.wheel)
-                            .scaleEffect(0.82)
-                            .frame(
-                                width: 120,
-                                height: 178
-                            )
-                            .clipped()
-                            .offset(x: -10)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
+                ZStack {
+                    Button {
+                        focusedField = .time(index, point)
+                    } label: {
+                        legValueCard(title: title, value: formatDateTime(
+                            point.date(in: times(for: draft[index]))
+                        ))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                        )
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .frame(width: 365, height: 230, alignment: .top)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .presentationBackground(.clear)
-                    .environment(\.locale, Locale(identifier: "ru_RU"))
-                    .environment(\.timeZone, moscowTimeZone)
+                    .buttonStyle(.plain)
                 }
+                .overlay(alignment: timeEditorAlignment(for: point)) {
+                    if focusedField == .time(index, point) {
+                        floatingEditor(width: 380, height: 226) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                editPopoverHeader(title, extraHorizontalInset: 0)
+
+                                HStack(alignment: .top, spacing: 12) {
+                                    ZStack(alignment: .topLeading) {
+                                        DatePicker(
+                                            "",
+                                            selection: timeBinding(index, point),
+                                            displayedComponents: [.date]
+                                        )
+                                        .labelsHidden()
+                                        .datePickerStyle(.graphical)
+                                        .frame(width: 302, height: 246, alignment: .topLeading)
+                                        .transaction { transaction in
+                                            transaction.animation = nil
+                                        }
+                                        .animation(
+                                            nil,
+                                            value: point.date(in: times(for: draft[index]))
+                                        )
+                                        .scaleEffect(0.70, anchor: .topLeading)
+                                    }
+                                    .frame(
+                                        width: 212,
+                                        height: 172,
+                                        alignment: .topLeading
+                                    )
+                                    .clipped()
+
+                                    DatePicker(
+                                        "",
+                                        selection: timeBinding(index, point),
+                                        displayedComponents: [.hourAndMinute]
+                                    )
+                                    .labelsHidden()
+                                    .datePickerStyle(.wheel)
+                                    .frame(width: 130, height: 220)
+                                    .scaleEffect(0.78, anchor: .topLeading)
+                                    .frame(width: 102, height: 172, alignment: .topLeading)
+                                    .clipped()
+                                }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                            }
+                        }
+                        .offset(y: timeEditorVerticalOffset(for: point))
+                    }
+                }
+                .zIndex(focusedField == .time(index, point) ? 1000 : 0)
             } else {
                 legValueCard(title: title, value: value)
             }
