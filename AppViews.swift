@@ -573,6 +573,7 @@ struct DutyDetailView: View {
     @State private var focusedField: DutyFocusedField?
     @State private var editHistory: [DutyEditSnapshot] = []
     @State private var historyIndex = 0
+    @State private var routeEditSide: RouteEditSide = .departure
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private let timeColumns = Array(
@@ -1056,15 +1057,13 @@ struct DutyDetailView: View {
                 HStack(spacing: 4) {
                     Text("Задание на полёт №")
 
-                    InlineSelectAllTextField(
+                    stableInlineEditor(
                         text: $assignmentNumber,
                         isActive: focusBinding(.assignment),
                         keyboardType: .numberPad,
                         capitalization: .none,
-                        textAlignment: .center,
-                        font: .boldSystemFont(ofSize: 20)
+                        expands: false
                     )
-                    .frame(width: 104, height: 28)
                 }
                 .frame(height: 28, alignment: .center)
                 .padding(.horizontal, 12)
@@ -1076,10 +1075,6 @@ struct DutyDetailView: View {
                 .overlay {
                     RoundedRectangle(cornerRadius: 10)
                         .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    focusedField = .assignment
                 }
                 .accessibilityHint("Нажмите, чтобы изменить номер задания")
             } else {
@@ -1391,7 +1386,8 @@ struct DutyDetailView: View {
         prefix: String = "",
         keyboardType: UIKeyboardType,
         capitalization: UITextAutocapitalizationType,
-        maxLength: Int? = nil
+        maxLength: Int? = nil,
+        expands: Bool = true
     ) -> some View {
         ZStack {
             HStack(spacing: 0) {
@@ -1415,7 +1411,7 @@ struct DutyDetailView: View {
                     }
             }
             .fixedSize(horizontal: true, vertical: false)
-            .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
+            .frame(maxWidth: expands ? .infinity : nil, minHeight: 18, maxHeight: 18)
 
             InlineSelectAllTextField(
                 text: text,
@@ -1426,9 +1422,8 @@ struct DutyDetailView: View {
                 font: .systemFont(ofSize: 15, weight: .semibold),
                 maxLength: maxLength
             )
-            .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
-            .opacity(0.01)
-            .allowsHitTesting(false)
+            .frame(maxWidth: expands ? .infinity : nil, minHeight: 18, maxHeight: 18)
+            .fixedSize(horizontal: !expands, vertical: false)
         }
         .frame(height: 18)
     }
@@ -1479,19 +1474,67 @@ struct DutyDetailView: View {
     }
 
     private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        editableValue(
-            "\(airportDisplayName(leg.departure)) → \(airportDisplayName(leg.arrival))",
-            title: "Маршрут",
-            field: .route(index)
-        ) {
-            HStack(spacing: 8) {
-                TextField("Вылет", text: $draft[index].departure)
-                    .textInputAutocapitalization(.characters)
-                Image(systemName: "arrow.right")
-                TextField("Прилёт", text: $draft[index].arrival)
-                    .textInputAutocapitalization(.characters)
-            }
+        HStack(spacing: 4) {
+            routeEndpoint(
+                code: isEditing ? $draft[index].departure : .constant(leg.departure),
+                index: index,
+                side: .departure
+            )
+
+            Text("→")
+                .foregroundStyle(.secondary)
+
+            routeEndpoint(
+                code: isEditing ? $draft[index].arrival : .constant(leg.arrival),
+                index: index,
+                side: .arrival
+            )
         }
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private func routeEndpoint(
+        code: Binding<String>,
+        index: Int,
+        side: RouteEditSide
+    ) -> some View {
+        HStack(spacing: 0) {
+            Text("\(airportNameOnly(code.wrappedValue)) (")
+
+            stableInlineEditor(
+                text: code,
+                isActive: routeFocusBinding(index: index, side: side),
+                keyboardType: .asciiCapable,
+                capitalization: .allCharacters,
+                expands: false
+            )
+
+            Text(")")
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func routeFocusBinding(index: Int, side: RouteEditSide) -> Binding<Bool> {
+        Binding(
+            get: { focusedField == .route(index) && routeEditSide == side },
+            set: { active in
+                if active {
+                    routeEditSide = side
+                    focusedField = .route(index)
+                } else if focusedField == .route(index) && routeEditSide == side {
+                    focusedField = nil
+                }
+            }
+        )
+    }
+
+    private func airportNameOnly(_ rawCode: String) -> String {
+        let display = airportDisplayName(rawCode)
+        guard let range = display.range(of: " (", options: .backwards),
+              display.hasSuffix(")") else {
+            return display
+        }
+        return String(display[..<range.lowerBound])
     }
 
     private func focusBinding(_ field: DutyFocusedField) -> Binding<Bool> {
@@ -1938,6 +1981,11 @@ private struct DutyEditSnapshot: Equatable {
     let assignment: String
 }
 
+private enum RouteEditSide: Hashable {
+    case departure
+    case arrival
+}
+
 private enum DutyFocusedField: Hashable {
     case assignment
     case legNumber(Int)
@@ -2051,8 +2099,10 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         let field = UITextField(frame: .zero)
         field.borderStyle = .none
         field.backgroundColor = .clear
-        field.textColor = .label
-        field.tintColor = .systemBlue
+        // Поле остаётся полноценным first responder для аппаратной клавиатуры,
+        // но визуальный текст всегда рисует SwiftUI.
+        field.textColor = .clear
+        field.tintColor = .clear
         field.keyboardType = keyboardType
         field.autocorrectionType = .no
         field.autocapitalizationType = capitalization
