@@ -94,6 +94,7 @@ struct FlightLeg: Identifiable, Codable, Equatable {
     var assignmentNumber: String?
     var legNumber: String?
     var scheduleType: FlightScheduleType?
+    var calculatedMinutesOverride: Int?
     
     init(
         id: UUID = UUID(),
@@ -112,7 +113,8 @@ struct FlightLeg: Identifiable, Codable, Equatable {
         portalTimes: PortalFlightTimes? = nil,
         assignmentNumber: String? = nil,
         legNumber: String? = nil,
-        scheduleType: FlightScheduleType? = nil
+        scheduleType: FlightScheduleType? = nil,
+        calculatedMinutesOverride: Int? = nil
     ) {
         self.id = id
         self.date = date
@@ -131,6 +133,7 @@ struct FlightLeg: Identifiable, Codable, Equatable {
         self.assignmentNumber = assignmentNumber
         self.legNumber = legNumber
         self.scheduleType = scheduleType
+        self.calculatedMinutesOverride = calculatedMinutesOverride
     }
 }
 
@@ -1232,6 +1235,9 @@ extension FlightLeg {
     }
 
     var calculatedMinutes: Int? {
+        if let calculatedMinutesOverride {
+            return max(0, calculatedMinutesOverride)
+        }
         if scheduleType == .unscheduled { return flightMinutes }
         return nil
     }
