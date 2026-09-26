@@ -615,6 +615,10 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 20)
                 .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
         )
+        .overlay(alignment: .top) {
+            activeTimeEditor
+                .zIndex(10_000)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .sheet(isPresented: $showReview) {
             NavigationStack {
@@ -1119,38 +1123,32 @@ struct DutyDetailView: View {
                     value: formatDateTime(leg.timeline.workStart),
                     index: index, point: .workStart
                 )
-                .zIndex(timeEditorZIndex(index, .workStart))
                 timeCell(
                     title: "Включение двигателей",
                     value: formatDateTime(leg.timeline.engineOn),
                     index: index, point: .engineOn
                 )
-                .zIndex(timeEditorZIndex(index, .engineOn))
                 timeCell(
                     title: "Взлёт",
                     value: formatDateTime(leg.timeline.takeoff),
                     index: index, point: .takeoff
                 )
-                .zIndex(timeEditorZIndex(index, .takeoff))
                 timeCell(
                     title: "Завершение работы",
                     value: formatDateTime(times(for: leg).workEnd),
                     index: index,
                     point: .workEnd
                 )
-                .zIndex(timeEditorZIndex(index, .workEnd))
                 timeCell(
                     title: "Выключение двигателей",
                     value: formatDateTime(leg.timeline.engineOff),
                     index: index, point: .engineOff
                 )
-                .zIndex(timeEditorZIndex(index, .engineOff))
                 timeCell(
                     title: "Посадка",
                     value: formatDateTime(leg.timeline.landing),
                     index: index, point: .landing
                 )
-                .zIndex(timeEditorZIndex(index, .landing))
                 legValueCard(
                     title: "Рабочее время",
                     total: minutesBetween(leg.timeline.workStart, workEnd),
@@ -1213,10 +1211,6 @@ struct DutyDetailView: View {
         }
     }
 
-    private func timeEditorZIndex(_ index: Int, _ point: DutyEditPoint) -> Double {
-        focusedField == .time(index, point) ? 4000 : 0
-    }
-
     private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
         LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
             Group {
@@ -1269,7 +1263,7 @@ struct DutyDetailView: View {
                     textAlignment: .center,
                     font: .systemFont(ofSize: 15, weight: .semibold)
                 )
-                .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
+                .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
             } else {
                 Text(leg.displayedLegNumber)
             }
@@ -1293,7 +1287,7 @@ struct DutyDetailView: View {
                     textAlignment: .center,
                     font: .systemFont(ofSize: 15, weight: .semibold)
                 )
-                .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
+                .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
             } else {
                 Text(leg.aircraft)
             }
@@ -1315,7 +1309,7 @@ struct DutyDetailView: View {
                         font: .systemFont(ofSize: 15, weight: .semibold),
                         maxLength: 5
                     )
-                    .frame(width: 58, height: 22)
+                    .frame(width: 58, height: 18)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
             } else {
@@ -1337,11 +1331,11 @@ struct DutyDetailView: View {
                 .minimumScaleFactor(0.75)
 
             content()
-                .font(.subheadline.weight(.semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .frame(height: 22, alignment: .center)
+                .frame(height: 18, alignment: .center)
         }
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: .center)
@@ -1520,15 +1514,6 @@ struct DutyDetailView: View {
         }
     }
 
-    private func timeEditorVerticalOffset(for point: DutyEditPoint) -> CGFloat {
-        switch point {
-        case .workStart, .engineOn, .takeoff:
-            return -205
-        case .workEnd, .engineOff, .landing:
-            return -226
-        }
-    }
-
     private func editPopoverWidth(for field: DutyFocusedField) -> CGFloat {
         switch field {
         case .legNumber:
@@ -1687,76 +1672,74 @@ struct DutyDetailView: View {
     ) -> some View {
         Group {
             if isEditing, let point {
-                ZStack {
-                    Button {
-                        focusedField = .time(index, point)
-                    } label: {
-                        legValueCard(title: title, value: formatDateTime(
-                            point.date(in: times(for: draft[index]))
-                        ))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
+                Button {
+                    focusedField = .time(index, point)
+                } label: {
+                    legValueCard(title: title, value: formatDateTime(
+                        point.date(in: times(for: draft[index]))
+                    ))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                    )
                 }
-                .overlay(alignment: timeEditorAlignment(for: point)) {
-                    if focusedField == .time(index, point) {
-                        floatingEditor(width: 380, height: 282) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                editPopoverHeader(title, extraHorizontalInset: 0)
-
-                                HStack(alignment: .top, spacing: 12) {
-                                    ZStack(alignment: .topLeading) {
-                                        DatePicker(
-                                            "",
-                                            selection: timeBinding(index, point),
-                                            displayedComponents: [.date]
-                                        )
-                                        .labelsHidden()
-                                        .datePickerStyle(.graphical)
-                                        .frame(width: 302, height: 330, alignment: .topLeading)
-                                        .transaction { transaction in
-                                            transaction.animation = nil
-                                        }
-                                        .animation(
-                                            nil,
-                                            value: point.date(in: times(for: draft[index]))
-                                        )
-                                        .scaleEffect(0.68, anchor: .topLeading)
-                                    }
-                                    .frame(
-                                        width: 206,
-                                        height: 225,
-                                        alignment: .topLeading
-                                    )
-                                    .clipped()
-                                    .contentShape(Rectangle())
-
-                                    DatePicker(
-                                        "",
-                                        selection: timeBinding(index, point),
-                                        displayedComponents: [.hourAndMinute]
-                                    )
-                                    .labelsHidden()
-                                    .datePickerStyle(.wheel)
-                                    .frame(width: 130, height: 288)
-                                    .scaleEffect(0.78, anchor: .topLeading)
-                                    .frame(width: 102, height: 225, alignment: .topLeading)
-                                    .clipped()
-                                    .contentShape(Rectangle())
-                                }
-                                .frame(maxWidth: .infinity, alignment: .center)
-                            }
-                        }
-                        .offset(y: timeEditorVerticalOffset(for: point))
-                    }
-                }
-                .zIndex(focusedField == .time(index, point) ? 1000 : 0)
+                .buttonStyle(.plain)
             } else {
                 legValueCard(title: title, value: value)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var activeTimeEditor: some View {
+        if case let .time(index, point) = focusedField,
+           draft.indices.contains(index) {
+            floatingEditor(width: 380, height: 282) {
+                VStack(alignment: .leading, spacing: 6) {
+                    editPopoverHeader(point.title, extraHorizontalInset: 0)
+
+                    HStack(alignment: .top, spacing: 12) {
+                        ZStack(alignment: .topLeading) {
+                            DatePicker(
+                                "",
+                                selection: timeBinding(index, point),
+                                displayedComponents: [.date]
+                            )
+                            .labelsHidden()
+                            .datePickerStyle(.graphical)
+                            .frame(width: 302, height: 330, alignment: .topLeading)
+                            .transaction { transaction in
+                                transaction.animation = nil
+                            }
+                            .animation(
+                                nil,
+                                value: point.date(in: times(for: draft[index]))
+                            )
+                            .scaleEffect(0.68, anchor: .topLeading)
+                        }
+                        .frame(width: 206, height: 225, alignment: .topLeading)
+                        .clipped()
+                        .contentShape(Rectangle())
+
+                        DatePicker(
+                            "",
+                            selection: timeBinding(index, point),
+                            displayedComponents: [.hourAndMinute]
+                        )
+                        .labelsHidden()
+                        .datePickerStyle(.wheel)
+                        .frame(width: 130, height: 288)
+                        .scaleEffect(0.78, anchor: .topLeading)
+                        .frame(width: 102, height: 225, alignment: .topLeading)
+                        .clipped()
+                        .contentShape(Rectangle())
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: timeEditorAlignment(for: point))
+            .padding(.horizontal, 18)
+            .padding(.top, 52)
         }
     }
 
@@ -1770,9 +1753,10 @@ struct DutyDetailView: View {
                 .foregroundStyle(.secondary)
 
             Text(value)
-                .font(.subheadline.weight(.semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.primary)
                 .minimumScaleFactor(0.85)
+                .frame(height: 18, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
@@ -1934,7 +1918,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         field.autocapitalizationType = capitalization
         field.textAlignment = textAlignment
         field.font = font
-        field.adjustsFontForContentSizeCategory = true
+        field.adjustsFontForContentSizeCategory = false
         field.delegate = context.coordinator
         field.addTarget(
             context.coordinator,
@@ -1948,6 +1932,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         context.coordinator.text = $text
         context.coordinator.isActive = $isActive
         context.coordinator.maxLength = maxLength
+        field.font = font
 
         if field.text != text && !field.isFirstResponder {
             field.text = text
