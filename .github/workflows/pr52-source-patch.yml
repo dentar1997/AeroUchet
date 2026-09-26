@@ -32,7 +32,6 @@ jobs:
               if not condition:
                   raise SystemExit(f'Block not found: {label}')
 
-          # 1. Do not scroll tiles inside the assignment card. Scroll the whole card instead.
           marker = '            let maximumHeight = max(320, geometry.size.height - 40)\n'
           require(marker in text, 'maximumHeight marker')
           text = text.replace(marker, '', 1)
@@ -67,17 +66,13 @@ jobs:
                 .simultaneousGesture(dismissDrag(in: geometry.size.height))'''
           text = text[:start] + whole_card_scroll + text[end:]
 
-          # 2. Reliable large checkbox hit target for “Из таблицы”.
-          calc_start_marker = '''                        Button {
-                            toggleCalculatedTimeSource(index)
-                        } label: {'''
-          calc_start = text.find(calc_start_marker)
-          require(calc_start >= 0, 'calculated toggle start')
-          calc_end_marker = '''                            .foregroundStyle(.secondary)
-                        }'''
-          calc_end = text.find(calc_end_marker, calc_start)
-          require(calc_end >= 0, 'calculated toggle end')
-          calc_end += len(calc_end_marker)
+          toggle_pos = text.find('toggleCalculatedTimeSource(index)')
+          require(toggle_pos >= 0, 'calculated toggle function call')
+          calc_start = text.rfind('                        Button {', 0, toggle_pos)
+          calc_end_marker = '                    }\n                    .padding(.horizontal, 18)'
+          calc_end = text.find(calc_end_marker, toggle_pos)
+          require(calc_start >= 0, 'calculated button start')
+          require(calc_end >= 0, 'calculated controls end')
 
           calc_controls = '''                        Button {
                             toggleCalculatedTimeSource(index)
@@ -128,10 +123,10 @@ jobs:
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .padding(.top, 6)
-                        }'''
+                        }
+'''
           text = text[:calc_start] + calc_controls + text[calc_end:]
 
-          # 3. Keep graphical calendar and its containing popover at a constant size.
           calendar_old = '''                                .datePickerStyle(.graphical)
                                 .frame(width: 302, height: 246, alignment: .topLeading)
                                 .transaction { transaction in
@@ -154,11 +149,13 @@ jobs:
 
           time_frame_old = '''                    .frame(width: 365)
                     .fixedSize(horizontal: false, vertical: true)'''
-          time_frame_new = '''                    .frame(width: 365, height: 230, alignment: .top)'''
           require(time_frame_old in text, 'time popover frame')
-          text = text.replace(time_frame_old, time_frame_new, 1)
+          text = text.replace(
+              time_frame_old,
+              '                    .frame(width: 365, height: 230, alignment: .top)',
+              1
+          )
 
-          # 4. Visible popover surface has exactly the same 10pt rounded-card shape as time cells.
           pattern = re.compile(r'(?m)^(\s*)\.presentationCornerRadius\(10\)$')
           matches = list(pattern.finditer(text))
           require(len(matches) >= 4, 'popover corner modifiers')
@@ -178,7 +175,6 @@ jobs:
           path.write_text(text)
           PY
 
-          # Remove accidental temporary files; they are not part of the app.
           rm -f .github/ignore foo bar baz oops x y z w
 
       - name: Commit patched sources
