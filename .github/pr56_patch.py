@@ -1,0 +1,330 @@
+from pathlib import Path
+
+path = Path("AppViews.swift")
+text = path.read_text()
+
+
+def replace_once(old: str, new: str, label: str) -> None:
+    global text
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected 1 match, found {count}")
+    text = text.replace(old, new, 1)
+
+
+replace_once(
+    '''                HStack(spacing: 4) {
+                    Text("Задание на полёт №")
+
+                    if focusedField == .assignment {
+                        InlineSelectAllTextField(
+                            text: $assignmentNumber,
+                            isActive: focusBinding(.assignment),
+                            keyboardType: .numberPad,
+                            capitalization: .none,
+                            textAlignment: .center,
+                            font: .boldSystemFont(ofSize: 22)
+                        )
+                        .frame(width: 112, height: 30)
+                    } else {
+                        Text(assignmentNumber.isEmpty ? "—" : assignmentNumber)
+                    }
+                }
+                .padding(.horizontal, 12)
+''',
+    '''                HStack(spacing: 4) {
+                    Text("Задание на полёт №")
+
+                    if focusedField == .assignment {
+                        InlineSelectAllTextField(
+                            text: $assignmentNumber,
+                            isActive: focusBinding(.assignment),
+                            keyboardType: .numberPad,
+                            capitalization: .none,
+                            textAlignment: .center,
+                            font: .boldSystemFont(ofSize: 22)
+                        )
+                        .frame(width: 112, height: 30)
+                    } else {
+                        Text(assignmentNumber.isEmpty ? "—" : assignmentNumber)
+                    }
+                }
+                .frame(height: 30, alignment: .center)
+                .padding(.horizontal, 12)
+''',
+    "stable assignment title height",
+)
+
+replace_once(
+    '''            content()
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+''',
+    '''            content()
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(height: 22, alignment: .center)
+''',
+    "stable identity value height",
+)
+
+old_inline = '''                .frame(maxWidth: .infinity, minHeight: 22)'''
+if text.count(old_inline) != 2:
+    raise SystemExit(
+        f"stable inline text field height: expected 2 matches, found {text.count(old_inline)}"
+    )
+text = text.replace(
+    old_inline,
+    '''                .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)''',
+)
+
+replace_once(
+    '''    private func legEditorZIndex(_ index: Int) -> Double {
+        switch focusedField {
+        case .legNumber(let value),
+             .route(let value),
+             .flightKind(let value),
+             .aircraft(let value),
+             .registration(let value),
+             .calculatedTime(let value),
+             .time(let value, _):
+            return value == index ? 2000 : 0
+        default:
+            return 0
+        }
+    }
+
+    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
+''',
+    '''    private func legEditorZIndex(_ index: Int) -> Double {
+        switch focusedField {
+        case .legNumber(let value),
+             .route(let value),
+             .flightKind(let value),
+             .aircraft(let value),
+             .registration(let value),
+             .calculatedTime(let value),
+             .time(let value, _):
+            return value == index ? 2000 : 0
+        default:
+            return 0
+        }
+    }
+
+    private func timeEditorZIndex(_ index: Int, _ point: DutyEditPoint) -> Double {
+        focusedField == .time(index, point) ? 4000 : 0
+    }
+
+    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
+''',
+    "time editor z-index helper",
+)
+
+replacements = [
+    (
+        '''                timeCell(
+                    title: "Начало работы",
+                    value: formatDateTime(leg.timeline.workStart),
+                    index: index, point: .workStart
+                )
+''',
+        '''                timeCell(
+                    title: "Начало работы",
+                    value: formatDateTime(leg.timeline.workStart),
+                    index: index, point: .workStart
+                )
+                .zIndex(timeEditorZIndex(index, .workStart))
+''',
+        "work start layer",
+    ),
+    (
+        '''                timeCell(
+                    title: "Включение двигателей",
+                    value: formatDateTime(leg.timeline.engineOn),
+                    index: index, point: .engineOn
+                )
+''',
+        '''                timeCell(
+                    title: "Включение двигателей",
+                    value: formatDateTime(leg.timeline.engineOn),
+                    index: index, point: .engineOn
+                )
+                .zIndex(timeEditorZIndex(index, .engineOn))
+''',
+        "engine on layer",
+    ),
+    (
+        '''                timeCell(
+                    title: "Взлёт",
+                    value: formatDateTime(leg.timeline.takeoff),
+                    index: index, point: .takeoff
+                )
+''',
+        '''                timeCell(
+                    title: "Взлёт",
+                    value: formatDateTime(leg.timeline.takeoff),
+                    index: index, point: .takeoff
+                )
+                .zIndex(timeEditorZIndex(index, .takeoff))
+''',
+        "takeoff layer",
+    ),
+    (
+        '''                timeCell(
+                    title: "Завершение работы",
+                    value: formatDateTime(times(for: leg).workEnd),
+                    index: index,
+                    point: .workEnd
+                )
+''',
+        '''                timeCell(
+                    title: "Завершение работы",
+                    value: formatDateTime(times(for: leg).workEnd),
+                    index: index,
+                    point: .workEnd
+                )
+                .zIndex(timeEditorZIndex(index, .workEnd))
+''',
+        "work end layer",
+    ),
+    (
+        '''                timeCell(
+                    title: "Выключение двигателей",
+                    value: formatDateTime(leg.timeline.engineOff),
+                    index: index, point: .engineOff
+                )
+''',
+        '''                timeCell(
+                    title: "Выключение двигателей",
+                    value: formatDateTime(leg.timeline.engineOff),
+                    index: index, point: .engineOff
+                )
+                .zIndex(timeEditorZIndex(index, .engineOff))
+''',
+        "engine off layer",
+    ),
+    (
+        '''                timeCell(
+                    title: "Посадка",
+                    value: formatDateTime(leg.timeline.landing),
+                    index: index, point: .landing
+                )
+''',
+        '''                timeCell(
+                    title: "Посадка",
+                    value: formatDateTime(leg.timeline.landing),
+                    index: index, point: .landing
+                )
+                .zIndex(timeEditorZIndex(index, .landing))
+''',
+        "landing layer",
+    ),
+]
+for old, new, label in replacements:
+    replace_once(old, new, label)
+
+replace_once(
+    '''                        floatingEditor(width: 380, height: 226) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                editPopoverHeader(title, extraHorizontalInset: 0)
+
+                                HStack(alignment: .top, spacing: 12) {
+                                    ZStack(alignment: .topLeading) {
+                                        DatePicker(
+                                            "",
+                                            selection: timeBinding(index, point),
+                                            displayedComponents: [.date]
+                                        )
+                                        .labelsHidden()
+                                        .datePickerStyle(.graphical)
+                                        .frame(width: 302, height: 246, alignment: .topLeading)
+                                        .transaction { transaction in
+                                            transaction.animation = nil
+                                        }
+                                        .animation(
+                                            nil,
+                                            value: point.date(in: times(for: draft[index]))
+                                        )
+                                        .scaleEffect(0.70, anchor: .topLeading)
+                                    }
+                                    .frame(
+                                        width: 212,
+                                        height: 172,
+                                        alignment: .topLeading
+                                    )
+                                    .clipped()
+                                    .contentShape(Rectangle())
+
+                                    DatePicker(
+                                        "",
+                                        selection: timeBinding(index, point),
+                                        displayedComponents: [.hourAndMinute]
+                                    )
+                                    .labelsHidden()
+                                    .datePickerStyle(.wheel)
+                                    .frame(width: 130, height: 220)
+                                    .scaleEffect(0.78, anchor: .topLeading)
+                                    .frame(width: 102, height: 172, alignment: .topLeading)
+                                    .clipped()
+                                    .contentShape(Rectangle())
+                                }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                            }
+                        }
+''',
+    '''                        floatingEditor(width: 380, height: 282) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                editPopoverHeader(title, extraHorizontalInset: 0)
+
+                                HStack(alignment: .top, spacing: 12) {
+                                    ZStack(alignment: .topLeading) {
+                                        DatePicker(
+                                            "",
+                                            selection: timeBinding(index, point),
+                                            displayedComponents: [.date]
+                                        )
+                                        .labelsHidden()
+                                        .datePickerStyle(.graphical)
+                                        .frame(width: 302, height: 330, alignment: .topLeading)
+                                        .transaction { transaction in
+                                            transaction.animation = nil
+                                        }
+                                        .animation(
+                                            nil,
+                                            value: point.date(in: times(for: draft[index]))
+                                        )
+                                        .scaleEffect(0.68, anchor: .topLeading)
+                                    }
+                                    .frame(
+                                        width: 206,
+                                        height: 225,
+                                        alignment: .topLeading
+                                    )
+                                    .clipped()
+                                    .contentShape(Rectangle())
+
+                                    DatePicker(
+                                        "",
+                                        selection: timeBinding(index, point),
+                                        displayedComponents: [.hourAndMinute]
+                                    )
+                                    .labelsHidden()
+                                    .datePickerStyle(.wheel)
+                                    .frame(width: 130, height: 288)
+                                    .scaleEffect(0.78, anchor: .topLeading)
+                                    .frame(width: 102, height: 225, alignment: .topLeading)
+                                    .clipped()
+                                    .contentShape(Rectangle())
+                                }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                            }
+                        }
+''',
+    "full calendar rows",
+)
+
+path.write_text(text)
