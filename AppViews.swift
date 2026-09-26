@@ -1062,7 +1062,8 @@ struct DutyDetailView: View {
                         isActive: focusBinding(.assignment),
                         keyboardType: .numberPad,
                         capitalization: .none,
-                        expands: false
+                        expands: false,
+                        allowsEditing: isEditing
                     )
                 }
                 .frame(height: 28, alignment: .center)
@@ -1327,7 +1328,8 @@ struct DutyDetailView: View {
                 text: textBinding,
                 isActive: activeBinding,
                 keyboardType: .numbersAndPunctuation,
-                capitalization: .allCharacters
+                capitalization: .allCharacters,
+                allowsEditing: isEditing
             )
         }
     }
@@ -1351,7 +1353,8 @@ struct DutyDetailView: View {
                 text: textBinding,
                 isActive: activeBinding,
                 keyboardType: .default,
-                capitalization: .allCharacters
+                capitalization: .allCharacters,
+                allowsEditing: isEditing
             )
         }
     }
@@ -1373,7 +1376,8 @@ struct DutyDetailView: View {
                 prefix: "RA-",
                 keyboardType: .numberPad,
                 capitalization: .none,
-                maxLength: 5
+                maxLength: 5,
+                allowsEditing: isEditing
             )
         }
     }
@@ -1385,7 +1389,9 @@ struct DutyDetailView: View {
         keyboardType: UIKeyboardType,
         capitalization: UITextAutocapitalizationType,
         maxLength: Int? = nil,
-        expands: Bool = true
+        expands: Bool = true,
+        allowsEditing: Bool = true,
+        highlightHorizontalPadding: CGFloat = 2
     ) -> some View {
         ZStack {
             HStack(spacing: 0) {
@@ -1400,7 +1406,7 @@ struct DutyDetailView: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, highlightHorizontalPadding)
                     .background {
                         if isActive.wrappedValue {
                             RoundedRectangle(cornerRadius: 3)
@@ -1418,10 +1424,12 @@ struct DutyDetailView: View {
                 capitalization: capitalization,
                 textAlignment: .center,
                 font: .systemFont(ofSize: 15, weight: .semibold),
-                maxLength: maxLength
+                maxLength: maxLength,
+                isEnabled: allowsEditing
             )
             .frame(maxWidth: expands ? .infinity : nil, minHeight: 18, maxHeight: 18)
             .fixedSize(horizontal: !expands, vertical: false)
+            .allowsHitTesting(allowsEditing)
         }
         .frame(height: 18)
     }
@@ -1503,11 +1511,11 @@ struct DutyDetailView: View {
     }
 
     private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             routeEndpoint(
                 code: isEditing
                     ? routeCodeBinding(index: index, side: .departure)
-                    : .constant(leg.departure),
+                    : .constant(leg.departure.trimmingCharacters(in: .whitespacesAndNewlines)),
                 index: index,
                 side: .departure
             )
@@ -1518,7 +1526,7 @@ struct DutyDetailView: View {
             routeEndpoint(
                 code: isEditing
                     ? routeCodeBinding(index: index, side: .arrival)
-                    : .constant(leg.arrival),
+                    : .constant(leg.arrival.trimmingCharacters(in: .whitespacesAndNewlines)),
                 index: index,
                 side: .arrival
             )
@@ -1540,7 +1548,9 @@ struct DutyDetailView: View {
                 keyboardType: .asciiCapable,
                 capitalization: .allCharacters,
                 maxLength: 4,
-                expands: false
+                expands: false,
+                allowsEditing: isEditing,
+                highlightHorizontalPadding: 0
             )
 
             Text(")")
@@ -1586,8 +1596,19 @@ struct DutyDetailView: View {
 
     private func routeFocusBinding(index: Int, side: RouteEditSide) -> Binding<Bool> {
         Binding(
-            get: { focusedField == .route(index) && routeEditSide == side },
+            get: {
+                isEditing
+                    && focusedField == .route(index)
+                    && routeEditSide == side
+            },
             set: { active in
+                guard isEditing else {
+                    if focusedField == .route(index) {
+                        focusedField = nil
+                    }
+                    return
+                }
+
                 if active {
                     routeEditSide = side
                     focusedField = .route(index)
@@ -1605,6 +1626,7 @@ struct DutyDetailView: View {
             return display
         }
         return String(display[..<range.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func focusBinding(_ field: DutyFocusedField) -> Binding<Bool> {
@@ -2148,6 +2170,52 @@ private struct CompactFlightValue: View {
 
 // MARK: - Тест физической клавиатуры
 
+private final class HardwareFriendlyTextField: UITextField {
+    var hardwareInputHandler: ((String?, Bool) -> Void)?
+
+    override func pressesBegan(
+        _ presses: Set<UIPress>,
+        with event: UIPressesEvent?
+    ) {
+        var handled = false
+
+        for press in presses {
+            guard let key = press.key else { continue }
+
+            if key.keyCode == .keyboardDeleteOrBackspace {
+                hardwareInputHandler?(nil, true)
+                handled = true
+                continue
+            }
+
+            let commandModifiers: UIKeyModifierFlags = [
+                .command,
+                .control,
+                .alternate
+            ]
+            guard key.modifierFlags.intersection(commandModifiers).isEmpty else {
+                continue
+            }
+
+            let characters = key.characters
+            let printable = !characters.isEmpty
+                && characters.unicodeScalars.allSatisfy { scalar in
+                    scalar.value >= 0x20
+                        && !(0xE000...0xF8FF).contains(scalar.value)
+                }
+
+            if printable {
+                hardwareInputHandler?(characters, false)
+                handled = true
+            }
+        }
+
+        if !handled {
+            super.pressesBegan(presses, with: event)
+        }
+    }
+}
+
 private struct InlineSelectAllTextField: UIViewRepresentable {
     @Binding var text: String
     @Binding var isActive: Bool
@@ -2156,6 +2224,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
     let textAlignment: NSTextAlignment
     let font: UIFont
     var maxLength: Int? = nil
+    var isEnabled: Bool = true
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -2166,7 +2235,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UITextField {
-        let field = UITextField(frame: .zero)
+        let field = HardwareFriendlyTextField(frame: .zero)
         field.borderStyle = .none
         field.backgroundColor = .clear
         field.textColor = .clear
@@ -2182,7 +2251,16 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         field.adjustsFontForContentSizeCategory = false
         field.adjustsFontSizeToFitWidth = true
         field.minimumFontSize = 10.5
-        field.isUserInteractionEnabled = true
+        field.isEnabled = isEnabled
+        field.isUserInteractionEnabled = isEnabled
+        field.hardwareInputHandler = { [weak field] characters, deleting in
+            guard let field else { return }
+            context.coordinator.handleHardwareInput(
+                characters,
+                deleting: deleting,
+                in: field
+            )
+        }
         field.delegate = context.coordinator
         field.addTarget(
             context.coordinator,
@@ -2199,9 +2277,18 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         field.font = font
         field.keyboardType = keyboardType
         field.autocapitalizationType = capitalization
+        field.isEnabled = isEnabled
+        field.isUserInteractionEnabled = isEnabled
 
-        if field.text != text && !field.isFirstResponder {
+        if field.text != text {
             field.text = text
+        }
+
+        guard isEnabled else {
+            if field.isFirstResponder {
+                field.resignFirstResponder()
+            }
+            return
         }
 
         if isActive && !field.isFirstResponder {
@@ -2278,11 +2365,38 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
 
         @objc func textChanged(_ field: UITextField) {
             let value = limited(field.text ?? "")
-            if field.text != value {
-                field.text = value
+            text.wrappedValue = value
+            let normalized = text.wrappedValue
+            if field.text != normalized {
+                field.text = normalized
                 moveCaretToEnd(in: field)
             }
+        }
+
+        func handleHardwareInput(
+            _ characters: String?,
+            deleting: Bool,
+            in field: UITextField
+        ) {
+            var value = field.text ?? ""
+
+            if replaceOnNextInput {
+                value = ""
+                replaceOnNextInput = false
+            }
+
+            if deleting {
+                if !value.isEmpty {
+                    value.removeLast()
+                }
+            } else if let characters {
+                value.append(contentsOf: characters)
+            }
+
+            value = limited(value)
             text.wrappedValue = value
+            field.text = text.wrappedValue
+            moveCaretToEnd(in: field)
         }
 
         private func limited(_ value: String) -> String {
