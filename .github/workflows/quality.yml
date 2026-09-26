@@ -1,34 +1,35 @@
-name: PR62 Apply patch
+name: AeroUchet Quality
 
 on:
-  push:
+  pull_request:
     branches:
-      - ui/pr62-stable-inline-font
+      - main
+  workflow_dispatch:
 
-permissions:
-  contents: write
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  patch:
-    runs-on: ubuntu-latest
+  quality:
+    name: Swift quality checks
+    runs-on: macos-26
+    timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ui/pr62-stable-inline-font
-          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      - name: Apply patch
-        run: python3 .github/pr62_patch.py
-
-      - name: Restore workflow and remove patch script
+      - name: Install quality tools
         run: |
-          git show origin/main:.github/workflows/quality.yml > .github/workflows/quality.yml
-          rm .github/pr62_patch.py
+          brew install swiftlint swiftformat
 
-      - name: Commit
+      - name: SwiftLint
+        continue-on-error: true
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add AppViews.swift AppVersion.swift Package.swift .github/workflows/quality.yml .github/pr62_patch.py
-          git commit -m "[PR #62] Keep inline edit text visually identical to card text"
-          git push origin HEAD:ui/pr62-stable-inline-font
+          swiftlint lint --config .swiftlint.yml
+
+      - name: SwiftFormat lint
+        continue-on-error: true
+        run: |
+          swiftformat --lint . --exclude .swiftpm,.build

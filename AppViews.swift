@@ -1330,16 +1330,12 @@ struct DutyDetailView: View {
             : .constant(false)
 
         return identityField("Рейс", field: .legNumber(index)) {
-            InlineSelectAllTextField(
+            stableInlineEditor(
                 text: textBinding,
                 isActive: activeBinding,
                 keyboardType: .numbersAndPunctuation,
-                capitalization: .allCharacters,
-                textAlignment: .center,
-                font: .systemFont(ofSize: 15, weight: .semibold)
+                capitalization: .allCharacters
             )
-            .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
-            .allowsHitTesting(isEditing)
         }
     }
 
@@ -1358,16 +1354,12 @@ struct DutyDetailView: View {
             : .constant(false)
 
         return identityField("Тип ВС", field: .aircraft(index)) {
-            InlineSelectAllTextField(
+            stableInlineEditor(
                 text: textBinding,
                 isActive: activeBinding,
                 keyboardType: .default,
-                capitalization: .allCharacters,
-                textAlignment: .center,
-                font: .systemFont(ofSize: 15, weight: .semibold)
+                capitalization: .allCharacters
             )
-            .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
-            .allowsHitTesting(isEditing)
         }
     }
 
@@ -1382,23 +1374,53 @@ struct DutyDetailView: View {
             : .constant(false)
 
         return identityField("Бортовой номер", field: .registration(index)) {
-            HStack(spacing: 0) {
-                Text("RA-")
-
-                InlineSelectAllTextField(
-                    text: textBinding,
-                    isActive: activeBinding,
-                    keyboardType: .numberPad,
-                    capitalization: .none,
-                    textAlignment: .left,
-                    font: .systemFont(ofSize: 15, weight: .semibold),
-                    maxLength: 5
-                )
-                .frame(width: 58, height: 18)
-                .allowsHitTesting(isEditing)
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
+            stableInlineEditor(
+                text: textBinding,
+                isActive: activeBinding,
+                prefix: "RA-",
+                keyboardType: .numberPad,
+                capitalization: .none,
+                maxLength: 5
+            )
         }
+    }
+
+    private func stableInlineEditor(
+        text: Binding<String>,
+        isActive: Binding<Bool>,
+        prefix: String = "",
+        keyboardType: UIKeyboardType,
+        capitalization: UITextAutocapitalizationType,
+        maxLength: Int? = nil
+    ) -> some View {
+        ZStack {
+            Text(prefix + text.wrappedValue)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
+                .background {
+                    if isActive.wrappedValue {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.accentColor.opacity(0.22))
+                    }
+                }
+
+            InlineSelectAllTextField(
+                text: text,
+                isActive: isActive,
+                keyboardType: keyboardType,
+                capitalization: capitalization,
+                textAlignment: .center,
+                font: .systemFont(ofSize: 15, weight: .semibold),
+                maxLength: maxLength
+            )
+            .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
+            .opacity(0.01)
+            .allowsHitTesting(false)
+        }
+        .frame(height: 18)
     }
 
     private func identityField<Content: View>(
