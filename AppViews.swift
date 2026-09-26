@@ -993,6 +993,7 @@ struct DutyDetailView: View {
                         Text(assignmentNumber.isEmpty ? "—" : assignmentNumber)
                     }
                 }
+                .frame(height: 30, alignment: .center)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background {
@@ -1118,32 +1119,38 @@ struct DutyDetailView: View {
                     value: formatDateTime(leg.timeline.workStart),
                     index: index, point: .workStart
                 )
+                .zIndex(timeEditorZIndex(index, .workStart))
                 timeCell(
                     title: "Включение двигателей",
                     value: formatDateTime(leg.timeline.engineOn),
                     index: index, point: .engineOn
                 )
+                .zIndex(timeEditorZIndex(index, .engineOn))
                 timeCell(
                     title: "Взлёт",
                     value: formatDateTime(leg.timeline.takeoff),
                     index: index, point: .takeoff
                 )
+                .zIndex(timeEditorZIndex(index, .takeoff))
                 timeCell(
                     title: "Завершение работы",
                     value: formatDateTime(times(for: leg).workEnd),
                     index: index,
                     point: .workEnd
                 )
+                .zIndex(timeEditorZIndex(index, .workEnd))
                 timeCell(
                     title: "Выключение двигателей",
                     value: formatDateTime(leg.timeline.engineOff),
                     index: index, point: .engineOff
                 )
+                .zIndex(timeEditorZIndex(index, .engineOff))
                 timeCell(
                     title: "Посадка",
                     value: formatDateTime(leg.timeline.landing),
                     index: index, point: .landing
                 )
+                .zIndex(timeEditorZIndex(index, .landing))
                 legValueCard(
                     title: "Рабочее время",
                     total: minutesBetween(leg.timeline.workStart, workEnd),
@@ -1206,6 +1213,10 @@ struct DutyDetailView: View {
         }
     }
 
+    private func timeEditorZIndex(_ index: Int, _ point: DutyEditPoint) -> Double {
+        focusedField == .time(index, point) ? 4000 : 0
+    }
+
     private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
         LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
             Group {
@@ -1258,7 +1269,7 @@ struct DutyDetailView: View {
                     textAlignment: .center,
                     font: .systemFont(ofSize: 15, weight: .semibold)
                 )
-                .frame(maxWidth: .infinity, minHeight: 22)
+                .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
             } else {
                 Text(leg.displayedLegNumber)
             }
@@ -1282,7 +1293,7 @@ struct DutyDetailView: View {
                     textAlignment: .center,
                     font: .systemFont(ofSize: 15, weight: .semibold)
                 )
-                .frame(maxWidth: .infinity, minHeight: 22)
+                .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
             } else {
                 Text(leg.aircraft)
             }
@@ -1330,6 +1341,7 @@ struct DutyDetailView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .frame(height: 22, alignment: .center)
         }
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: .center)
@@ -1691,7 +1703,7 @@ struct DutyDetailView: View {
                 }
                 .overlay(alignment: timeEditorAlignment(for: point)) {
                     if focusedField == .time(index, point) {
-                        floatingEditor(width: 380, height: 226) {
+                        floatingEditor(width: 380, height: 282) {
                             VStack(alignment: .leading, spacing: 6) {
                                 editPopoverHeader(title, extraHorizontalInset: 0)
 
@@ -1704,7 +1716,7 @@ struct DutyDetailView: View {
                                         )
                                         .labelsHidden()
                                         .datePickerStyle(.graphical)
-                                        .frame(width: 302, height: 246, alignment: .topLeading)
+                                        .frame(width: 302, height: 330, alignment: .topLeading)
                                         .transaction { transaction in
                                             transaction.animation = nil
                                         }
@@ -1712,11 +1724,11 @@ struct DutyDetailView: View {
                                             nil,
                                             value: point.date(in: times(for: draft[index]))
                                         )
-                                        .scaleEffect(0.70, anchor: .topLeading)
+                                        .scaleEffect(0.68, anchor: .topLeading)
                                     }
                                     .frame(
-                                        width: 212,
-                                        height: 172,
+                                        width: 206,
+                                        height: 225,
                                         alignment: .topLeading
                                     )
                                     .clipped()
@@ -1729,9 +1741,9 @@ struct DutyDetailView: View {
                                     )
                                     .labelsHidden()
                                     .datePickerStyle(.wheel)
-                                    .frame(width: 130, height: 220)
+                                    .frame(width: 130, height: 288)
                                     .scaleEffect(0.78, anchor: .topLeading)
-                                    .frame(width: 102, height: 172, alignment: .topLeading)
+                                    .frame(width: 102, height: 225, alignment: .topLeading)
                                     .clipped()
                                     .contentShape(Rectangle())
                                 }
