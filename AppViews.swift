@@ -929,21 +929,21 @@ struct DutyDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .popover(isPresented: focusBinding(.assignment)) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            editPopoverHeader("Задание на полёт №")
+                        VStack(alignment: .leading, spacing: 5) {
+                            editPopoverHeader(
+                                "Задание на полёт №",
+                                extraHorizontalInset: 0
+                            )
 
                             TextField("Номер", text: $assignmentNumber)
                                 .textInputAutocapitalization(.characters)
                                 .textFieldStyle(.plain)
-                                .font(.title3.weight(.semibold))
-                                .multilineTextAlignment(.center)
-                                .frame(width: 150)
-                                .padding(.vertical, 2)
-                                .frame(maxWidth: .infinity)
+                                .font(.headline)
+                                .multilineTextAlignment(.leading)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .frame(width: 215)
+                        .padding(8)
+                        .frame(width: 200)
                         .environment(\.locale, Locale(identifier: "ru_RU"))
                     }
                     .accessibilityHint("Нажмите, чтобы изменить номер задания")
@@ -1167,7 +1167,7 @@ struct DutyDetailView: View {
                 field: .legNumber(index)
             ) {
                 TextField("Номер лега", text: legNumberBinding(index))
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(.leading)
                     .keyboardType(.numberPad)
             }
         }
@@ -1257,6 +1257,8 @@ struct DutyDetailView: View {
                     Text(kind.rawValue).tag(kind)
                 }
             }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -1267,6 +1269,7 @@ struct DutyDetailView: View {
             field: .aircraft(index)
         ) {
             TextField("Тип ВС", text: $draft[index].aircraft)
+                .multilineTextAlignment(.leading)
         }
     }
 
@@ -1278,6 +1281,7 @@ struct DutyDetailView: View {
         ) {
             TextField("Бортовой номер", text: $draft[index].registration)
                 .textInputAutocapitalization(.characters)
+                .multilineTextAlignment(.leading)
         }
     }
 
@@ -1314,12 +1318,17 @@ struct DutyDetailView: View {
                 .buttonStyle(.plain)
                 .accessibilityHint("Нажмите, чтобы изменить")
                 .popover(isPresented: focusBinding(field)) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        editPopoverHeader(title)
+                    VStack(alignment: .leading, spacing: 6) {
+                        editPopoverHeader(
+                            title,
+                            extraHorizontalInset: 0
+                        )
+
                         editor()
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(12)
-                    .frame(minWidth: 270)
+                    .padding(10)
+                    .frame(width: editPopoverWidth(for: field))
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
                 }
@@ -1329,11 +1338,14 @@ struct DutyDetailView: View {
         }
     }
 
-    private func editPopoverHeader(_ title: String) -> some View {
+    private func editPopoverHeader(
+        _ title: String,
+        extraHorizontalInset: CGFloat = 14
+    ) -> some View {
         HStack(spacing: 8) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .padding(.leading, 14)
+                .padding(.leading, extraHorizontalInset)
 
             Spacer()
 
@@ -1346,8 +1358,25 @@ struct DutyDetailView: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.circle)
             .controlSize(.small)
-            .padding(.trailing, 14)
+            .padding(.trailing, extraHorizontalInset)
             .accessibilityLabel("Готово")
+        }
+    }
+
+    private func editPopoverWidth(for field: DutyFocusedField) -> CGFloat {
+        switch field {
+        case .legNumber:
+            return 180
+        case .aircraft:
+            return 190
+        case .registration:
+            return 205
+        case .flightKind:
+            return 205
+        case .route:
+            return 315
+        default:
+            return 230
         }
     }
 
