@@ -17,11 +17,14 @@ jobs:
           ref: ui/pr66-route-edit-lock-and-hardware-keyboard
 
       - name: Apply patch
-        run: python3 tools/pr66_patch.py
+        run: |
+          python3 tools/pr66_repair.py
+          python3 tools/pr66_patch.py
 
       - name: Remove temporary patch files
         run: |
           rm -f tools/pr66_patch.py
+          rm -f tools/pr66_repair.py
           rm -f .github/workflows/pr66-patch.yml
 
       - name: Commit changes
