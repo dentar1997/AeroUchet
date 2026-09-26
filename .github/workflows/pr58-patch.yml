@@ -1,0 +1,84 @@
+name: PR58 patch
+
+on:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/pr58-version-and-assignment-font
+          fetch-depth: 0
+      - name: Patch source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('AppViews.swift')
+          s = p.read_text()
+
+          old = '''                ) {
+                    
+                    Text(
+                        monthTitle(
+'''
+          new = '''                ) {
+                    
+                    HStack {
+                        Text(AppVersion.label)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+                    }
+                    
+                    Text(
+                        monthTitle(
+'''
+          if s.count(old) != 1:
+              raise SystemExit('home version insertion match failed')
+          s = s.replace(old, new, 1)
+
+          old = '''                    if focusedField == .assignment {
+                        InlineSelectAllTextField(
+                            text: $assignmentNumber,
+                            isActive: focusBinding(.assignment),
+                            keyboardType: .numberPad,
+                            capitalization: .none,
+                            textAlignment: .center,
+                            font: .boldSystemFont(ofSize: 22)
+                        )
+                        .frame(width: 112, height: 30)
+                    } else {
+                        Text(assignmentNumber.isEmpty ? "—" : assignmentNumber)
+                    }
+'''
+          new = '''                    InlineSelectAllTextField(
+                        text: $assignmentNumber,
+                        isActive: focusBinding(.assignment),
+                        keyboardType: .numberPad,
+                        capitalization: .none,
+                        textAlignment: .center,
+                        font: .boldSystemFont(ofSize: 22)
+                    )
+                    .frame(width: 112, height: 30)
+'''
+          if s.count(old) != 1:
+              raise SystemExit('assignment field match failed')
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+          PY
+      - name: Remove patch workflow
+        run: rm .github/workflows/pr58-patch.yml
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AppViews.swift .github/workflows/pr58-patch.yml
+          git commit -m "[PR #58] Show version and keep assignment number font stable"
+          git push origin HEAD:ui/pr58-version-and-assignment-font
