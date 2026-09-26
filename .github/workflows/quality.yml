@@ -1,25 +1,35 @@
 name: AeroUchet Quality
-on: [push]
-permissions:
-  contents: write
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  patch:
-    runs-on: ubuntu-latest
+  quality:
+    name: Swift quality checks
+    runs-on: macos-26
+    timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ui/pr60-focus-font-time-editor-position
-          fetch-depth: 0
-      - name: Apply patch
-        run: python3 .github/pr60_patch.py
-      - name: Cleanup temporary files
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install quality tools
         run: |
-          rm .github/pr60_patch.py
-          git checkout origin/main -- .github/workflows/quality.yml
-      - name: Commit
+          brew install swiftlint swiftformat
+
+      - name: SwiftLint
+        continue-on-error: true
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add AppViews.swift AppVersion.swift Package.swift .github/pr60_patch.py .github/workflows/quality.yml
-          git commit -m "[PR #60] Stabilize inline editing and time editor placement"
-          git push origin HEAD:ui/pr60-focus-font-time-editor-position
+          swiftlint lint --config .swiftlint.yml
+
+      - name: SwiftFormat lint
+        continue-on-error: true
+        run: |
+          swiftformat --lint . --exclude .swiftpm,.build

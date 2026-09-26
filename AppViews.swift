@@ -623,9 +623,20 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 20)
                 .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
         )
-        .overlay(alignment: .top) {
-            activeTimeEditor
-                .zIndex(10_000)
+        .overlay {
+            ZStack(alignment: .top) {
+                if case .time = focusedField {
+                    Color.black.opacity(0.001)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            focusedField = nil
+                        }
+                        .zIndex(1)
+                }
+
+                activeTimeEditor
+                    .zIndex(2)
+            }
         }
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .sheet(isPresented: $showReview) {
@@ -997,7 +1008,7 @@ struct DutyDetailView: View {
                         keyboardType: .numberPad,
                         capitalization: .none,
                         textAlignment: .center,
-                        font: .boldSystemFont(ofSize: 22)
+                        font: .boldSystemFont(ofSize: 20)
                     )
                     .frame(width: 112, height: 30)
                 }
@@ -1023,7 +1034,7 @@ struct DutyDetailView: View {
                     .padding(.vertical, 8)
             }
         }
-        .font(.title2.bold())
+        .font(.title3.bold())
         .lineLimit(1)
         .minimumScaleFactor(0.85)
         .frame(maxWidth: .infinity)
@@ -1265,7 +1276,7 @@ struct DutyDetailView: View {
                     keyboardType: .numbersAndPunctuation,
                     capitalization: .allCharacters,
                     textAlignment: .center,
-                    font: .systemFont(ofSize: 15, weight: .semibold)
+                    font: .systemFont(ofSize: 14, weight: .semibold)
                 )
                 .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
             } else {
@@ -1289,7 +1300,7 @@ struct DutyDetailView: View {
                     keyboardType: .default,
                     capitalization: .allCharacters,
                     textAlignment: .center,
-                    font: .systemFont(ofSize: 15, weight: .semibold)
+                    font: .systemFont(ofSize: 14, weight: .semibold)
                 )
                 .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
             } else {
@@ -1310,7 +1321,7 @@ struct DutyDetailView: View {
                         keyboardType: .numberPad,
                         capitalization: .none,
                         textAlignment: .left,
-                        font: .systemFont(ofSize: 15, weight: .semibold),
+                        font: .systemFont(ofSize: 14, weight: .semibold),
                         maxLength: 5
                     )
                     .frame(width: 58, height: 18)
@@ -1516,6 +1527,14 @@ struct DutyDetailView: View {
         case .takeoff, .landing:
             return .topTrailing
         }
+    }
+
+    private func timeEditorTopPadding(for index: Int) -> CGFloat {
+        if index == 0 {
+            return 142
+        }
+
+        return 76 + CGFloat(index - 1) * 230
     }
 
     private func editPopoverWidth(for field: DutyFocusedField) -> CGFloat {
@@ -1743,7 +1762,7 @@ struct DutyDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: timeEditorAlignment(for: point))
             .padding(.horizontal, 18)
-            .padding(.top, 52)
+            .padding(.top, timeEditorTopPadding(for: index))
         }
     }
 
