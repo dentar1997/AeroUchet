@@ -623,10 +623,6 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 20)
                 .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
         )
-        .overlay(alignment: .top) {
-            activeTimeEditor
-                .zIndex(10_000)
-        }
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .sheet(isPresented: $showReview) {
             NavigationStack {
@@ -784,6 +780,15 @@ struct DutyDetailView: View {
                  : duty)
             .padding(16)
             .frame(maxWidth: .infinity)
+            .background {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if case .time = focusedField {
+                            focusedField = nil
+                        }
+                    }
+            }
     }
 
     private var updatedLegs: [FlightLeg] {
@@ -997,11 +1002,11 @@ struct DutyDetailView: View {
                         keyboardType: .numberPad,
                         capitalization: .none,
                         textAlignment: .center,
-                        font: .boldSystemFont(ofSize: 22)
+                        font: .boldSystemFont(ofSize: 20)
                     )
-                    .frame(width: 112, height: 30)
+                    .frame(width: 104, height: 28)
                 }
-                .frame(height: 30, alignment: .center)
+                .frame(height: 28, alignment: .center)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background {
@@ -1023,7 +1028,7 @@ struct DutyDetailView: View {
                     .padding(.vertical, 8)
             }
         }
-        .font(.title2.bold())
+        .font(.title3.bold())
         .lineLimit(1)
         .minimumScaleFactor(0.85)
         .frame(maxWidth: .infinity)
@@ -1184,6 +1189,10 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         )
+        .overlay(alignment: .top) {
+            activeTimeEditor(for: index)
+                .zIndex(10_000)
+        }
     }
 
     private func headerEditorZIndex(_ index: Int) -> Double {
@@ -1695,8 +1704,9 @@ struct DutyDetailView: View {
     }
 
     @ViewBuilder
-    private var activeTimeEditor: some View {
+    private func activeTimeEditor(for legIndex: Int) -> some View {
         if case let .time(index, point) = focusedField,
+           index == legIndex,
            draft.indices.contains(index) {
             floatingEditor(width: 380, height: 282) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -1743,7 +1753,7 @@ struct DutyDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: timeEditorAlignment(for: point))
             .padding(.horizontal, 18)
-            .padding(.top, 52)
+            .offset(y: legIndex == 0 ? 58 : -290)
         }
     }
 
@@ -1923,6 +1933,8 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         field.textAlignment = textAlignment
         field.font = font
         field.adjustsFontForContentSizeCategory = false
+        field.adjustsFontSizeToFitWidth = true
+        field.minimumFontSize = 10.5
         field.delegate = context.coordinator
         field.addTarget(
             context.coordinator,
