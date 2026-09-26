@@ -1,26 +1,35 @@
 name: AeroUchet Quality
-on: [push]
-permissions:
-  contents: write
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  patch:
-    runs-on: ubuntu-latest
+  quality:
+    name: Swift quality checks
+    runs-on: macos-26
+    timeout-minutes: 15
+
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ui/pr59-normalize-edit-card-fonts
-          fetch-depth: 0
-      - name: Normalize card fonts
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install quality tools
         run: |
-          sed -i 's/\.font(\.system(size: 15, weight: \.semibold))/\.font(\.subheadline.weight(\.semibold))/g' AppViews.swift
-          COUNT=$(grep -c '\.font(\.subheadline.weight(\.semibold))' AppViews.swift)
-          test "$COUNT" -ge 2
-      - name: Restore workflow
-        run: git checkout origin/main -- .github/workflows/quality.yml
-      - name: Commit
+          brew install swiftlint swiftformat
+
+      - name: SwiftLint
+        continue-on-error: true
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add AppViews.swift .github/workflows/quality.yml
-          git commit -m "[PR #59] Match editable card typography to normal cards"
-          git push origin HEAD:ui/pr59-normalize-edit-card-fonts
+          swiftlint lint --config .swiftlint.yml
+
+      - name: SwiftFormat lint
+        continue-on-error: true
+        run: |
+          swiftformat --lint . --exclude .swiftpm,.build
