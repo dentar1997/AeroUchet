@@ -59,6 +59,14 @@ struct HomeView: View {
                     spacing: 20
                 ) {
                     
+                    HStack {
+                        Text(AppVersion.label)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+                    }
+                    
                     Text(
                         monthTitle(
                             activeMonth
@@ -983,19 +991,15 @@ struct DutyDetailView: View {
                 HStack(spacing: 4) {
                     Text("Задание на полёт №")
 
-                    if focusedField == .assignment {
-                        InlineSelectAllTextField(
-                            text: $assignmentNumber,
-                            isActive: focusBinding(.assignment),
-                            keyboardType: .numberPad,
-                            capitalization: .none,
-                            textAlignment: .center,
-                            font: .boldSystemFont(ofSize: 22)
-                        )
-                        .frame(width: 112, height: 30)
-                    } else {
-                        Text(assignmentNumber.isEmpty ? "—" : assignmentNumber)
-                    }
+                    InlineSelectAllTextField(
+                        text: $assignmentNumber,
+                        isActive: focusBinding(.assignment),
+                        keyboardType: .numberPad,
+                        capitalization: .none,
+                        textAlignment: .center,
+                        font: .boldSystemFont(ofSize: 22)
+                    )
+                    .frame(width: 112, height: 30)
                 }
                 .frame(height: 30, alignment: .center)
                 .padding(.horizontal, 12)
