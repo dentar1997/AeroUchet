@@ -1,0 +1,33 @@
+name: PR66 Patch
+
+on:
+  push:
+    branches:
+      - ui/pr66-route-edit-lock-and-hardware-keyboard
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/pr66-route-edit-lock-and-hardware-keyboard
+
+      - name: Apply patch
+        run: python3 tools/pr66_patch.py
+
+      - name: Remove temporary patch files
+        run: |
+          rm -f tools/pr66_patch.py
+          rm -f .github/workflows/pr66-patch.yml
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "[PR #66] Fix route editing and hardware keyboard"
+          git push origin HEAD:ui/pr66-route-edit-lock-and-hardware-keyboard
