@@ -318,6 +318,7 @@ private struct DutyAssignmentOverlay: View {
     let onClose: () -> Void
 
     @State private var dragOffset: CGFloat = 0
+    @State private var editorIsActive = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -334,7 +335,8 @@ private struct DutyAssignmentOverlay: View {
                     DutyDetailView(
                         duty: duty,
                         onClose: onClose,
-                        scrollsAsPage: true
+                        scrollsAsPage: true,
+                        onEditorFocusChange: { editorIsActive = $0 }
                     )
                     .environmentObject(store)
                     .frame(width: width)
@@ -350,7 +352,12 @@ private struct DutyAssignmentOverlay: View {
                 )
                 .offset(y: dragOffset)
                 .contentShape(Rectangle())
-                .simultaneousGesture(dismissDrag(in: geometry.size.height))
+                .simultaneousGesture(
+                    dismissDrag(
+                        in: geometry.size.height,
+                        enabled: !editorIsActive
+                    )
+                )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -362,9 +369,14 @@ private struct DutyAssignmentOverlay: View {
         return 0.65 * Double(1 - progress * 0.75)
     }
 
-    private func dismissDrag(in height: CGFloat) -> some Gesture {
+    private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {
         DragGesture(minimumDistance: 10)
             .onChanged { value in
+                guard enabled else {
+                    dragOffset = 0
+                    return
+                }
+
                 // Вниз карточка следует за пальцем полностью.
                 // Вверх даём небольшой упругий ход, как у обычного sheet.
                 if value.translation.height >= 0 {
@@ -374,6 +386,11 @@ private struct DutyAssignmentOverlay: View {
                 }
             }
             .onEnded { value in
+                guard enabled else {
+                    dragOffset = 0
+                    return
+                }
+
                 let predicted = max(
                     value.translation.height,
                     value.predictedEndTranslation.height
@@ -496,11 +513,18 @@ struct DutyDetailView: View {
     let duty: FlightDuty
     let onClose: (() -> Void)?
     let scrollsAsPage: Bool
+    let onEditorFocusChange: ((Bool) -> Void)?
 
-    init(duty: FlightDuty, onClose: (() -> Void)? = nil, scrollsAsPage: Bool = false) {
+    init(
+        duty: FlightDuty,
+        onClose: (() -> Void)? = nil,
+        scrollsAsPage: Bool = false,
+        onEditorFocusChange: ((Bool) -> Void)? = nil
+    ) {
         self.duty = duty
         self.onClose = onClose
         self.scrollsAsPage = scrollsAsPage
+        self.onEditorFocusChange = onEditorFocusChange
     }
 
     private func close() {
@@ -564,6 +588,12 @@ struct DutyDetailView: View {
         }
         .onChange(of: draft) { _ in recordEdit() }
         .onChange(of: assignmentNumber) { _ in recordEdit() }
+        .onChange(of: focusedField) { value in
+            onEditorFocusChange?(value != nil)
+        }
+        .onDisappear {
+            onEditorFocusChange?(false)
+        }
         .environment(\.timeZone, moscowTimeZone)
         .background(
             Color(uiColor: .secondarySystemGroupedBackground),
@@ -863,6 +893,7 @@ struct DutyDetailView: View {
                     index: index,
                     workEnd: duty.workIntervals[index].end
                 )
+                .zIndex(legEditorZIndex(index))
 
                 if index + 1 < duty.legs.count {
                     let restStart = duty.workIntervals[index].end
@@ -1131,6 +1162,21 @@ struct DutyDetailView: View {
              .registration(let value),
              .calculatedTime(let value):
             return value == index ? 1000 : 0
+        default:
+            return 0
+        }
+    }
+
+    private func legEditorZIndex(_ index: Int) -> Double {
+        switch focusedField {
+        case .legNumber(let value),
+             .route(let value),
+             .flightKind(let value),
+             .aircraft(let value),
+             .registration(let value),
+             .calculatedTime(let value),
+             .time(let value, _):
+            return value == index ? 2000 : 0
         default:
             return 0
         }
@@ -1435,7 +1481,7 @@ struct DutyDetailView: View {
     private func timeEditorVerticalOffset(for point: DutyEditPoint) -> CGFloat {
         switch point {
         case .workStart, .engineOn, .takeoff:
-            return 46
+            return -205
         case .workEnd, .engineOff, .landing:
             return -226
         }
@@ -1454,7 +1500,7 @@ struct DutyDetailView: View {
         case .route:
             return 350
         case .calculatedTime:
-            return 190
+            return 230
         default:
             return 260
         }
@@ -1480,39 +1526,42 @@ struct DutyDetailView: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     if focusedField == .calculatedTime(index) {
-                        floatingEditor(width: 190) {
+                        floatingEditor(width: 230) {
                             VStack(alignment: .leading, spacing: 6) {
                                 editPopoverHeader(
                                     "Расчётное время",
                                     extraHorizontalInset: 0
                                 )
+                                .zIndex(60)
 
-                                Button {
-                                    toggleCalculatedTimeSource(index)
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        ZStack {
+                                HStack(spacing: 8) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .stroke(Color.secondary, lineWidth: 1.2)
+                                            .frame(width: 20, height: 20)
+
+                                        if draft[index].calculatedMinutesOverride == nil {
                                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                .stroke(Color.secondary, lineWidth: 1.2)
+                                                .fill(Color.accentColor)
                                                 .frame(width: 20, height: 20)
 
-                                            if draft[index].calculatedMinutesOverride == nil {
-                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                    .fill(Color.accentColor)
-                                                    .frame(width: 20, height: 20)
-
-                                                Image(systemName: "checkmark")
-                                                    .font(.caption2.weight(.bold))
-                                                    .foregroundStyle(.white)
-                                            }
+                                            Image(systemName: "checkmark")
+                                                .font(.caption2.weight(.bold))
+                                                .foregroundStyle(.white)
                                         }
-
-                                        Text("Из таблицы")
                                     }
-                                    .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
-                                    .contentShape(Rectangle())
+
+                                    Text("Из таблицы")
                                 }
-                                .buttonStyle(.plain)
+                                .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                                .background(Color.clear)
+                                .contentShape(Rectangle())
+                                .zIndex(50)
+                                .highPriorityGesture(
+                                    TapGesture().onEnded {
+                                        toggleCalculatedTimeSource(index)
+                                    }
+                                )
 
                                 if draft[index].calculatedMinutesOverride != nil {
                                     DatePicker(
@@ -1522,9 +1571,11 @@ struct DutyDetailView: View {
                                     )
                                     .labelsHidden()
                                     .datePickerStyle(.wheel)
-                                    .frame(width: 150, height: 108)
+                                    .frame(width: 172, height: 118)
                                     .clipped()
+                                    .contentShape(Rectangle())
                                     .frame(maxWidth: .infinity, alignment: .leading)
+                                    .zIndex(0)
                                 } else {
                                     Text(
                                         draft[index].calculatedMinutes.map(timeText)
@@ -1636,6 +1687,7 @@ struct DutyDetailView: View {
                                         alignment: .topLeading
                                     )
                                     .clipped()
+                                    .contentShape(Rectangle())
 
                                     DatePicker(
                                         "",
@@ -1648,6 +1700,7 @@ struct DutyDetailView: View {
                                     .scaleEffect(0.78, anchor: .topLeading)
                                     .frame(width: 102, height: 172, alignment: .topLeading)
                                     .clipped()
+                                    .contentShape(Rectangle())
                                 }
                                 .frame(maxWidth: .infinity, alignment: .center)
                             }
