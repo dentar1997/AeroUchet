@@ -372,9 +372,13 @@ private struct DutyAssignmentOverlay: View {
     private func dismissDrag(in height: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 10)
             .onChanged { value in
-                // Карточка задания двигается только вниз.
-                // Список рейсов под ней не участвует в жесте вообще.
-                dragOffset = max(0, value.translation.height)
+                // Вниз карточка следует за пальцем полностью.
+                // Вверх даём небольшой упругий ход, как у обычного sheet.
+                if value.translation.height >= 0 {
+                    dragOffset = value.translation.height
+                } else {
+                    dragOffset = max(value.translation.height * 0.18, -32)
+                }
             }
             .onEnded { value in
                 let predicted = max(
@@ -925,20 +929,21 @@ struct DutyDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .popover(isPresented: focusBinding(.assignment)) {
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 4) {
                             editPopoverHeader("Задание на полёт №")
 
                             TextField("Номер", text: $assignmentNumber)
                                 .textInputAutocapitalization(.characters)
-                                .textFieldStyle(.roundedBorder)
-                                .font(.headline)
+                                .textFieldStyle(.plain)
+                                .font(.title3.weight(.semibold))
                                 .multilineTextAlignment(.center)
-                                .frame(width: 190)
+                                .frame(width: 150)
+                                .padding(.vertical, 2)
                                 .frame(maxWidth: .infinity)
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .frame(width: 235)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .frame(width: 215)
                         .environment(\.locale, Locale(identifier: "ru_RU"))
                     }
                     .accessibilityHint("Нажмите, чтобы изменить номер задания")
@@ -1377,7 +1382,7 @@ struct DutyDetailView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         editPopoverHeader(title)
 
-                        HStack(alignment: .top, spacing: -16) {
+                        HStack(alignment: .top, spacing: -28) {
                             DatePicker(
                                 "",
                                 selection: timeBinding(index, point),
@@ -1387,7 +1392,7 @@ struct DutyDetailView: View {
                             .datePickerStyle(.graphical)
                             .scaleEffect(0.72, anchor: .topLeading)
                             .frame(
-                                width: 224,
+                                width: 218,
                                 height: 178,
                                 alignment: .topLeading
                             )
@@ -1402,17 +1407,17 @@ struct DutyDetailView: View {
                             .datePickerStyle(.wheel)
                             .scaleEffect(0.82)
                             .frame(
-                                width: 126,
+                                width: 120,
                                 height: 178
                             )
                             .clipped()
-                            .offset(x: -8)
+                            .offset(x: -10)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .center)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .frame(minWidth: 365)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .frame(width: 365)
                     .fixedSize(horizontal: false, vertical: true)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
