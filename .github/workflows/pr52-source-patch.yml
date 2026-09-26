@@ -1,0 +1,290 @@
+name: Apply PR52 source patch
+
+on:
+  push:
+    branches:
+      - ui/pr52-fix-calculated-toggle-popover-scroll
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[PR52 patched]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/pr52-fix-calculated-toggle-popover-scroll
+          fetch-depth: 0
+
+      - name: Apply UI fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('AppViews.swift')
+          text = path.read_text()
+
+          def replace_once(old, new, label):
+              global text
+              if old not in text:
+                  raise SystemExit(f'Block not found: {label}')
+              text = text.replace(old, new, 1)
+
+          old_overlay = '''            let maximumHeight = max(320, geometry.size.height - 40)
+
+            ZStack {
+                Color.black
+                    .opacity(backgroundOpacity(for: geometry.size.height))
+                    .ignoresSafeArea()
+                    .onTapGesture(perform: onClose)
+
+                ViewThatFits(in: .vertical) {
+                    DutyDetailView(
+                        duty: duty,
+                        onClose: onClose,
+                        scrollsAsPage: true
+                    )
+                    .environmentObject(store)
+                    .frame(width: width)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    DutyDetailView(
+                        duty: duty,
+                        onClose: onClose,
+                        scrollsAsPage: false
+                    )
+                    .environmentObject(store)
+                    .frame(width: width, height: maximumHeight)
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .center
+                )
+                .padding(.vertical, 20)
+                .offset(y: dragOffset)
+                .contentShape(Rectangle())
+                .simultaneousGesture(dismissDrag(in: geometry.size.height))
+            }'''
+          new_overlay = '''            ZStack {
+                Color.black
+                    .opacity(backgroundOpacity(for: geometry.size.height))
+                    .ignoresSafeArea()
+                    .onTapGesture(perform: onClose)
+
+                ScrollView(.vertical) {
+                    DutyDetailView(
+                        duty: duty,
+                        onClose: onClose,
+                        scrollsAsPage: true
+                    )
+                    .environmentObject(store)
+                    .frame(width: width)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 20)
+                }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .center
+                )
+                .offset(y: dragOffset)
+                .contentShape(Rectangle())
+                .simultaneousGesture(dismissDrag(in: geometry.size.height))
+            }'''
+          replace_once(old_overlay, new_overlay, 'outer assignment scrolling')
+
+          old_assignment_surface = '''                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .frame(width: 230)
+                        .presentationCornerRadius(10)
+                        .environment(\\.locale, Locale(identifier: "ru_RU"))'''
+          new_assignment_surface = '''                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .frame(width: 230)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .presentationBackground(.clear)
+                        .environment(\\.locale, Locale(identifier: "ru_RU"))'''
+          replace_once(old_assignment_surface, new_assignment_surface, 'assignment popover shape')
+
+          old_generic_surface = '''                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .frame(width: editPopoverWidth(for: field))
+                    .presentationCornerRadius(10)
+                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
+          new_generic_surface = '''                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .frame(width: editPopoverWidth(for: field))
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .presentationBackground(.clear)
+                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
+          replace_once(old_generic_surface, new_generic_surface, 'generic popover shape')
+
+          old_calc_controls = '''                        Button {
+                            toggleCalculatedTimeSource(index)
+                        } label: {
+                            HStack(spacing: 7) {
+                                Image(
+                                    systemName: draft[index].calculatedMinutesOverride == nil
+                                    ? "checkmark.square.fill"
+                                    : "square"
+                                )
+                                Text("Из таблицы")
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+
+                        if draft[index].calculatedMinutesOverride != nil {
+                            DatePicker(
+                                "",
+                                selection: calculatedTimeBinding(index),
+                                displayedComponents: [.hourAndMinute]
+                            )
+                            .labelsHidden()
+                            .datePickerStyle(.wheel)
+                            .frame(width: 150, height: 130)
+                            .clipped()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            Text(
+                                draft[index].calculatedMinutes.map(timeText)
+                                ?? "Ожидает норму"
+                            )
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        }'''
+          new_calc_controls = '''                        Button {
+                            toggleCalculatedTimeSource(index)
+                        } label: {
+                            HStack(spacing: 8) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .stroke(Color.secondary, lineWidth: 1.2)
+                                        .frame(width: 20, height: 20)
+
+                                    if draft[index].calculatedMinutesOverride == nil {
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .fill(Color.accentColor)
+                                            .frame(width: 20, height: 20)
+
+                                        Image(systemName: "checkmark")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+
+                                Text("Из таблицы")
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .zIndex(2)
+
+                        if draft[index].calculatedMinutesOverride != nil {
+                            DatePicker(
+                                "",
+                                selection: calculatedTimeBinding(index),
+                                displayedComponents: [.hourAndMinute]
+                            )
+                            .labelsHidden()
+                            .datePickerStyle(.wheel)
+                            .frame(width: 160, height: 118)
+                            .clipped()
+                            .padding(.top, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .zIndex(0)
+                        } else {
+                            Text(
+                                draft[index].calculatedMinutes.map(timeText)
+                                ?? "Ожидает норму"
+                            )
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 4)
+                        }'''
+          replace_once(old_calc_controls, new_calc_controls, 'calculated time table toggle')
+
+          old_calc_surface = '''                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .frame(width: 245)
+                    .presentationCornerRadius(10)
+                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
+          new_calc_surface = '''                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .frame(width: 245)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .presentationBackground(.clear)
+                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
+          replace_once(old_calc_surface, new_calc_surface, 'calculated popover shape')
+
+          old_calendar = '''                                .labelsHidden()
+                                .datePickerStyle(.graphical)
+                                .frame(width: 302, height: 246, alignment: .topLeading)
+                                .transaction { transaction in
+                                    transaction.animation = nil
+                                }
+                                .scaleEffect(0.72, anchor: .topLeading)'''
+          new_calendar = '''                                .labelsHidden()
+                                .datePickerStyle(.graphical)
+                                .frame(width: 302, height: 246, alignment: .topLeading)
+                                .clipped()
+                                .transaction { transaction in
+                                    transaction.animation = nil
+                                }
+                                .animation(
+                                    nil,
+                                    value: point.date(in: times(for: draft[index]))
+                                )
+                                .scaleEffect(0.72, anchor: .topLeading)'''
+          replace_once(old_calendar, new_calendar, 'stable graphical calendar')
+
+          old_time_surface = '''                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .frame(width: 365)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .presentationCornerRadius(10)
+                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
+          new_time_surface = '''                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .frame(width: 365, height: 230, alignment: .top)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .presentationBackground(.clear)
+                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
+          replace_once(old_time_surface, new_time_surface, 'time popover fixed size and shape')
+
+          path.write_text(text)
+          PY
+
+          rm -f .github/ignore foo bar baz oops x y z w
+
+      - name: Commit patched sources
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "[PR52 patched] Fix edit popovers and assignment scrolling"
+          git push
