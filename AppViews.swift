@@ -1335,7 +1335,7 @@ struct DutyDetailView: View {
                 .minimumScaleFactor(0.75)
 
             content()
-                .font(.system(size: 15, weight: .semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -1757,7 +1757,7 @@ struct DutyDetailView: View {
                 .foregroundStyle(.secondary)
 
             Text(value)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .minimumScaleFactor(0.85)
                 .frame(height: 18, alignment: .leading)
