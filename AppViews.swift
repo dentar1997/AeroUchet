@@ -782,6 +782,11 @@ struct DutyDetailView: View {
             add("Борт", old.registration, new.registration)
             add("Тип рейса", (old.scheduleType ?? .planned).rawValue,
                 (new.scheduleType ?? .planned).rawValue)
+            add(
+                "Расчётное время",
+                old.calculatedMinutesOverride.map(timeText) ?? "Из таблицы",
+                new.calculatedMinutesOverride.map(timeText) ?? "Из таблицы"
+            )
 
             let oldTimes = times(for: old)
             let newTimes = times(for: new)
@@ -942,8 +947,10 @@ struct DutyDetailView: View {
                                 .multilineTextAlignment(.leading)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .padding(8)
-                        .frame(width: 200)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .frame(width: 230)
+                        .presentationCornerRadius(10)
                         .environment(\.locale, Locale(identifier: "ru_RU"))
                     }
                     .accessibilityHint("Нажмите, чтобы изменить номер задания")
@@ -1146,12 +1153,12 @@ struct DutyDetailView: View {
                 if sizeClass == .compact {
                     VStack(spacing: 4) {
                         flightKindField(leg, index: index)
-                        calculatedTime(leg)
+                        calculatedTime(leg, index: index)
                     }
                 } else {
                     HStack(alignment: .top, spacing: 8) {
                         flightKindField(leg, index: index)
-                        calculatedTime(leg)
+                        calculatedTime(leg, index: index)
                     }
                 }
             }
@@ -1327,8 +1334,10 @@ struct DutyDetailView: View {
                         editor()
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .padding(10)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
                     .frame(width: editPopoverWidth(for: field))
+                    .presentationCornerRadius(10)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
                 }
@@ -1366,24 +1375,128 @@ struct DutyDetailView: View {
     private func editPopoverWidth(for field: DutyFocusedField) -> CGFloat {
         switch field {
         case .legNumber:
-            return 180
+            return 220
         case .aircraft:
-            return 190
+            return 225
         case .registration:
-            return 205
+            return 245
         case .flightKind:
-            return 205
+            return 245
         case .route:
-            return 315
+            return 350
+        case .calculatedTime:
+            return 245
         default:
-            return 230
+            return 260
         }
     }
 
-    private func calculatedTime(_ leg: FlightLeg) -> some View {
-        legValueCard(
-            title: "Расчётное время",
-            value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму"
+    private func calculatedTime(_ leg: FlightLeg, index: Int) -> some View {
+        Group {
+            if isEditing {
+                Button {
+                    focusedField = .calculatedTime(index)
+                } label: {
+                    legValueCard(
+                        title: "Расчётное время",
+                        value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму"
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: focusBinding(.calculatedTime(index))) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        editPopoverHeader(
+                            "Расчётное время",
+                            extraHorizontalInset: 0
+                        )
+
+                        Button {
+                            toggleCalculatedTimeSource(index)
+                        } label: {
+                            HStack(spacing: 7) {
+                                Image(
+                                    systemName: draft[index].calculatedMinutesOverride == nil
+                                    ? "checkmark.square.fill"
+                                    : "square"
+                                )
+                                Text("Из таблицы")
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+
+                        if draft[index].calculatedMinutesOverride != nil {
+                            DatePicker(
+                                "",
+                                selection: calculatedTimeBinding(index),
+                                displayedComponents: [.hourAndMinute]
+                            )
+                            .labelsHidden()
+                            .datePickerStyle(.wheel)
+                            .frame(width: 150, height: 130)
+                            .clipped()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            Text(
+                                draft[index].calculatedMinutes.map(timeText)
+                                ?? "Ожидает норму"
+                            )
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .frame(width: 245)
+                    .presentationCornerRadius(10)
+                    .environment(\.locale, Locale(identifier: "ru_RU"))
+                    .environment(\.timeZone, moscowTimeZone)
+                }
+            } else {
+                legValueCard(
+                    title: "Расчётное время",
+                    value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму"
+                )
+            }
+        }
+    }
+
+    private func toggleCalculatedTimeSource(_ index: Int) {
+        if draft[index].calculatedMinutesOverride == nil {
+            let seed = draft[index].calculatedMinutes ?? draft[index].flightMinutes
+            draft[index].calculatedMinutesOverride = max(0, seed)
+        } else {
+            draft[index].calculatedMinutesOverride = nil
+        }
+    }
+
+    private func calculatedTimeBinding(_ index: Int) -> Binding<Date> {
+        let base = moscowCalendar.date(
+            from: DateComponents(year: 2001, month: 1, day: 1)
+        )!
+
+        return Binding(
+            get: {
+                moscowCalendar.date(
+                    byAdding: .minute,
+                    value: draft[index].calculatedMinutesOverride
+                        ?? draft[index].flightMinutes,
+                    to: base
+                )!
+            },
+            set: { newDate in
+                let components = moscowCalendar.dateComponents(
+                    [.hour, .minute],
+                    from: newDate
+                )
+                let hours = components.hour ?? 0
+                let minutes = components.minute ?? 0
+                draft[index].calculatedMinutesOverride = hours * 60 + minutes
+            }
         )
     }
 
@@ -1412,14 +1525,20 @@ struct DutyDetailView: View {
                         editPopoverHeader(title)
 
                         HStack(alignment: .top, spacing: -28) {
-                            DatePicker(
-                                "",
-                                selection: timeBinding(index, point),
-                                displayedComponents: [.date]
-                            )
-                            .labelsHidden()
-                            .datePickerStyle(.graphical)
-                            .scaleEffect(0.72, anchor: .topLeading)
+                            ZStack(alignment: .topLeading) {
+                                DatePicker(
+                                    "",
+                                    selection: timeBinding(index, point),
+                                    displayedComponents: [.date]
+                                )
+                                .labelsHidden()
+                                .datePickerStyle(.graphical)
+                                .frame(width: 302, height: 246, alignment: .topLeading)
+                                .transaction { transaction in
+                                    transaction.animation = nil
+                                }
+                                .scaleEffect(0.72, anchor: .topLeading)
+                            }
                             .frame(
                                 width: 218,
                                 height: 178,
@@ -1448,6 +1567,7 @@ struct DutyDetailView: View {
                     .padding(.vertical, 10)
                     .frame(width: 365)
                     .fixedSize(horizontal: false, vertical: true)
+                    .presentationCornerRadius(10)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
                 }
@@ -1518,6 +1638,7 @@ private enum DutyFocusedField: Hashable {
     case flightKind(Int)
     case aircraft(Int)
     case registration(Int)
+    case calculatedTime(Int)
     case time(Int, DutyEditPoint)
 }
 
