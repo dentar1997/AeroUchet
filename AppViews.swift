@@ -550,6 +550,7 @@ struct DutyDetailView: View {
             assignmentHeader(current)
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
+                .zIndex(focusedField == .assignment ? 1000 : 1)
 
             if scrollsAsPage {
                 assignmentContents(current)
@@ -1053,6 +1054,7 @@ struct DutyDetailView: View {
     private func legCard(_ leg: FlightLeg, index: Int, workEnd: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             legHeader(leg, index: index)
+                .zIndex(headerEditorZIndex(index))
 
             // Все исходные точки редактируются на месте. Итоги остаются вычисляемыми.
             LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
@@ -1118,6 +1120,20 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         )
+    }
+
+    private func headerEditorZIndex(_ index: Int) -> Double {
+        switch focusedField {
+        case .legNumber(let value),
+             .route(let value),
+             .flightKind(let value),
+             .aircraft(let value),
+             .registration(let value),
+             .calculatedTime(let value):
+            return value == index ? 1000 : 0
+        default:
+            return 0
+        }
     }
 
     private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
