@@ -323,7 +323,6 @@ private struct DutyAssignmentOverlay: View {
         GeometryReader { geometry in
             let widthRatio = geometry.size.width >= 800 ? 0.74 : 0.92
             let width = min(geometry.size.width * widthRatio, 940)
-            let maximumHeight = max(320, geometry.size.height - 40)
 
             ZStack {
                 Color.black
@@ -331,7 +330,7 @@ private struct DutyAssignmentOverlay: View {
                     .ignoresSafeArea()
                     .onTapGesture(perform: onClose)
 
-                ViewThatFits(in: .vertical) {
+                ScrollView(.vertical) {
                     DutyDetailView(
                         duty: duty,
                         onClose: onClose,
@@ -340,21 +339,15 @@ private struct DutyAssignmentOverlay: View {
                     .environmentObject(store)
                     .frame(width: width)
                     .fixedSize(horizontal: false, vertical: true)
-
-                    DutyDetailView(
-                        duty: duty,
-                        onClose: onClose,
-                        scrollsAsPage: false
-                    )
-                    .environmentObject(store)
-                    .frame(width: width, height: maximumHeight)
+                    .padding(.vertical, 20)
                 }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
                 .frame(
                     maxWidth: .infinity,
                     maxHeight: .infinity,
                     alignment: .center
                 )
-                .padding(.vertical, 20)
                 .offset(y: dragOffset)
                 .contentShape(Rectangle())
                 .simultaneousGesture(dismissDrag(in: geometry.size.height))
@@ -950,7 +943,12 @@ struct DutyDetailView: View {
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
                         .frame(width: 230)
-                        .presentationCornerRadius(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .presentationBackground(.clear)
                         .environment(\.locale, Locale(identifier: "ru_RU"))
                     }
                     .accessibilityHint("Нажмите, чтобы изменить номер задания")
@@ -1337,7 +1335,12 @@ struct DutyDetailView: View {
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
                     .frame(width: editPopoverWidth(for: field))
-                    .presentationCornerRadius(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .presentationBackground(.clear)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
                 }
@@ -1417,17 +1420,30 @@ struct DutyDetailView: View {
                         Button {
                             toggleCalculatedTimeSource(index)
                         } label: {
-                            HStack(spacing: 7) {
-                                Image(
-                                    systemName: draft[index].calculatedMinutesOverride == nil
-                                    ? "checkmark.square.fill"
-                                    : "square"
-                                )
+                            HStack(spacing: 8) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .stroke(Color.secondary, lineWidth: 1.2)
+                                        .frame(width: 20, height: 20)
+
+                                    if draft[index].calculatedMinutesOverride == nil {
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .fill(Color.accentColor)
+                                            .frame(width: 20, height: 20)
+
+                                        Image(systemName: "checkmark")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+
                                 Text("Из таблицы")
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .zIndex(10)
 
                         if draft[index].calculatedMinutesOverride != nil {
                             DatePicker(
@@ -1437,9 +1453,11 @@ struct DutyDetailView: View {
                             )
                             .labelsHidden()
                             .datePickerStyle(.wheel)
-                            .frame(width: 150, height: 130)
+                            .frame(width: 160, height: 112)
                             .clipped()
+                            .padding(.top, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .zIndex(0)
                         } else {
                             Text(
                                 draft[index].calculatedMinutes.map(timeText)
@@ -1447,12 +1465,18 @@ struct DutyDetailView: View {
                             )
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
+                            .padding(.top, 6)
                         }
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
                     .frame(width: 245)
-                    .presentationCornerRadius(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .presentationBackground(.clear)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
                 }
@@ -1534,9 +1558,14 @@ struct DutyDetailView: View {
                                 .labelsHidden()
                                 .datePickerStyle(.graphical)
                                 .frame(width: 302, height: 246, alignment: .topLeading)
+                                .clipped()
                                 .transaction { transaction in
                                     transaction.animation = nil
                                 }
+                                .animation(
+                                    nil,
+                                    value: point.date(in: times(for: draft[index]))
+                                )
                                 .scaleEffect(0.72, anchor: .topLeading)
                             }
                             .frame(
@@ -1565,9 +1594,13 @@ struct DutyDetailView: View {
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
-                    .frame(width: 365)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .presentationCornerRadius(10)
+                    .frame(width: 365, height: 230, alignment: .top)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .presentationBackground(.clear)
                     .environment(\.locale, Locale(identifier: "ru_RU"))
                     .environment(\.timeZone, moscowTimeZone)
                 }
