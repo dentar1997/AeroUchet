@@ -1611,7 +1611,7 @@ struct DutyDetailView: View {
 
                                             Text("Из таблицы")
                                         }
-                                        .frame(width: 166, minHeight: 38, alignment: .leading)
+                                        .frame(width: 166, height: 38, alignment: .leading)
                                         .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
