@@ -23,59 +23,28 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('AppViews.swift')
           text = path.read_text()
 
-          def replace_once(old, new, label):
-              global text
-              if old not in text:
+          def require(condition, label):
+              if not condition:
                   raise SystemExit(f'Block not found: {label}')
-              text = text.replace(old, new, 1)
 
-          old_overlay = '''            let maximumHeight = max(320, geometry.size.height - 40)
+          # 1. Do not scroll tiles inside the assignment card. Scroll the whole card instead.
+          marker = '            let maximumHeight = max(320, geometry.size.height - 40)\n'
+          require(marker in text, 'maximumHeight marker')
+          text = text.replace(marker, '', 1)
 
-            ZStack {
-                Color.black
-                    .opacity(backgroundOpacity(for: geometry.size.height))
-                    .ignoresSafeArea()
-                    .onTapGesture(perform: onClose)
+          start = text.find('                ViewThatFits(in: .vertical) {')
+          end_marker = '                .simultaneousGesture(dismissDrag(in: geometry.size.height))'
+          require(start >= 0, 'ViewThatFits start')
+          end = text.find(end_marker, start)
+          require(end >= 0, 'ViewThatFits end')
+          end += len(end_marker)
 
-                ViewThatFits(in: .vertical) {
-                    DutyDetailView(
-                        duty: duty,
-                        onClose: onClose,
-                        scrollsAsPage: true
-                    )
-                    .environmentObject(store)
-                    .frame(width: width)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                    DutyDetailView(
-                        duty: duty,
-                        onClose: onClose,
-                        scrollsAsPage: false
-                    )
-                    .environmentObject(store)
-                    .frame(width: width, height: maximumHeight)
-                }
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .center
-                )
-                .padding(.vertical, 20)
-                .offset(y: dragOffset)
-                .contentShape(Rectangle())
-                .simultaneousGesture(dismissDrag(in: geometry.size.height))
-            }'''
-          new_overlay = '''            ZStack {
-                Color.black
-                    .opacity(backgroundOpacity(for: geometry.size.height))
-                    .ignoresSafeArea()
-                    .onTapGesture(perform: onClose)
-
-                ScrollView(.vertical) {
+          whole_card_scroll = '''                ScrollView(.vertical) {
                     DutyDetailView(
                         duty: duty,
                         onClose: onClose,
@@ -95,79 +64,22 @@ jobs:
                 )
                 .offset(y: dragOffset)
                 .contentShape(Rectangle())
-                .simultaneousGesture(dismissDrag(in: geometry.size.height))
-            }'''
-          replace_once(old_overlay, new_overlay, 'outer assignment scrolling')
+                .simultaneousGesture(dismissDrag(in: geometry.size.height))'''
+          text = text[:start] + whole_card_scroll + text[end:]
 
-          old_assignment_surface = '''                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .frame(width: 230)
-                        .presentationCornerRadius(10)
-                        .environment(\\.locale, Locale(identifier: "ru_RU"))'''
-          new_assignment_surface = '''                        .padding(.horizontal, 18)
-                        .padding(.vertical, 10)
-                        .frame(width: 230)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .presentationBackground(.clear)
-                        .environment(\\.locale, Locale(identifier: "ru_RU"))'''
-          replace_once(old_assignment_surface, new_assignment_surface, 'assignment popover shape')
-
-          old_generic_surface = '''                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .frame(width: editPopoverWidth(for: field))
-                    .presentationCornerRadius(10)
-                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
-          new_generic_surface = '''                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .frame(width: editPopoverWidth(for: field))
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .presentationBackground(.clear)
-                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
-          replace_once(old_generic_surface, new_generic_surface, 'generic popover shape')
-
-          old_calc_controls = '''                        Button {
+          # 2. Reliable large checkbox hit target for “Из таблицы”.
+          calc_start_marker = '''                        Button {
                             toggleCalculatedTimeSource(index)
-                        } label: {
-                            HStack(spacing: 7) {
-                                Image(
-                                    systemName: draft[index].calculatedMinutesOverride == nil
-                                    ? "checkmark.square.fill"
-                                    : "square"
-                                )
-                                Text("Из таблицы")
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .buttonStyle(.plain)
-
-                        if draft[index].calculatedMinutesOverride != nil {
-                            DatePicker(
-                                "",
-                                selection: calculatedTimeBinding(index),
-                                displayedComponents: [.hourAndMinute]
-                            )
-                            .labelsHidden()
-                            .datePickerStyle(.wheel)
-                            .frame(width: 150, height: 130)
-                            .clipped()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        } else {
-                            Text(
-                                draft[index].calculatedMinutes.map(timeText)
-                                ?? "Ожидает норму"
-                            )
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                        } label: {'''
+          calc_start = text.find(calc_start_marker)
+          require(calc_start >= 0, 'calculated toggle start')
+          calc_end_marker = '''                            .foregroundStyle(.secondary)
                         }'''
-          new_calc_controls = '''                        Button {
+          calc_end = text.find(calc_end_marker, calc_start)
+          require(calc_end >= 0, 'calculated toggle end')
+          calc_end += len(calc_end_marker)
+
+          calc_controls = '''                        Button {
                             toggleCalculatedTimeSource(index)
                         } label: {
                             HStack(spacing: 8) {
@@ -189,11 +101,11 @@ jobs:
 
                                 Text("Из таблицы")
                             }
-                            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .zIndex(2)
+                        .zIndex(10)
 
                         if draft[index].calculatedMinutesOverride != nil {
                             DatePicker(
@@ -203,9 +115,9 @@ jobs:
                             )
                             .labelsHidden()
                             .datePickerStyle(.wheel)
-                            .frame(width: 160, height: 118)
+                            .frame(width: 160, height: 112)
                             .clipped()
-                            .padding(.top, 6)
+                            .padding(.top, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .zIndex(0)
                         } else {
@@ -215,36 +127,18 @@ jobs:
                             )
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .padding(.top, 4)
+                            .padding(.top, 6)
                         }'''
-          replace_once(old_calc_controls, new_calc_controls, 'calculated time table toggle')
+          text = text[:calc_start] + calc_controls + text[calc_end:]
 
-          old_calc_surface = '''                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .frame(width: 245)
-                    .presentationCornerRadius(10)
-                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
-          new_calc_surface = '''                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .frame(width: 245)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .presentationBackground(.clear)
-                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
-          replace_once(old_calc_surface, new_calc_surface, 'calculated popover shape')
-
-          old_calendar = '''                                .labelsHidden()
-                                .datePickerStyle(.graphical)
+          # 3. Keep graphical calendar and its containing popover at a constant size.
+          calendar_old = '''                                .datePickerStyle(.graphical)
                                 .frame(width: 302, height: 246, alignment: .topLeading)
                                 .transaction { transaction in
                                     transaction.animation = nil
                                 }
                                 .scaleEffect(0.72, anchor: .topLeading)'''
-          new_calendar = '''                                .labelsHidden()
-                                .datePickerStyle(.graphical)
+          calendar_new = '''                                .datePickerStyle(.graphical)
                                 .frame(width: 302, height: 246, alignment: .topLeading)
                                 .clipped()
                                 .transaction { transaction in
@@ -255,29 +149,36 @@ jobs:
                                     value: point.date(in: times(for: draft[index]))
                                 )
                                 .scaleEffect(0.72, anchor: .topLeading)'''
-          replace_once(old_calendar, new_calendar, 'stable graphical calendar')
+          require(calendar_old in text, 'calendar geometry')
+          text = text.replace(calendar_old, calendar_new, 1)
 
-          old_time_surface = '''                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .frame(width: 365)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .presentationCornerRadius(10)
-                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
-          new_time_surface = '''                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .frame(width: 365, height: 230, alignment: .top)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .presentationBackground(.clear)
-                    .environment(\\.locale, Locale(identifier: "ru_RU"))'''
-          replace_once(old_time_surface, new_time_surface, 'time popover fixed size and shape')
+          time_frame_old = '''                    .frame(width: 365)
+                    .fixedSize(horizontal: false, vertical: true)'''
+          time_frame_new = '''                    .frame(width: 365, height: 230, alignment: .top)'''
+          require(time_frame_old in text, 'time popover frame')
+          text = text.replace(time_frame_old, time_frame_new, 1)
 
+          # 4. Visible popover surface has exactly the same 10pt rounded-card shape as time cells.
+          pattern = re.compile(r'(?m)^(\s*)\.presentationCornerRadius\(10\)$')
+          matches = list(pattern.finditer(text))
+          require(len(matches) >= 4, 'popover corner modifiers')
+
+          def card_surface(match):
+              i = match.group(1)
+              return (
+                  f'{i}.background(\n'
+                  f'{i}    RoundedRectangle(cornerRadius: 10, style: .continuous)\n'
+                  f'{i}        .fill(Color(uiColor: .secondarySystemGroupedBackground))\n'
+                  f'{i})\n'
+                  f'{i}.clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))\n'
+                  f'{i}.presentationBackground(.clear)'
+              )
+
+          text = pattern.sub(card_surface, text)
           path.write_text(text)
           PY
 
+          # Remove accidental temporary files; they are not part of the app.
           rm -f .github/ignore foo bar baz oops x y z w
 
       - name: Commit patched sources
