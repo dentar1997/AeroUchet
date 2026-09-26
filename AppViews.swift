@@ -1286,10 +1286,13 @@ struct DutyDetailView: View {
                         registrationField(leg, index: index)
                     }
                 } else {
-                    HStack(alignment: .top, spacing: 8) {
+                    HStack(alignment: .top, spacing: 4) {
                         flightNumber(leg, index: index)
+                            .frame(width: 62)
                         aircraftField(leg, index: index)
+                            .frame(width: 72)
                         registrationField(leg, index: index)
+                            .frame(maxWidth: .infinity)
                     }
                 }
             }
@@ -1329,6 +1332,7 @@ struct DutyDetailView: View {
                 isActive: activeBinding,
                 keyboardType: .numbersAndPunctuation,
                 capitalization: .allCharacters,
+                maxLength: 10,
                 allowsEditing: isEditing
             )
         }
@@ -1354,6 +1358,7 @@ struct DutyDetailView: View {
                 isActive: activeBinding,
                 keyboardType: .default,
                 capitalization: .allCharacters,
+                maxLength: 10,
                 allowsEditing: isEditing
             )
         }
@@ -1520,7 +1525,7 @@ struct DutyDetailView: View {
                 side: .departure
             )
 
-            Text("→")
+            Text(" → ")
                 .foregroundStyle(.secondary)
 
             routeEndpoint(
@@ -1540,14 +1545,14 @@ struct DutyDetailView: View {
         side: RouteEditSide
     ) -> some View {
         HStack(spacing: 0) {
-            Text("\(airportNameOnly(code.wrappedValue))(")
+            Text("\(airportNameOnly(code.wrappedValue)) (")
 
             stableInlineEditor(
                 text: code,
                 isActive: routeFocusBinding(index: index, side: side),
                 keyboardType: .asciiCapable,
                 capitalization: .allCharacters,
-                maxLength: 4,
+                maxLength: 5,
                 expands: false,
                 allowsEditing: isEditing,
                 highlightHorizontalPadding: 0
@@ -1580,9 +1585,10 @@ struct DutyDetailView: View {
                     rawValue
                         .uppercased()
                         .filter { character in
-                            character.isASCII && (character.isLetter || character.isNumber)
+                            character.isASCII
+                                && (character.isLetter || character.isNumber || character == "/")
                         }
-                        .prefix(4)
+                        .prefix(5)
                 )
 
                 if side == .departure {
@@ -1792,7 +1798,8 @@ struct DutyDetailView: View {
                     } label: {
                         legValueCard(
                             title: "Расчётное время",
-                            value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму"
+                            value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
+                            centered: true
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
@@ -1873,7 +1880,8 @@ struct DutyDetailView: View {
             } else {
                 legValueCard(
                     title: "Расчётное время",
-                    value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму"
+                    value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
+                    centered: true
                 )
             }
         }
@@ -2020,9 +2028,10 @@ struct DutyDetailView: View {
 
     private func legValueCard(
         title: String,
-        value: String
+        value: String,
+        centered: Bool = false
     ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: centered ? .center : .leading, spacing: 3) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -2031,9 +2040,15 @@ struct DutyDetailView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .minimumScaleFactor(0.85)
-                .frame(height: 18, alignment: .leading)
+                .frame(
+                    height: 18,
+                    alignment: centered ? .center : .leading
+                )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(
+            maxWidth: .infinity,
+            alignment: centered ? .center : .leading
+        )
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(
@@ -2235,7 +2250,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UITextField {
-        let field = HardwareFriendlyTextField(frame: .zero)
+        let field = UITextField(frame: .zero)
         field.borderStyle = .none
         field.backgroundColor = .clear
         field.textColor = .clear
@@ -2253,14 +2268,6 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         field.minimumFontSize = 10.5
         field.isEnabled = isEnabled
         field.isUserInteractionEnabled = isEnabled
-        field.hardwareInputHandler = { [weak field] characters, deleting in
-            guard let field else { return }
-            context.coordinator.handleHardwareInput(
-                characters,
-                deleting: deleting,
-                in: field
-            )
-        }
         field.delegate = context.coordinator
         field.addTarget(
             context.coordinator,
