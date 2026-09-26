@@ -1,0 +1,36 @@
+from pathlib import Path
+
+p = Path('AppViews.swift')
+s = p.read_text()
+
+s = s.replace('@State private var historyIndex = 0\n', '@State private var historyIndex = 0\n    @State private var routeEditSide: RouteEditSide = .departure\n', 1)
+
+old = '''        return Group {\n            if isEditing {\n                HStack(spacing: 4) {\n                    Text("Задание на полёт №")\n\n                    InlineSelectAllTextField(\n                        text: $assignmentNumber,\n                        isActive: focusBinding(.assignment),\n                        keyboardType: .numberPad,\n                        capitalization: .none,\n                        textAlignment: .center,\n                        font: .boldSystemFont(ofSize: 20)\n                    )\n                    .frame(width: 104, height: 28)\n                }\n                .frame(height: 28, alignment: .center)\n                .padding(.horizontal, 12)\n                .padding(.vertical, 8)\n                .background {\n                    RoundedRectangle(cornerRadius: 10)\n                        .fill(Color.accentColor.opacity(0.08))\n                }\n                .overlay {\n                    RoundedRectangle(cornerRadius: 10)\n                        .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)\n                }\n                .contentShape(Rectangle())\n                .onTapGesture {\n                    focusedField = .assignment\n                }\n                .accessibilityHint("Нажмите, чтобы изменить номер задания")\n            } else {\n'''
+new = '''        return Group {\n            if isEditing {\n                HStack(spacing: 4) {\n                    Text("Задание на полёт №")\n\n                    stableInlineEditor(\n                        text: $assignmentNumber,\n                        isActive: focusBinding(.assignment),\n                        keyboardType: .numberPad,\n                        capitalization: .none,\n                        expands: false\n                    )\n                }\n                .frame(height: 28, alignment: .center)\n                .padding(.horizontal, 12)\n                .padding(.vertical, 8)\n                .background {\n                    RoundedRectangle(cornerRadius: 10)\n                        .fill(Color.accentColor.opacity(0.08))\n                }\n                .overlay {\n                    RoundedRectangle(cornerRadius: 10)\n                        .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)\n                }\n                .accessibilityHint("Нажмите, чтобы изменить номер задания")\n            } else {\n'''
+assert old in s
+s = s.replace(old, new, 1)
+
+s = s.replace('''        capitalization: UITextAutocapitalizationType,\n        maxLength: Int? = nil\n    ) -> some View {''', '''        capitalization: UITextAutocapitalizationType,\n        maxLength: Int? = nil,\n        expands: Bool = true\n    ) -> some View {''', 1)
+s = s.replace('''.fixedSize(horizontal: true, vertical: false)\n            .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)''', '''.fixedSize(horizontal: true, vertical: false)\n            .frame(maxWidth: expands ? .infinity : nil, minHeight: 18, maxHeight: 18)''', 1)
+s = s.replace('''.frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)\n            .opacity(0.01)\n            .allowsHitTesting(false)''', '''.frame(maxWidth: expands ? .infinity : nil, minHeight: 18, maxHeight: 18)\n            .fixedSize(horizontal: !expands, vertical: false)''', 1)
+
+old_route = '''    private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {\n        editableValue(\n            "\\(airportDisplayName(leg.departure)) → \\(airportDisplayName(leg.arrival))",\n            title: "Маршрут",\n            field: .route(index)\n        ) {\n            HStack(spacing: 8) {\n                TextField("Вылет", text: $draft[index].departure)\n                    .textInputAutocapitalization(.characters)\n                Image(systemName: "arrow.right")\n                TextField("Прилёт", text: $draft[index].arrival)\n                    .textInputAutocapitalization(.characters)\n            }\n        }\n    }\n'''
+new_route = '''    private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {\n        HStack(spacing: 4) {\n            routeEndpoint(\n                code: isEditing ? $draft[index].departure : .constant(leg.departure),\n                index: index,\n                side: .departure\n            )\n\n            Text("→")\n                .foregroundStyle(.secondary)\n\n            routeEndpoint(\n                code: isEditing ? $draft[index].arrival : .constant(leg.arrival),\n                index: index,\n                side: .arrival\n            )\n        }\n        .frame(maxWidth: .infinity, alignment: .center)\n    }\n\n    private func routeEndpoint(\n        code: Binding<String>,\n        index: Int,\n        side: RouteEditSide\n    ) -> some View {\n        HStack(spacing: 0) {\n            Text("\\(airportNameOnly(code.wrappedValue)) (")\n\n            stableInlineEditor(\n                text: code,\n                isActive: routeFocusBinding(index: index, side: side),\n                keyboardType: .asciiCapable,\n                capitalization: .allCharacters,\n                expands: false\n            )\n\n            Text(")")\n        }\n        .fixedSize(horizontal: true, vertical: false)\n    }\n\n    private func routeFocusBinding(index: Int, side: RouteEditSide) -> Binding<Bool> {\n        Binding(\n            get: { focusedField == .route(index) && routeEditSide == side },\n            set: { active in\n                if active {\n                    routeEditSide = side\n                    focusedField = .route(index)\n                } else if focusedField == .route(index) && routeEditSide == side {\n                    focusedField = nil\n                }\n            }\n        )\n    }\n\n    private func airportNameOnly(_ rawCode: String) -> String {\n        let display = airportDisplayName(rawCode)\n        guard let range = display.range(of: " (", options: .backwards),\n              display.hasSuffix(")") else {\n            return display\n        }\n        return String(display[..<range.lowerBound])\n    }\n'''
+assert old_route in s
+s = s.replace(old_route, new_route, 1)
+
+s = s.replace('''        field.textColor = .label\n        field.tintColor = .systemBlue''', '''        // Поле остаётся полноценным first responder для аппаратной клавиатуры,\n        // но визуальный текст всегда рисует SwiftUI.\n        field.textColor = .clear\n        field.tintColor = .clear''', 1)
+
+marker = 'private enum DutyFocusedField: Hashable {'
+assert marker in s
+s = s.replace(marker, '''private enum RouteEditSide: Hashable {\n    case departure\n    case arrival\n}\n\n''' + marker, 1)
+
+p.write_text(s)
+
+v = Path('AppVersion.swift')
+vs = v.read_text().replace('static let number = 63', 'static let number = 64').replace('static let label = "Версия 63"', 'static let label = "Версия 64"')
+v.write_text(vs)
+
+pkg = Path('Package.swift')
+ps = pkg.read_text().replace('displayVersion: "63"', 'displayVersion: "64"').replace('bundleVersion: "63"', 'bundleVersion: "64"')
+pkg.write_text(ps)
