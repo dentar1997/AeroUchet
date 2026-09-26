@@ -1,15 +1,7 @@
 name: AeroUchet Quality
-
-on:
-  push:
-    branches:
-      - ui/pr60-focus-font-time-editor-position
-    paths:
-      - .github/workflows/quality.yml
-
+on: [push]
 permissions:
   contents: write
-
 jobs:
   patch:
     runs-on: ubuntu-latest
@@ -18,7 +10,6 @@ jobs:
         with:
           ref: ui/pr60-focus-font-time-editor-position
           fetch-depth: 0
-
       - name: Patch AppViews and version
         run: |
           python3 <<'PY'
@@ -134,11 +125,12 @@ jobs:
           p = p.replace('bundleVersion: "59"', 'bundleVersion: "60"')
           package.write_text(p)
           PY
-
-      - name: Commit changes
+      - name: Restore workflow
+        run: git checkout origin/main -- .github/workflows/quality.yml
+      - name: Commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add AppViews.swift AppVersion.swift Package.swift
+          git add AppViews.swift AppVersion.swift Package.swift .github/workflows/quality.yml
           git commit -m "[PR #60] Stabilize inline editing and time editor placement"
           git push origin HEAD:ui/pr60-focus-font-time-editor-position
