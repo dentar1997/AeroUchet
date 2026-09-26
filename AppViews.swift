@@ -327,6 +327,7 @@ private struct DutyAssignmentOverlay: View {
 
     @State private var dragOffset: CGFloat = 0
     @State private var editorIsActive = false
+    @State private var dismissEditorSignal = 0
 
     var body: some View {
         GeometryReader { geometry in
@@ -337,14 +338,21 @@ private struct DutyAssignmentOverlay: View {
                 Color.black
                     .opacity(backgroundOpacity(for: geometry.size.height))
                     .ignoresSafeArea()
-                    .onTapGesture(perform: onClose)
+                    .onTapGesture {
+                        if editorIsActive {
+                            dismissEditorSignal += 1
+                        } else {
+                            onClose()
+                        }
+                    }
 
                 ScrollView(.vertical) {
                     DutyDetailView(
                         duty: duty,
                         onClose: onClose,
                         scrollsAsPage: true,
-                        onEditorFocusChange: { editorIsActive = $0 }
+                        onEditorFocusChange: { editorIsActive = $0 },
+                        externalEditorDismissSignal: dismissEditorSignal
                     )
                     .environmentObject(store)
                     .frame(width: width)
@@ -353,6 +361,16 @@ private struct DutyAssignmentOverlay: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.basedOnSize)
+                .scrollDisabled(editorIsActive)
+                .background {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if editorIsActive {
+                                dismissEditorSignal += 1
+                            }
+                        }
+                }
                 .frame(
                     maxWidth: .infinity,
                     maxHeight: .infinity,
@@ -522,17 +540,20 @@ struct DutyDetailView: View {
     let onClose: (() -> Void)?
     let scrollsAsPage: Bool
     let onEditorFocusChange: ((Bool) -> Void)?
+    let externalEditorDismissSignal: Int
 
     init(
         duty: FlightDuty,
         onClose: (() -> Void)? = nil,
         scrollsAsPage: Bool = false,
-        onEditorFocusChange: ((Bool) -> Void)? = nil
+        onEditorFocusChange: ((Bool) -> Void)? = nil,
+        externalEditorDismissSignal: Int = 0
     ) {
         self.duty = duty
         self.onClose = onClose
         self.scrollsAsPage = scrollsAsPage
         self.onEditorFocusChange = onEditorFocusChange
+        self.externalEditorDismissSignal = externalEditorDismissSignal
     }
 
     private func close() {
@@ -611,6 +632,9 @@ struct DutyDetailView: View {
         .onChange(of: focusedField) { value in
             onEditorFocusChange?(value != nil)
         }
+        .onChange(of: externalEditorDismissSignal) { _ in
+            focusedField = nil
+        }
         .onDisappear {
             onEditorFocusChange?(false)
         }
@@ -623,7 +647,6 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 20)
                 .stroke(Color.accentColor.opacity(0.18), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 20))
         .sheet(isPresented: $showReview) {
             NavigationStack {
                 ScrollView {
@@ -946,6 +969,10 @@ struct DutyDetailView: View {
                     index: index,
                     workEnd: duty.workIntervals[index].end
                 )
+                .anchorPreference(
+                    key: LegBoundsPreferenceKey.self,
+                    value: .bounds
+                ) { [index: $0] }
                 .zIndex(legEditorZIndex(index))
 
                 if index + 1 < duty.legs.count {
@@ -955,6 +982,39 @@ struct DutyDetailView: View {
                     if restEnd > restStart {
                         restCard(start: restStart, end: restEnd)
                     }
+                }
+            }
+        }
+        .overlayPreferenceValue(LegBoundsPreferenceKey.self) { anchors in
+            GeometryReader { proxy in
+                if case let .time(index, point) = focusedField,
+                   let anchor = anchors[index],
+                   draft.indices.contains(index) {
+                    let frame = proxy[anchor]
+
+                    ZStack {
+                        Color.black.opacity(0.001)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                focusedField = nil
+                            }
+
+                        timeEditor(index: index, point: point)
+                            .position(
+                                x: timeEditorCenterX(
+                                    width: proxy.size.width,
+                                    point: point
+                                ),
+                                y: timeEditorCenterY(
+                                    legFrame: frame,
+                                    legIndex: index
+                                )
+                            )
+                    }
+                    .frame(
+                        width: proxy.size.width,
+                        height: proxy.size.height
+                    )
                 }
             }
         }
@@ -1189,10 +1249,6 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.primary.opacity(0.07), lineWidth: 1)
         )
-        .overlay(alignment: .top) {
-            activeTimeEditor(for: index)
-                .zIndex(10_000)
-        }
     }
 
     private func headerEditorZIndex(_ index: Int) -> Double {
@@ -1266,20 +1322,24 @@ struct DutyDetailView: View {
     }
 
     private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
-        identityField("Рейс", field: .legNumber(index)) {
-            if focusedField == .legNumber(index) {
-                InlineSelectAllTextField(
-                    text: legNumberBinding(index),
-                    isActive: focusBinding(.legNumber(index)),
-                    keyboardType: .numbersAndPunctuation,
-                    capitalization: .allCharacters,
-                    textAlignment: .center,
-                    font: .systemFont(ofSize: 15, weight: .semibold)
-                )
-                .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
-            } else {
-                Text(leg.displayedLegNumber)
-            }
+        let textBinding: Binding<String> = isEditing
+            ? legNumberBinding(index)
+            : .constant(leg.displayedLegNumber)
+        let activeBinding: Binding<Bool> = isEditing
+            ? focusBinding(.legNumber(index))
+            : .constant(false)
+
+        return identityField("Рейс", field: .legNumber(index)) {
+            InlineSelectAllTextField(
+                text: textBinding,
+                isActive: activeBinding,
+                keyboardType: .numbersAndPunctuation,
+                capitalization: .allCharacters,
+                textAlignment: .center,
+                font: .systemFont(ofSize: 15, weight: .semibold)
+            )
+            .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
+            .allowsHitTesting(isEditing)
         }
     }
 
@@ -1290,44 +1350,54 @@ struct DutyDetailView: View {
     }
 
     private func aircraftField(_ leg: FlightLeg, index: Int) -> some View {
-        identityField("Тип ВС", field: .aircraft(index)) {
-            if focusedField == .aircraft(index) {
-                InlineSelectAllTextField(
-                    text: $draft[index].aircraft,
-                    isActive: focusBinding(.aircraft(index)),
-                    keyboardType: .default,
-                    capitalization: .allCharacters,
-                    textAlignment: .center,
-                    font: .systemFont(ofSize: 15, weight: .semibold)
-                )
-                .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
-            } else {
-                Text(leg.aircraft)
-            }
+        let textBinding: Binding<String> = isEditing
+            ? $draft[index].aircraft
+            : .constant(leg.aircraft)
+        let activeBinding: Binding<Bool> = isEditing
+            ? focusBinding(.aircraft(index))
+            : .constant(false)
+
+        return identityField("Тип ВС", field: .aircraft(index)) {
+            InlineSelectAllTextField(
+                text: textBinding,
+                isActive: activeBinding,
+                keyboardType: .default,
+                capitalization: .allCharacters,
+                textAlignment: .center,
+                font: .systemFont(ofSize: 15, weight: .semibold)
+            )
+            .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
+            .allowsHitTesting(isEditing)
         }
     }
 
     private func registrationField(_ leg: FlightLeg, index: Int) -> some View {
-        identityField("Бортовой номер", field: .registration(index)) {
-            if focusedField == .registration(index) {
-                HStack(spacing: 0) {
-                    Text("RA-")
+        let staticDigits = formattedRegistration(leg.registration)
+            .replacingOccurrences(of: "RA-", with: "")
+        let textBinding: Binding<String> = isEditing
+            ? registrationDigitsBinding(index)
+            : .constant(staticDigits)
+        let activeBinding: Binding<Bool> = isEditing
+            ? focusBinding(.registration(index))
+            : .constant(false)
 
-                    InlineSelectAllTextField(
-                        text: registrationDigitsBinding(index),
-                        isActive: focusBinding(.registration(index)),
-                        keyboardType: .numberPad,
-                        capitalization: .none,
-                        textAlignment: .left,
-                        font: .systemFont(ofSize: 15, weight: .semibold),
-                        maxLength: 5
-                    )
-                    .frame(width: 58, height: 18)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-            } else {
-                Text(formattedRegistration(leg.registration))
+        return identityField("Бортовой номер", field: .registration(index)) {
+            HStack(spacing: 0) {
+                Text("RA-")
+
+                InlineSelectAllTextField(
+                    text: textBinding,
+                    isActive: activeBinding,
+                    keyboardType: .numberPad,
+                    capitalization: .none,
+                    textAlignment: .left,
+                    font: .systemFont(ofSize: 15, weight: .semibold),
+                    maxLength: 5
+                )
+                .frame(width: 58, height: 18)
+                .allowsHitTesting(isEditing)
             }
+            .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -1703,58 +1773,82 @@ struct DutyDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private func activeTimeEditor(for legIndex: Int) -> some View {
-        if case let .time(index, point) = focusedField,
-           index == legIndex,
-           draft.indices.contains(index) {
-            floatingEditor(width: 380, height: 282) {
-                VStack(alignment: .leading, spacing: 6) {
-                    editPopoverHeader(point.title, extraHorizontalInset: 0)
+    private func timeEditor(index: Int, point: DutyEditPoint) -> some View {
+        floatingEditor(width: 380, height: 282) {
+            VStack(alignment: .leading, spacing: 6) {
+                editPopoverHeader(point.title, extraHorizontalInset: 0)
 
-                    HStack(alignment: .top, spacing: 12) {
-                        ZStack(alignment: .topLeading) {
-                            DatePicker(
-                                "",
-                                selection: timeBinding(index, point),
-                                displayedComponents: [.date]
-                            )
-                            .labelsHidden()
-                            .datePickerStyle(.graphical)
-                            .frame(width: 302, height: 330, alignment: .topLeading)
-                            .transaction { transaction in
-                                transaction.animation = nil
-                            }
-                            .animation(
-                                nil,
-                                value: point.date(in: times(for: draft[index]))
-                            )
-                            .scaleEffect(0.68, anchor: .topLeading)
-                        }
-                        .frame(width: 206, height: 225, alignment: .topLeading)
-                        .clipped()
-                        .contentShape(Rectangle())
-
+                HStack(alignment: .top, spacing: 12) {
+                    ZStack(alignment: .topLeading) {
                         DatePicker(
                             "",
                             selection: timeBinding(index, point),
-                            displayedComponents: [.hourAndMinute]
+                            displayedComponents: [.date]
                         )
                         .labelsHidden()
-                        .datePickerStyle(.wheel)
-                        .frame(width: 130, height: 288)
-                        .scaleEffect(0.78, anchor: .topLeading)
-                        .frame(width: 102, height: 225, alignment: .topLeading)
-                        .clipped()
-                        .contentShape(Rectangle())
+                        .datePickerStyle(.graphical)
+                        .frame(width: 302, height: 330, alignment: .topLeading)
+                        .transaction { transaction in
+                            transaction.animation = nil
+                        }
+                        .animation(
+                            nil,
+                            value: point.date(in: times(for: draft[index]))
+                        )
+                        .scaleEffect(0.68, anchor: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .center)
+                    .frame(width: 206, height: 225, alignment: .topLeading)
+                    .clipped()
+                    .contentShape(Rectangle())
+
+                    DatePicker(
+                        "",
+                        selection: timeBinding(index, point),
+                        displayedComponents: [.hourAndMinute]
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.wheel)
+                    .frame(width: 130, height: 288)
+                    .scaleEffect(0.78, anchor: .topLeading)
+                    .frame(width: 102, height: 225, alignment: .topLeading)
+                    .clipped()
+                    .contentShape(Rectangle())
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
             }
-            .frame(maxWidth: .infinity, alignment: timeEditorAlignment(for: point))
-            .padding(.horizontal, 18)
-            .offset(y: legIndex == 0 ? 58 : -290)
         }
+    }
+
+    private func timeEditorCenterX(
+        width: CGFloat,
+        point: DutyEditPoint
+    ) -> CGFloat {
+        let halfWidth: CGFloat = 190
+        let edgeInset: CGFloat = 18
+
+        switch timeEditorAlignment(for: point) {
+        case .topLeading:
+            return halfWidth + edgeInset
+        case .topTrailing:
+            return width - halfWidth - edgeInset
+        default:
+            return width / 2
+        }
+    }
+
+    private func timeEditorCenterY(
+        legFrame: CGRect,
+        legIndex: Int
+    ) -> CGFloat {
+        let editorHalfHeight: CGFloat = 141
+        let gap: CGFloat = 12
+
+        if legIndex == 0 {
+            let headerHeight: CGFloat = 72
+            return legFrame.minY + headerHeight + gap + editorHalfHeight
+        }
+
+        return legFrame.minY - gap - editorHalfHeight
     }
 
     private func legValueCard(
@@ -3795,5 +3889,17 @@ struct SimplePage: View {
                 title
             )
         }
+    }
+}
+
+
+private struct LegBoundsPreferenceKey: PreferenceKey {
+    static var defaultValue: [Int: Anchor<CGRect>] = [:]
+
+    static func reduce(
+        value: inout [Int: Anchor<CGRect>],
+        nextValue: () -> [Int: Anchor<CGRect>]
+    ) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
