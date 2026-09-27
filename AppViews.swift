@@ -1469,7 +1469,6 @@ struct DutyDetailView: View {
                     isEnabled: true
                 )
                 .frame(maxWidth: .infinity, minHeight: lineHeight, maxHeight: lineHeight)
-                .allowsHitTesting(false)
             }
         }
         .frame(height: lineHeight)
