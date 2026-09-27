@@ -70,6 +70,8 @@ struct InlineFlightDateTimeCell: View {
                         previous: twoDigits(wrap(hour - 1, count: 24)),
                         next: twoDigits(wrap(hour + 1, count: 24)),
                         width: 17,
+                        hitWidth: 24,
+                        hitOffset: -1,
                         isEditing: isEditing,
                         isActive: isActive && activePart == .hour,
                         valueColor: color(for: .hour),
@@ -92,6 +94,8 @@ struct InlineFlightDateTimeCell: View {
                         previous: twoDigits(wrap(minute - 1, count: 60)),
                         next: twoDigits(wrap(minute + 1, count: 60)),
                         width: 17,
+                        hitWidth: 30,
+                        hitOffset: 7,
                         isEditing: isEditing,
                         isActive: isActive && activePart == .minute,
                         valueColor: color(for: .minute),
@@ -124,8 +128,9 @@ struct InlineFlightDateTimeCell: View {
                 VStack(spacing: 3) {
                     if showsCalendarButton {
                         Button {
+                            onActivate()
+                            activePart = nil
                             showsCalendar = true
-                            activate(.date)
                         } label: {
                             Image(systemName: "calendar")
                                 .font(.system(size: 9, weight: .semibold))
@@ -173,11 +178,6 @@ struct InlineFlightDateTimeCell: View {
                 showsCalendar = false
             }
         }
-        .onChange(of: showsCalendar) { _, visible in
-            if !visible && activePart == .date {
-                activePart = nil
-            }
-        }
     }
 
     private var hour: Int { calendar.component(.hour, from: selection) }
@@ -185,6 +185,9 @@ struct InlineFlightDateTimeCell: View {
 
     private func color(for part: Part) -> Color {
         guard isEditing else { return .primary }
+        if part == .date && showsCalendar {
+            return Color.accentColor.opacity(0.82)
+        }
         if isActive && activePart == part {
             return Color.accentColor.opacity(0.58)
         }
@@ -324,11 +327,13 @@ private struct InlineFlightDateSegment: View {
     }
 }
 
-private struct InlineFlightWheelSegment: View {
+struct InlineFlightWheelSegment: View {
     let value: String
     let previous: String
     let next: String
     let width: CGFloat
+    let hitWidth: CGFloat
+    let hitOffset: CGFloat
     let isEditing: Bool
     let isActive: Bool
     let valueColor: Color
@@ -365,33 +370,38 @@ private struct InlineFlightWheelSegment: View {
         .monospacedDigit()
         .foregroundStyle(valueColor)
         .frame(width: width, height: 18)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard isEditing else { return }
-            onActivate()
+        .overlay {
+            Color.clear
+                .contentShape(Rectangle())
+                .frame(width: hitWidth, height: 38)
+                .offset(x: hitOffset)
+                .onTapGesture {
+                    guard isEditing else { return }
+                    onActivate()
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { gesture in
+                            guard isEditing && isActive else { return }
+                            if !dragging {
+                                dragging = true
+                                appliedSteps = 0
+                            }
+                            translation = gesture.translation.height
+                            let steps = Int((-translation / rowHeight).rounded())
+                            if steps != appliedSteps {
+                                onStep(steps - appliedSteps)
+                                appliedSteps = steps
+                                UISelectionFeedbackGenerator().selectionChanged()
+                            }
+                        }
+                        .onEnded { _ in
+                            dragging = false
+                            appliedSteps = 0
+                            withAnimation(.easeOut(duration: 0.12)) { translation = 0 }
+                        }
+                )
         }
-        .gesture(
-            DragGesture(minimumDistance: 1)
-                .onChanged { gesture in
-                    guard isEditing && isActive else { return }
-                    if !dragging {
-                        dragging = true
-                        appliedSteps = 0
-                    }
-                    translation = gesture.translation.height
-                    let steps = Int((-translation / rowHeight).rounded())
-                    if steps != appliedSteps {
-                        onStep(steps - appliedSteps)
-                        appliedSteps = steps
-                        UISelectionFeedbackGenerator().selectionChanged()
-                    }
-                }
-                .onEnded { _ in
-                    dragging = false
-                    appliedSteps = 0
-                    withAnimation(.easeOut(duration: 0.12)) { translation = 0 }
-                }
-        )
     }
 
     private var residualOffset: CGFloat {
