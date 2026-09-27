@@ -1045,7 +1045,14 @@ struct DutyDetailView: View {
 
     private func toggleScheduleType(_ index: Int) {
         let current = draft[index].scheduleType ?? .planned
-        draft[index].scheduleType = current == .planned ? .unscheduled : .planned
+
+        if current == .planned {
+            draft[index].scheduleType = .unscheduled
+            draft[index].calculatedMinutesOverride = draft[index].flightMinutes
+        } else {
+            draft[index].scheduleType = .planned
+        }
+
         focusedField = nil
     }
 
@@ -2008,6 +2015,7 @@ struct DutyDetailView: View {
     private func floatingEditor<Content: View>(
         width: CGFloat,
         height: CGFloat? = nil,
+        backgroundOpacity: Double = 1,
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
@@ -2016,7 +2024,10 @@ struct DutyDetailView: View {
             .frame(width: width, height: height, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                    .fill(
+                        Color(uiColor: .secondarySystemGroupedBackground)
+                            .opacity(backgroundOpacity)
+                    )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -2074,85 +2085,88 @@ struct DutyDetailView: View {
     private func calculatedTime(_ leg: FlightLeg, index: Int) -> some View {
         let editableLeg = isEditing && draft.indices.contains(index) ? draft[index] : leg
         let isUnscheduled = (editableLeg.scheduleType ?? .planned) == .unscheduled
+        let usesTable = !isUnscheduled
+            && draft.indices.contains(index)
+            && draft[index].calculatedMinutesOverride == nil
 
         return identityField("Расчётное время", field: .calculatedTime(index)) {
             Text(leg.calculatedMinutes.map(timeText) ?? "Нет данных")
         }
         .overlay(alignment: .topTrailing) {
             if isEditing, focusedField == .calculatedTime(index) {
-                floatingEditor(width: 204) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        editPopoverHeader(
-                            "Расчётное время",
-                            extraHorizontalInset: 0
-                        )
-                        .zIndex(200)
-
-                        if isUnscheduled {
-                            DatePicker(
-                                "",
-                                selection: calculatedTimeBinding(index),
-                                displayedComponents: [.hourAndMinute]
-                            )
-                            .labelsHidden()
-                            .datePickerStyle(.wheel)
-                            .frame(width: 166, height: 116)
-                            .clipped()
-                        } else {
-                            ZStack(alignment: .topLeading) {
-                                Group {
-                                    if draft[index].calculatedMinutesOverride != nil {
-                                        DatePicker(
-                                            "",
-                                            selection: calculatedTimeBinding(index),
-                                            displayedComponents: [.hourAndMinute]
-                                        )
-                                        .labelsHidden()
-                                        .datePickerStyle(.wheel)
-                                        .frame(width: 166, height: 116)
-                                        .clipped()
-                                    } else {
-                                        Text(
-                                            draft[index].calculatedMinutes.map(timeText)
-                                            ?? "Нет данных"
-                                        )
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 166, height: 40, alignment: .leading)
-                                    }
-                                }
-                                .padding(.top, 42)
-                                .zIndex(0)
-
+                floatingEditor(
+                    width: 188,
+                    height: 132,
+                    backgroundOpacity: 0.82
+                ) {
+                    HStack(alignment: .top, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if !isUnscheduled {
                                 Button {
                                     toggleCalculatedTimeSource(index)
                                 } label: {
-                                    HStack(spacing: 8) {
+                                    HStack(spacing: 5) {
                                         ZStack {
-                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                .stroke(Color.secondary, lineWidth: 1.2)
-                                                .frame(width: 20, height: 20)
+                                            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                                .stroke(Color.secondary, lineWidth: 1)
+                                                .frame(width: 16, height: 16)
 
-                                            if draft[index].calculatedMinutesOverride == nil {
-                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            if usesTable {
+                                                RoundedRectangle(cornerRadius: 3, style: .continuous)
                                                     .fill(Color.accentColor)
-                                                    .frame(width: 20, height: 20)
+                                                    .frame(width: 16, height: 16)
 
                                                 Image(systemName: "checkmark")
-                                                    .font(.caption2.weight(.bold))
+                                                    .font(.system(size: 9, weight: .bold))
                                                     .foregroundStyle(.white)
                                             }
                                         }
 
                                         Text("Из таблицы")
+                                            .font(.caption2)
                                     }
-                                    .frame(width: 166, height: 38, alignment: .leading)
                                     .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
-                                .zIndex(100)
+                            }
+
+                            if isUnscheduled || !usesTable {
+                                compactTimeWheel(selection: calculatedTimeBinding(index))
+                            } else {
+                                Text(
+                                    draft[index].calculatedMinutes.map(timeText)
+                                    ?? "Нет данных"
+                                )
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 122, height: 76, alignment: .center)
                             }
                         }
+                        .frame(width: 126, alignment: .topLeading)
+
+                        VStack(spacing: 8) {
+                            Button {
+                                restoreOriginalCalculatedTime(index)
+                            } label: {
+                                Image(systemName: "arrow.uturn.backward")
+                            }
+                            .buttonStyle(.bordered)
+                            .buttonBorderShape(.circle)
+                            .controlSize(.small)
+                            .disabled(!calculatedEditorHasChanges(index))
+                            .accessibilityLabel("Вернуть исходное расчётное время")
+
+                            Button {
+                                focusedField = nil
+                            } label: {
+                                Image(systemName: "checkmark")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .buttonBorderShape(.circle)
+                            .controlSize(.small)
+                            .accessibilityLabel("Готово")
+                        }
+                        .frame(maxHeight: .infinity, alignment: .top)
                     }
                 }
                 .offset(y: 42)
@@ -2160,6 +2174,30 @@ struct DutyDetailView: View {
             }
         }
         .zIndex(focusedField == .calculatedTime(index) ? 5000 : 0)
+    }
+
+    private func calculatedEditorHasChanges(_ index: Int) -> Bool {
+        guard draft.indices.contains(index), original.indices.contains(index) else {
+            return false
+        }
+
+        if draft[index].calculatedMinutesOverride != original[index].calculatedMinutesOverride {
+            return true
+        }
+
+        let originalType = original[index].scheduleType ?? .planned
+        let currentType = draft[index].scheduleType ?? .planned
+        return originalType == .planned && currentType != .planned
+    }
+
+    private func restoreOriginalCalculatedTime(_ index: Int) {
+        guard draft.indices.contains(index), original.indices.contains(index) else { return }
+
+        draft[index].calculatedMinutesOverride = original[index].calculatedMinutesOverride
+
+        if (original[index].scheduleType ?? .planned) == .planned {
+            draft[index].scheduleType = .planned
+        }
     }
 
     private func toggleCalculatedTimeSource(_ index: Int) {
@@ -2225,24 +2263,50 @@ struct DutyDetailView: View {
     }
 
     private func timeEditor(index: Int, point: DutyEditPoint) -> some View {
-        let editorHeight: CGFloat = showsCompactCalendar ? 292 : 188
+        let editorHeight: CGFloat = showsCompactCalendar ? 236 : 132
         let selectedDate = point.date(in: times(for: draft[index]))
 
-        return floatingEditor(width: 286, height: editorHeight) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Text(point.title)
+        return floatingEditor(
+            width: 230,
+            height: editorHeight,
+            backgroundOpacity: 0.82
+        ) {
+            HStack(alignment: .top, spacing: 6) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(formatDate(selectedDate))
                         .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .monospacedDigit()
+                        .frame(width: 174, alignment: .leading)
 
-                    Spacer(minLength: 4)
+                    if showsCompactCalendar {
+                        compactDateCalendar(index: index, point: point)
+                            .frame(width: 174, alignment: .leading)
+                    } else {
+                        compactTimeWheel(selection: timeBinding(index, point))
+                    }
+                }
+                .frame(width: 174, alignment: .topLeading)
+
+                VStack(spacing: 8) {
+                    Button {
+                        if !showsCompactCalendar {
+                            compactCalendarMonth = compactMonthStart(selectedDate)
+                        }
+                        showsCompactCalendar.toggle()
+                    } label: {
+                        Image(systemName: showsCompactCalendar ? "clock" : "calendar")
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .controlSize(.small)
+                    .accessibilityLabel(
+                        showsCompactCalendar ? "Показать время" : "Показать календарь"
+                    )
 
                     Button {
                         restoreOriginalTime(index: index, point: point)
                     } label: {
                         Image(systemName: "arrow.uturn.backward")
-                            .font(.caption.weight(.semibold))
                     }
                     .buttonStyle(.bordered)
                     .buttonBorderShape(.circle)
@@ -2254,101 +2318,28 @@ struct DutyDetailView: View {
                         focusedField = nil
                     } label: {
                         Image(systemName: "checkmark")
-                            .font(.caption.weight(.bold))
                     }
                     .buttonStyle(.borderedProminent)
                     .buttonBorderShape(.circle)
                     .controlSize(.small)
                     .accessibilityLabel("Готово")
                 }
-
-                HStack(spacing: 6) {
-                    Button {
-                        shiftTimeEditorDay(index: index, point: point, by: -1)
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-
-                    Text(formatDate(selectedDate))
-                        .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
-                        .frame(minWidth: 96)
-
-                    Button {
-                        shiftTimeEditorDay(index: index, point: point, by: 1)
-                    } label: {
-                        Image(systemName: "chevron.right")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-
-                    Spacer(minLength: 2)
-
-                    Button {
-                        if !showsCompactCalendar {
-                            compactCalendarMonth = compactMonthStart(selectedDate)
-                        }
-                        showsCompactCalendar.toggle()
-                    } label: {
-                        Image(systemName: showsCompactCalendar ? "clock" : "calendar")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityLabel(
-                        showsCompactCalendar ? "Показать время" : "Показать календарь"
-                    )
-                }
-
-                if showsCompactCalendar {
-                    compactDateCalendar(index: index, point: point)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                } else {
-                    HStack(spacing: 2) {
-                        Picker(
-                            "Часы",
-                            selection: timeComponentBinding(
-                                index: index,
-                                point: point,
-                                component: .hour
-                            )
-                        ) {
-                            ForEach(0..<24, id: \.self) { hour in
-                                Text(String(format: "%02d", hour))
-                                    .tag(hour)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.wheel)
-                        .frame(width: 72, height: 94)
-                        .clipped()
-
-                        Text(":")
-                            .font(.title3.weight(.semibold))
-
-                        Picker(
-                            "Минуты",
-                            selection: timeComponentBinding(
-                                index: index,
-                                point: point,
-                                component: .minute
-                            )
-                        ) {
-                            ForEach(0..<60, id: \.self) { minute in
-                                Text(String(format: "%02d", minute))
-                                    .tag(minute)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.wheel)
-                        .frame(width: 72, height: 94)
-                        .clipped()
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                }
             }
         }
+    }
+
+    private func compactTimeWheel(selection: Binding<Date>) -> some View {
+        DatePicker(
+            "",
+            selection: selection,
+            displayedComponents: [.hourAndMinute]
+        )
+        .labelsHidden()
+        .datePickerStyle(.wheel)
+        .frame(width: 160, height: 108)
+        .scaleEffect(0.78, anchor: .topLeading)
+        .frame(width: 126, height: 86, alignment: .topLeading)
+        .clipped()
     }
 
     private func restoreOriginalTime(index: Int, point: DutyEditPoint) {
@@ -2358,45 +2349,16 @@ struct DutyDetailView: View {
         compactCalendarMonth = compactMonthStart(originalDate)
     }
 
-    private func shiftTimeEditorDay(index: Int, point: DutyEditPoint, by days: Int) {
-        let current = point.date(in: times(for: draft[index]))
-        guard let updated = moscowCalendar.date(byAdding: .day, value: days, to: current) else {
-            return
-        }
-        timeBinding(index, point).wrappedValue = updated
-        compactCalendarMonth = compactMonthStart(updated)
-    }
 
-    private func timeComponentBinding(
-        index: Int,
-        point: DutyEditPoint,
-        component: Calendar.Component
-    ) -> Binding<Int> {
-        Binding(
-            get: {
-                let current = point.date(in: times(for: draft[index]))
-                return moscowCalendar.component(component, from: current)
-            },
-            set: { value in
-                let current = point.date(in: times(for: draft[index]))
-                guard let updated = moscowCalendar.date(
-                    bySetting: component,
-                    value: value,
-                    of: current
-                ) else { return }
-                timeBinding(index, point).wrappedValue = updated
-            }
-        )
-    }
 
     private func compactDateCalendar(index: Int, point: DutyEditPoint) -> some View {
         let selectedDate = point.date(in: times(for: draft[index]))
         let days = compactCalendarDays(for: compactCalendarMonth)
-        let columns = Array(repeating: GridItem(.fixed(28), spacing: 4), count: 7)
+        let columns = Array(repeating: GridItem(.fixed(22), spacing: 3), count: 7)
         let weekdays = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 
-        return VStack(spacing: 5) {
-            HStack(spacing: 6) {
+        return VStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Button {
                     shiftCompactCalendarMonth(by: -1)
                 } label: {
@@ -2407,7 +2369,8 @@ struct DutyDetailView: View {
                 Spacer()
 
                 Text(compactMonthTitle(compactCalendarMonth))
-                    .font(.caption.weight(.semibold))
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
 
                 Spacer()
 
@@ -2419,12 +2382,12 @@ struct DutyDetailView: View {
                 .buttonStyle(.plain)
             }
 
-            LazyVGrid(columns: columns, spacing: 3) {
+            LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(weekdays, id: \.self) { weekday in
                     Text(weekday)
-                        .font(.caption2)
+                        .font(.system(size: 9))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 18)
+                        .frame(width: 22, height: 14)
                 }
 
                 ForEach(Array(days.enumerated()), id: \.offset) { _, day in
@@ -2434,12 +2397,13 @@ struct DutyDetailView: View {
                             showsCompactCalendar = false
                         } label: {
                             Text("\(moscowCalendar.component(.day, from: day))")
-                                .font(.caption.weight(
-                                    moscowCalendar.isDate(day, inSameDayAs: selectedDate)
+                                .font(.system(
+                                    size: 10,
+                                    weight: moscowCalendar.isDate(day, inSameDayAs: selectedDate)
                                         ? .bold
                                         : .regular
                                 ))
-                                .frame(width: 28, height: 24)
+                                .frame(width: 22, height: 20)
                                 .background {
                                     if moscowCalendar.isDate(day, inSameDayAs: selectedDate) {
                                         Circle()
@@ -2450,12 +2414,12 @@ struct DutyDetailView: View {
                         .buttonStyle(.plain)
                     } else {
                         Color.clear
-                            .frame(width: 28, height: 24)
+                            .frame(width: 22, height: 20)
                     }
                 }
             }
         }
-        .frame(width: 220)
+        .frame(width: 172)
     }
 
     private func compactMonthStart(_ date: Date) -> Date {
@@ -2519,7 +2483,7 @@ struct DutyDetailView: View {
         width: CGFloat,
         point: DutyEditPoint
     ) -> CGFloat {
-        let halfWidth: CGFloat = 143
+        let halfWidth: CGFloat = 115
         let edgeInset: CGFloat = 18
 
         switch timeEditorAlignment(for: point) {
@@ -2536,7 +2500,7 @@ struct DutyDetailView: View {
         legFrame: CGRect,
         legIndex: Int
     ) -> CGFloat {
-        let editorHeight: CGFloat = showsCompactCalendar ? 292 : 188
+        let editorHeight: CGFloat = showsCompactCalendar ? 236 : 132
         let editorHalfHeight = editorHeight / 2
         let gap: CGFloat = 12
 
