@@ -1,0 +1,57 @@
+name: Apply v75 hotfix
+
+on:
+  push:
+    branches:
+      - hotfix/v75-restore-duty-card
+    paths:
+      - .github/workflows/v75-hotfix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: hotfix/v75-restore-duty-card
+
+      - name: Patch version 75
+        shell: python
+        run: |
+          from pathlib import Path
+
+          app = Path("AppViews.swift")
+          text = app.read_text()
+          block = '''                // Flatten the complete duty card into one render surface before
+                // applying the interactive transform. This keeps 2–3 leg cards
+                // from repainting every row on each ProMotion gesture update.
+                .drawingGroup(opaque: false, colorMode: .nonLinear)
+'''
+          if block not in text:
+              raise SystemExit("v74 drawingGroup block not found")
+          app.write_text(text.replace(block, "", 1))
+
+          version = Path("AppVersion.swift")
+          value = version.read_text()
+          value = value.replace("static let number = 74", "static let number = 75")
+          value = value.replace('static let label = "Версия 74"', 'static let label = "Версия 75"')
+          version.write_text(value)
+
+          package = Path("Package.swift")
+          value = package.read_text()
+          value = value.replace('displayVersion: "74"', 'displayVersion: "75"')
+          value = value.replace('bundleVersion: "74"', 'bundleVersion: "75"')
+          package.write_text(value)
+
+          Path(".github/workflows/v75-hotfix.yml").unlink()
+
+      - name: Commit v75
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "v75: restore duty card rendering"
+          git push
