@@ -1,0 +1,33 @@
+name: v104 apply final patch
+
+on:
+  push:
+    branches:
+      - ui/v104-full-test3-editor
+    paths:
+      - .github/workflows/v104_apply_fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/v104-full-test3-editor
+
+      - name: Apply patch
+        run: python3 .github/scripts/v104_fix.py
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/scripts/v104_fix.py
+          git rm .github/workflows/v104_apply_fix.yml
+          git rm .github/workflows/v104_fix_rules.yml
+          git add FullEditorTest3View.swift
+          git commit -m "Уточнить ограничения временной цепочки v104"
+          git push
