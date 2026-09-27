@@ -1749,7 +1749,7 @@ struct DutyDetailView: View {
         }
 
         if let field, fieldHasChanges(field) {
-            return Color.indigo
+            return DutyEditPalette.changed
         }
 
         return Color.accentColor
@@ -1975,7 +1975,7 @@ struct DutyDetailView: View {
             return Color.accentColor.opacity(0.58)
         }
         return routeSideHasChanges(index: index, side: side)
-            ? Color.indigo
+            ? DutyEditPalette.changed
             : Color.accentColor
     }
 
@@ -2380,82 +2380,60 @@ private struct InlineCalculatedTimeValue: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
 
-            Group {
-                if isEditing && !usesTable {
-                    HStack(spacing: -1) {
-                        InlineFlightWheelSegment(
-                            value: String(hour),
-                            previous: String(max(0, hour - 1)),
-                            next: String(hour + 1),
-                            width: 19, hitWidth: 25, hitOffset: -1,
-                            isEditing: true,
-                            isActive: isActive && activePart == .hour,
-                            valueColor: color(for: .hour),
-                            onActivate: { onActivate(); activePart = .hour },
-                            onStep: { minutes = max(0, hour + $0) * 60 + minute },
-                            canStepPrevious: hour > 0
-                        )
-                        Text(":")
-                            .font(.caption.bold())
-                            .foregroundStyle(Color.accentColor)
-                            .frame(width: 5)
-                        InlineFlightWheelSegment(
-                            value: String(format: "%02d", minute),
-                            previous: String(format: "%02d", (minute + 59) % 60),
-                            next: String(format: "%02d", (minute + 1) % 60),
-                            width: 17, hitWidth: 26, hitOffset: 3,
-                            isEditing: true,
-                            isActive: isActive && activePart == .minute,
-                            valueColor: color(for: .minute),
-                            onActivate: { onActivate(); activePart = .minute },
-                            onStep: { minutes = hour * 60 + (minute + $0 % 60 + 60) % 60 }
-                        )
-                    }
-                    .frame(width: 41, height: 18)
-                } else {
-                    Text(displayed)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(isEditing ? Color.accentColor : .primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(minWidth: 41)
-                        .frame(height: 18)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            guard isEditing else { return }
-                            onActivate()
-                            if usesTable { onToggleSource() }
-                            activePart = .hour
-                        }
-                }
-            }
-            .frame(height: 18)
-
-            if isEditing && !isUnscheduled {
+            if !isEditing {
+                Text(displayed)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .frame(height: 18)
+            } else if usesTable {
                 Button {
                     onActivate()
                     activePart = nil
                     onToggleSource()
                 } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: usesTable ? "checkmark.square.fill" : "square")
-                            .font(.system(size: 11))
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.square.fill")
+                            .font(.system(size: 15))
                         Text("Из таблицы")
                             .font(.caption2)
                     }
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(hasChanges ? DutyEditPalette.changed : Color.accentColor)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 18)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .frame(height: 14)
                 .accessibilityLabel("Из таблицы")
-                .accessibilityValue(usesTable ? "Выбрано" : "Не выбрано")
+                .accessibilityValue("Выбрано")
+            } else if isUnscheduled {
+                timeWheel.frame(height: 18)
             } else {
-                Color.clear.frame(height: 14)
+                HStack(spacing: 0) {
+                    Button {
+                        onActivate()
+                        activePart = nil
+                        onToggleSource()
+                    } label: {
+                        Image(systemName: "square")
+                            .font(.system(size: 17))
+                            .frame(width: 22, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Выбрать расчётное время из таблицы")
+
+                    Spacer(minLength: 16)
+                    timeWheel
+                    Spacer(minLength: 30)
+                }
+                .foregroundStyle(Color.accentColor)
+                .frame(height: 18)
             }
         }
         .frame(width: 130, alignment: .center)
         .padding(.vertical, 6)
-        .overlay(alignment: .trailing) {
+        .overlay(alignment: .bottomTrailing) {
             if isEditing && isActive {
                 Button(action: onRestore) {
                     Image(systemName: "arrow.uturn.backward")
@@ -2466,7 +2444,7 @@ private struct InlineCalculatedTimeValue: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
                 .disabled(!hasChanges)
-                .offset(y: -6)
+                .padding(.bottom, 6)
                 .accessibilityLabel("Вернуть исходное расчётное время")
             }
         }
@@ -2481,6 +2459,39 @@ private struct InlineCalculatedTimeValue: View {
         }
     }
 
+    private var timeWheel: some View {
+        HStack(spacing: -1) {
+            InlineFlightWheelSegment(
+                value: String(hour),
+                previous: String(max(0, hour - 1)),
+                next: String(hour + 1),
+                width: 19, hitWidth: 33, hitOffset: 0, hitHeight: 48,
+                isEditing: true,
+                isActive: isActive && activePart == .hour,
+                valueColor: color(for: .hour),
+                onActivate: { onActivate(); activePart = .hour },
+                onStep: { minutes = max(0, hour + $0) * 60 + minute },
+                canStepPrevious: hour > 0
+            )
+            Text(":")
+                .font(.caption.bold())
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 5)
+            InlineFlightWheelSegment(
+                value: String(format: "%02d", minute),
+                previous: String(format: "%02d", (minute + 59) % 60),
+                next: String(format: "%02d", (minute + 1) % 60),
+                width: 17, hitWidth: 38, hitOffset: 13, hitHeight: 48,
+                isEditing: true,
+                isActive: isActive && activePart == .minute,
+                valueColor: color(for: .minute),
+                onActivate: { onActivate(); activePart = .minute },
+                onStep: { minutes = hour * 60 + (minute + $0 % 60 + 60) % 60 }
+            )
+        }
+        .frame(width: 41, height: 18)
+    }
+
     private func color(for part: Part) -> Color {
         if isActive && activePart == part { return Color.accentColor.opacity(0.58) }
         let changed: Bool
@@ -2488,7 +2499,7 @@ private struct InlineCalculatedTimeValue: View {
         case .hour: changed = hour != originalMinutes / 60
         case .minute: changed = minute != originalMinutes % 60
         }
-        return changed ? .indigo : .accentColor
+        return changed ? DutyEditPalette.changed : .accentColor
     }
 }
 
