@@ -1310,47 +1310,48 @@ struct DutyDetailView: View {
     }
 
     private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
-    LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
-        Group {
-            if sizeClass == .compact {
-                VStack(spacing: 4) {
-                    flightNumber(leg, index: index)
-                    aircraftField(leg, index: index)
-                    registrationField(leg, index: index)
+        LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
+            Group {
+                if sizeClass == .compact {
+                    VStack(spacing: 4) {
+                        flightNumber(leg, index: index)
+                        aircraftField(leg, index: index)
+                        registrationField(leg, index: index)
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: 8) {
+                        flightNumber(leg, index: index)
+                        aircraftField(leg, index: index)
+                        registrationField(leg, index: index)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
-            } else {
-                HStack(alignment: .top, spacing: 8) {
-                    flightNumber(leg, index: index)
-                    aircraftField(leg, index: index)
-                    registrationField(leg, index: index)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
             }
-        }
-        .frame(maxWidth: .infinity, alignment: .top)
-
-        routeField(leg, index: index)
             .frame(maxWidth: .infinity, alignment: .top)
 
-        Group {
-            if sizeClass == .compact {
-                VStack(spacing: 4) {
-                    flightKindField(leg, index: index)
-                    calculatedTime(leg, index: index)
-                }
-            } else {
-                HStack(alignment: .top, spacing: 8) {
-                    flightKindField(leg, index: index)
-                    calculatedTime(leg, index: index)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .top)
-    }
-}
+            routeField(leg, index: index)
+                .frame(maxWidth: .infinity, alignment: .top)
 
-private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
+            Group {
+                if sizeClass == .compact {
+                    VStack(spacing: 4) {
+                        flightKindField(leg, index: index)
+                        calculatedTime(leg, index: index)
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: 8) {
+                        flightKindField(leg, index: index)
+                        calculatedTime(leg, index: index)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+    }
+
+
+    private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
         let textBinding: Binding<String> = isEditing
             ? legNumberBinding(index)
             : .constant(leg.displayedLegNumber)
