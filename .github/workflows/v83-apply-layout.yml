@@ -1,0 +1,157 @@
+name: Apply v83 layout patch
+
+on:
+  push:
+    branches:
+      - ui/v83-balanced-header-layout
+    paths:
+      - .github/workflows/v83-apply-layout.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/v83-balanced-header-layout
+
+      - name: Apply patch
+        run: |
+          cat > /tmp/v83_patch.py <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path("AppViews.swift")
+          s = p.read_text()
+
+          new_header = """    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
+              LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
+                  Group {
+                      if sizeClass == .compact {
+                          VStack(spacing: 4) {
+                              flightNumber(leg, index: index)
+                              aircraftField(leg, index: index)
+                              registrationField(leg, index: index)
+                          }
+                      } else {
+                          HStack(alignment: .top, spacing: 8) {
+                              flightNumber(leg, index: index)
+                              aircraftField(leg, index: index)
+                              registrationField(leg, index: index)
+                          }
+                          .frame(maxWidth: .infinity, alignment: .center)
+                      }
+                  }
+                  .frame(maxWidth: .infinity, alignment: .top)
+
+                  routeField(leg, index: index)
+                      .frame(maxWidth: .infinity, alignment: .top)
+
+                  Group {
+                      if sizeClass == .compact {
+                          VStack(spacing: 4) {
+                              flightKindField(leg, index: index)
+                              calculatedTime(leg, index: index)
+                          }
+                      } else {
+                          HStack(alignment: .top, spacing: 8) {
+                              flightKindField(leg, index: index)
+                              calculatedTime(leg, index: index)
+                          }
+                          .frame(maxWidth: .infinity, alignment: .center)
+                      }
+                  }
+                  .frame(maxWidth: .infinity, alignment: .top)
+              }
+          }
+
+          private func flightNumber"""
+          s, n = re.subn(
+              r"    private func legHeader\(_ leg: FlightLeg, index: Int\) -> some View \{.*?\n    \}\n\n    private func flightNumber",
+              new_header,
+              s,
+              count=1,
+              flags=re.S,
+          )
+          assert n == 1, "legHeader"
+
+          old10 = "                maxLength: 10,\n                allowsEditing: isEditing"
+          assert s.count(old10) >= 2, "maxLength10"
+          s = s.replace(old10, "                maxLength: 10,\n                expands: false,\n                allowsEditing: isEditing", 2)
+
+          old5 = "                maxLength: 5,\n                allowsEditing: isEditing,\n                highlightHorizontalPadding: 0"
+          assert old5 in s, "registration"
+          s = s.replace(old5, "                maxLength: 5,\n                expands: false,\n                allowsEditing: isEditing,\n                highlightHorizontalPadding: 0", 1)
+
+          old = "        .multilineTextAlignment(.center)\n        .frame(maxWidth: .infinity, alignment: .center)\n        .padding(.vertical, 6)\n        .background {"
+          new = "        .multilineTextAlignment(.center)\n        .padding(.horizontal, 10)\n        .frame(\n            maxWidth: sizeClass == .compact ? .infinity : nil,\n            alignment: .center\n        )\n        .padding(.vertical, 6)\n        .background {"
+          assert old in s, "identity frame"
+          s = s.replace(old, new, 1)
+
+          i = s.index("    private func identityField<Content: View>(")
+          j = s.index("    private func routeField(", i)
+          chunk = s[i:j]
+          old = "        .contentShape(Rectangle())\n        .onTapGesture {"
+          assert old in chunk, "identity end"
+          chunk = chunk.replace(old, "        .fixedSize(horizontal: sizeClass != .compact, vertical: false)\n        .contentShape(Rectangle())\n        .onTapGesture {", 1)
+          s = s[:i] + chunk + s[j:]
+
+          old = """            .fixedSize(horizontal: true, vertical: false)
+                      .frame(
+                          maxWidth: .infinity,
+                          alignment: side == .departure ? .trailing : .leading
+                      )
+                      .contentShape(Rectangle())"""
+          assert old in s, "route endpoint"
+          s = s.replace(old, "            .fixedSize(horizontal: true, vertical: false)\n            .contentShape(Rectangle())", 1)
+
+          old = """                        legValueCard(
+                                      title: "Расчётное время",
+                                      value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
+                                      centered: true
+                                  )"""
+          assert old in s, "calc edit"
+          s = s.replace(old, old.replace("centered: true\n", "centered: true,\n                            compact: sizeClass != .compact\n"), 1)
+
+          old = """                legValueCard(
+                              title: "Расчётное время",
+                              value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
+                              centered: true
+                          )"""
+          assert old in s, "calc view"
+          s = s.replace(old, old.replace("centered: true\n", "centered: true,\n                    compact: sizeClass != .compact\n"), 1)
+
+          old = "        value: String,\n        centered: Bool = false\n    ) -> some View {"
+          assert old in s, "card sig"
+          s = s.replace(old, "        value: String,\n        centered: Bool = false,\n        compact: Bool = false\n    ) -> some View {", 1)
+
+          old = "            maxWidth: .infinity,\n            alignment: centered ? .center : .leading"
+          assert old in s, "card frame"
+          s = s.replace(old, "            maxWidth: compact ? nil : .infinity,\n            alignment: centered ? .center : .leading", 1)
+
+          marker = "        .accessibilityElement(children: .combine)\n    }\n\n    private func legValueCard(\n        title: String,\n        total: Int,"
+          assert marker in s, "card end"
+          s = s.replace(marker, "        .fixedSize(horizontal: compact, vertical: false)\n        .accessibilityElement(children: .combine)\n    }\n\n    private func legValueCard(\n        title: String,\n        total: Int,", 1)
+
+          p.write_text(s)
+
+          p = Path("AppVersion.swift")
+          s = p.read_text().replace("number = 82", "number = 83").replace("Версия 82", "Версия 83")
+          p.write_text(s)
+
+          p = Path("Package.swift")
+          s = p.read_text().replace('displayVersion: "82"', 'displayVersion: "83"').replace('bundleVersion: "82"', 'bundleVersion: "83"')
+          p.write_text(s)
+          PY
+          python3 /tmp/v83_patch.py
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AppViews.swift AppVersion.swift Package.swift
+          git commit -m "v83: balance header cards and center route"
+          git push origin ui/v83-balanced-header-layout
