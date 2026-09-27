@@ -1,4 +1,4 @@
 enum AppVersion {
-    static let number = 100
-    static let label = "Версия 100"
+    static let number = 101
+    static let label = "Версия 101"
 }
