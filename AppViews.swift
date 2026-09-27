@@ -1310,27 +1310,27 @@ struct DutyDetailView: View {
     }
 
     private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
-    VStack(spacing: 6) {
-        HStack(alignment: .top, spacing: 8) {
-            flightNumber(leg, index: index)
-                .frame(maxWidth: .infinity)
-            aircraftField(leg, index: index)
-                .frame(maxWidth: .infinity)
-            registrationField(leg, index: index)
-                .frame(maxWidth: .infinity)
-            flightKindField(leg, index: index)
-                .frame(maxWidth: .infinity)
-            calculatedTime(leg, index: index)
+        VStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                flightNumber(leg, index: index)
+                    .frame(maxWidth: .infinity)
+                aircraftField(leg, index: index)
+                    .frame(maxWidth: .infinity)
+                registrationField(leg, index: index)
+                    .frame(maxWidth: .infinity)
+                flightKindField(leg, index: index)
+                    .frame(maxWidth: .infinity)
+                calculatedTime(leg, index: index)
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity)
+
+            routeField(leg, index: index)
                 .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
-
-        routeField(leg, index: index)
-            .frame(maxWidth: .infinity)
     }
-}
 
-private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
+    private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
         let textBinding: Binding<String> = isEditing
             ? legNumberBinding(index)
             : .constant(leg.displayedLegNumber)
