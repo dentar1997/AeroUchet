@@ -1419,7 +1419,8 @@ struct DutyDetailView: View {
     private func timeAndNight(total: Int, night: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(timeText(total))
-                .font(.subheadline.weight(.semibold))
+                .font(.caption.bold())
+                .monospacedDigit()
                 .foregroundStyle(.primary)
 
             Text("· ночь")
@@ -1427,7 +1428,8 @@ struct DutyDetailView: View {
                 .foregroundStyle(.secondary)
 
             Text(timeText(night))
-                .font(.subheadline.weight(.semibold))
+                .font(.caption.bold())
+                .monospacedDigit()
                 .foregroundStyle(.primary)
         }
         .lineLimit(1)
@@ -1682,8 +1684,8 @@ struct DutyDetailView: View {
         numbersOnly: Bool = false,
         reserveText: String? = nil,
         highlightHorizontalPadding: CGFloat = 2,
-        textFont: Font = .subheadline.weight(.semibold),
-        inputFont: UIFont = .systemFont(ofSize: 15, weight: .semibold),
+        textFont: Font = .caption.bold(),
+        inputFont: UIFont = .systemFont(ofSize: 12, weight: .bold),
         lineHeight: CGFloat = 18
     ) -> some View {
         let valueColor = isEditing
@@ -2225,7 +2227,10 @@ struct DutyDetailView: View {
             usesTable: usesTable,
             hasChanges: calculatedEditorHasChanges(index),
             onActivate: { focusedField = .calculatedTime(index) },
-            onToggleSource: { toggleCalculatedTimeSource(index) },
+            onToggleSource: {
+                focusedField = nil
+                toggleCalculatedTimeSource(index)
+            },
             onRestore: { restoreOriginalCalculatedTime(index) }
         )
         .zIndex(focusedField == .calculatedTime(index) ? 5000 : 0)
@@ -2302,7 +2307,8 @@ struct DutyDetailView: View {
                 .minimumScaleFactor(0.78)
 
             Text(value)
-                .font(.subheadline.weight(.semibold))
+                .font(.caption.bold())
+                .monospacedDigit()
                 .foregroundStyle(valueColor)
                 .minimumScaleFactor(0.85)
                 .frame(
@@ -2371,6 +2377,10 @@ private struct InlineCalculatedTimeValue: View {
     private var hour: Int { minutes / 60 }
     private var minute: Int { minutes % 60 }
 
+    private var sourceColor: Color {
+        hasChanges ? DutyEditPalette.changed : Color.accentColor
+    }
+
     var body: some View {
         VStack(spacing: 3) {
             Text("Расчётное время")
@@ -2381,34 +2391,36 @@ private struct InlineCalculatedTimeValue: View {
 
             if !isEditing {
                 Text(displayed)
-                    .font(.subheadline.weight(.semibold))
+                    .font(
+                        displayed == "Нет данных"
+                            ? .subheadline.weight(.semibold)
+                            : .caption.bold()
+                    )
+                    .monospacedDigit()
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .frame(height: 18)
             } else if usesTable {
                 Button {
-                    onActivate()
                     activePart = nil
                     onToggleSource()
                 } label: {
-                    HStack(spacing: 0) {
-                        Image(systemName: "checkmark.square.fill")
-                            .font(.system(size: 16))
-                            .frame(width: 20)
-                        Color.clear.frame(width: 9)
+                    ZStack {
                         Text("Из таблицы")
                             .font(.subheadline.weight(.semibold))
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
-                        Spacer(minLength: 0)
+                            .frame(maxWidth: .infinity, alignment: .center)
+
+                        HStack(spacing: 0) {
+                            Image(systemName: "checkmark.square.fill")
+                                .font(.system(size: 16))
+                                .frame(width: 20)
+                            Spacer(minLength: 0)
+                        }
                     }
-                    .foregroundStyle(
-                        hasChanges
-                            ? (isActive ? DutyEditPalette.selectedChanged : DutyEditPalette.changed)
-                            : Color.accentColor
-                    )
-                    .frame(width: 130, alignment: .leading)
-                    .frame(height: 18)
+                    .foregroundStyle(sourceColor)
+                    .frame(width: 130, height: 18)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -2417,30 +2429,27 @@ private struct InlineCalculatedTimeValue: View {
             } else if isUnscheduled {
                 timeWheel.frame(height: 18)
             } else {
-                HStack(spacing: 0) {
-                    Button {
-                        onActivate()
-                        activePart = nil
-                        onToggleSource()
-                    } label: {
-                        Image(systemName: "square")
-                            .font(.system(size: 16))
-                            .frame(width: 20, height: 28)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Выбрать расчётное время из таблицы")
-
-                    Color.clear.frame(width: 9)
+                ZStack {
                     timeWheel
-                    Spacer(minLength: 0)
+
+                    HStack(spacing: 0) {
+                        Button {
+                            activePart = nil
+                            onToggleSource()
+                        } label: {
+                            Image(systemName: "square")
+                                .font(.system(size: 16))
+                                .frame(width: 20, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(sourceColor)
+                        .accessibilityLabel("Выбрать расчётное время из таблицы")
+
+                        Spacer(minLength: 0)
+                    }
                 }
-                .foregroundStyle(
-                    hasChanges
-                        ? (isActive ? DutyEditPalette.selectedChanged : DutyEditPalette.changed)
-                        : Color.accentColor
-                )
-                .frame(height: 18)
+                .frame(width: 130, height: 18)
             }
         }
         .frame(width: 130, alignment: .center)
