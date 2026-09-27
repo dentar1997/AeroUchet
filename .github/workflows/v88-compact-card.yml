@@ -1,0 +1,30 @@
+name: Apply v88 tighter duty card
+
+on:
+  push:
+    branches:
+      - ui/v88-tighter-duty-card
+    paths:
+      - .github/workflows/v88-compact-card.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/v88-tighter-duty-card
+
+      - name: Apply v88 patch
+        run: python3 .github/scripts/v88_compact_card.py
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AppViews.swift AppVersion.swift Package.swift
+          git commit -m "v88: tighten duty card width"
+          git push origin ui/v88-tighter-duty-card
