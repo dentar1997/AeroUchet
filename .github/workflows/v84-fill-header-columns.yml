@@ -1,0 +1,115 @@
+name: Apply v84 header column layout
+
+on:
+  push:
+    branches:
+      - ui/v84-fill-header-columns
+    paths:
+      - .github/workflows/v84-fill-header-columns.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/v84-fill-header-columns
+
+      - name: Apply visual layout patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("AppViews.swift")
+          s = p.read_text()
+
+          old = '''                    HStack(alignment: .top, spacing: 8) {
+                        flightNumber(leg, index: index)
+                        aircraftField(leg, index: index)
+                        registrationField(leg, index: index)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)'''
+          new = '''                    HStack(alignment: .top, spacing: 8) {
+                        flightNumber(leg, index: index)
+                            .frame(maxWidth: .infinity)
+                        aircraftField(leg, index: index)
+                            .frame(maxWidth: .infinity)
+                        registrationField(leg, index: index)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)'''
+          assert old in s, "first header group not found"
+          s = s.replace(old, new, 1)
+
+          old = '''                    HStack(alignment: .top, spacing: 8) {
+                        flightKindField(leg, index: index)
+                        calculatedTime(leg, index: index)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)'''
+          new = '''                    HStack(alignment: .top, spacing: 8) {
+                        flightKindField(leg, index: index)
+                            .frame(maxWidth: .infinity)
+                        calculatedTime(leg, index: index)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)'''
+          assert old in s, "third header group not found"
+          s = s.replace(old, new, 1)
+
+          old = '''        .frame(
+            maxWidth: sizeClass == .compact ? .infinity : nil,
+            alignment: .center
+        )
+        .padding(.vertical, 6)'''
+          new = '''        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 6)'''
+          assert old in s, "identity field width block not found"
+          s = s.replace(old, new, 1)
+
+          old = '''        .fixedSize(horizontal: sizeClass != .compact, vertical: false)
+        .contentShape(Rectangle())'''
+          new = '''        .contentShape(Rectangle())'''
+          assert old in s, "identity fixedSize not found"
+          s = s.replace(old, new, 1)
+
+          old = '''                            centered: true,
+                            compact: sizeClass != .compact'''
+          new = '''                            centered: true,
+                            compact: false'''
+          assert old in s, "editing calculated time width not found"
+          s = s.replace(old, new, 1)
+
+          old = '''                    centered: true,
+                    compact: sizeClass != .compact'''
+          new = '''                    centered: true,
+                    compact: false'''
+          assert old in s, "static calculated time width not found"
+          s = s.replace(old, new, 1)
+
+          p.write_text(s)
+
+          p = Path("AppVersion.swift")
+          s = p.read_text()
+          assert "static let number = 83" in s and 'static let label = "Версия 83"' in s
+          s = s.replace("static let number = 83", "static let number = 84")
+          s = s.replace('static let label = "Версия 83"', 'static let label = "Версия 84"')
+          p.write_text(s)
+
+          p = Path("Package.swift")
+          s = p.read_text()
+          assert 'displayVersion: "83"' in s and 'bundleVersion: "83"' in s
+          s = s.replace('displayVersion: "83"', 'displayVersion: "84"')
+          s = s.replace('bundleVersion: "83"', 'bundleVersion: "84"')
+          p.write_text(s)
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AppViews.swift AppVersion.swift Package.swift
+          git commit -m "v84: fill header columns evenly"
+          git push origin ui/v84-fill-header-columns
