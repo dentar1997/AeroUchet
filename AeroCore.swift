@@ -393,7 +393,9 @@ struct FlightDuty: Identifiable {
     
     
     var end: Date {
-        moscowCalendar.date(byAdding: .minute, value: 30, to: timelines.last!.engineOff)!
+        let last = timelines.last!
+        return last.workEnd
+            ?? moscowCalendar.date(byAdding: .minute, value: 30, to: last.engineOff)!
     }
 
     // One assignment may contain several work periods separated by rest.

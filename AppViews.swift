@@ -1286,14 +1286,12 @@ struct DutyDetailView: View {
         let restMinutes = minutesBetween(start, end)
 
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Разделённая полётная смена")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-
             HStack(spacing: 6) {
-                Text("\(formatDateTime(start)) → \(formatDateTime(end))")
-                    .font(.caption.bold())
+                Text("Разделённая полётная смена")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 Image(systemName: "moon.zzz")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
@@ -2211,90 +2209,26 @@ struct DutyDetailView: View {
             && draft.indices.contains(index)
             && draft[index].calculatedMinutesOverride == nil
 
-        return identityField("Расчётное время", field: .calculatedTime(index)) {
-            Text(leg.calculatedMinutes.map(timeText) ?? "Нет данных")
-        }
-        .overlay(alignment: .topTrailing) {
-            if isEditing, focusedField == .calculatedTime(index) {
-                floatingEditor(
-                    width: 188,
-                    height: 132,
-                    backgroundOpacity: 0.82
-                ) {
-                    HStack(alignment: .top, spacing: 6) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            if !isUnscheduled {
-                                Button {
-                                    toggleCalculatedTimeSource(index)
-                                } label: {
-                                    HStack(spacing: 5) {
-                                        ZStack {
-                                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                                .stroke(Color.secondary, lineWidth: 1)
-                                                .frame(width: 16, height: 16)
-
-                                            if usesTable {
-                                                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                                    .fill(Color.accentColor)
-                                                    .frame(width: 16, height: 16)
-
-                                                Image(systemName: "checkmark")
-                                                    .font(.system(size: 9, weight: .bold))
-                                                    .foregroundStyle(.white)
-                                            }
-                                        }
-
-                                        Text("Из таблицы")
-                                            .font(.caption2)
-                                    }
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-
-                            if isUnscheduled || !usesTable {
-                                compactTimeWheel(selection: calculatedTimeBinding(index))
-                            } else {
-                                Text(
-                                    draft[index].calculatedMinutes.map(timeText)
-                                    ?? "Нет данных"
-                                )
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 122, height: 76, alignment: .center)
-                            }
-                        }
-                        .frame(width: 126, alignment: .topLeading)
-
-                        VStack(spacing: 8) {
-                            Button {
-                                restoreOriginalCalculatedTime(index)
-                            } label: {
-                                Image(systemName: "arrow.uturn.backward")
-                            }
-                            .buttonStyle(.bordered)
-                            .buttonBorderShape(.circle)
-                            .controlSize(.small)
-                            .disabled(!calculatedEditorHasChanges(index))
-                            .accessibilityLabel("Вернуть исходное расчётное время")
-
-                            Button {
-                                focusedField = nil
-                            } label: {
-                                Image(systemName: "checkmark")
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .buttonBorderShape(.circle)
-                            .controlSize(.small)
-                            .accessibilityLabel("Готово")
-                        }
-                        .frame(maxHeight: .infinity, alignment: .top)
-                    }
-                }
-                .offset(y: 42)
-                .zIndex(5000)
-            }
-        }
+        return InlineCalculatedTimeValue(
+            displayed: leg.calculatedMinutes.map(timeText) ?? "Нет данных",
+            originalMinutes: original.indices.contains(index)
+                ? (original[index].calculatedMinutesOverride ?? original[index].flightMinutes)
+                : (leg.calculatedMinutes ?? 0),
+            minutes: Binding(
+                get: { draft.indices.contains(index)
+                    ? (draft[index].calculatedMinutesOverride ?? draft[index].flightMinutes)
+                    : 0 },
+                set: { draft[index].calculatedMinutesOverride = max(0, $0) }
+            ),
+            isEditing: isEditing,
+            isActive: focusedField == .calculatedTime(index),
+            isUnscheduled: isUnscheduled,
+            usesTable: usesTable,
+            hasChanges: calculatedEditorHasChanges(index),
+            onActivate: { focusedField = .calculatedTime(index) },
+            onToggleSource: { toggleCalculatedTimeSource(index) },
+            onRestore: { restoreOriginalCalculatedTime(index) }
+        )
         .zIndex(focusedField == .calculatedTime(index) ? 5000 : 0)
     }
 
@@ -2331,32 +2265,6 @@ struct DutyDetailView: View {
         }
     }
 
-    private func calculatedTimeBinding(_ index: Int) -> Binding<Date> {
-        let base = moscowCalendar.date(
-            from: DateComponents(year: 2001, month: 1, day: 1)
-        )!
-
-        return Binding(
-            get: {
-                moscowCalendar.date(
-                    byAdding: .minute,
-                    value: draft[index].calculatedMinutesOverride
-                        ?? draft[index].flightMinutes,
-                    to: base
-                )!
-            },
-            set: { newDate in
-                let components = moscowCalendar.dateComponents(
-                    [.hour, .minute],
-                    from: newDate
-                )
-                let hours = components.hour ?? 0
-                let minutes = components.minute ?? 0
-                draft[index].calculatedMinutesOverride = hours * 60 + minutes
-            }
-        )
-    }
-
     private func timeCell(
         title: String,
         date: Date,
@@ -2378,20 +2286,6 @@ struct DutyDetailView: View {
             backgroundColor: valueTileColor
         )
         .zIndex(focusedField == .time(index, point) ? 100 : 0)
-    }
-
-    private func compactTimeWheel(selection: Binding<Date>) -> some View {
-        DatePicker(
-            "",
-            selection: selection,
-            displayedComponents: [.hourAndMinute]
-        )
-        .labelsHidden()
-        .datePickerStyle(.wheel)
-        .frame(width: 160, height: 108)
-        .scaleEffect(0.78, anchor: .topLeading)
-        .frame(width: 126, height: 86, alignment: .topLeading)
-        .clipped()
     }
 
     private func legValueCard(
@@ -2458,6 +2352,138 @@ struct DutyDetailView: View {
 
 }
 
+
+private struct InlineCalculatedTimeValue: View {
+    let displayed: String
+    let originalMinutes: Int
+    @Binding var minutes: Int
+    let isEditing: Bool
+    let isActive: Bool
+    let isUnscheduled: Bool
+    let usesTable: Bool
+    let hasChanges: Bool
+    let onActivate: () -> Void
+    let onToggleSource: () -> Void
+    let onRestore: () -> Void
+
+    @State private var activePart: Part?
+    private enum Part { case hour, minute }
+
+    private var hour: Int { minutes / 60 }
+    private var minute: Int { minutes % 60 }
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Text("Расчётное время")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            HStack(spacing: 3) {
+                if isEditing && !usesTable {
+                    HStack(spacing: -1) {
+                        InlineFlightWheelSegment(
+                            value: String(hour),
+                            previous: String(max(0, hour - 1)),
+                            next: String(hour + 1),
+                            width: 19, hitWidth: 25, hitOffset: -1,
+                            isEditing: true,
+                            isActive: isActive && activePart == .hour,
+                            valueColor: color(for: .hour),
+                            onActivate: { onActivate(); activePart = .hour },
+                            onStep: { minutes = max(0, hour + $0) * 60 + minute }
+                        )
+                        Text(":")
+                            .font(.caption.bold())
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 5)
+                        InlineFlightWheelSegment(
+                            value: String(format: "%02d", minute),
+                            previous: String(format: "%02d", (minute + 59) % 60),
+                            next: String(format: "%02d", (minute + 1) % 60),
+                            width: 17, hitWidth: 26, hitOffset: 3,
+                            isEditing: true,
+                            isActive: isActive && activePart == .minute,
+                            valueColor: color(for: .minute),
+                            onActivate: { onActivate(); activePart = .minute },
+                            onStep: { minutes = hour * 60 + (minute + $0 % 60 + 60) % 60 }
+                        )
+                    }
+                    .frame(width: 41, height: 18)
+                } else {
+                    Text(displayed)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isEditing ? Color.accentColor : .primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(minWidth: 41)
+                        .frame(height: 18)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard isEditing else { return }
+                            onActivate()
+                            if usesTable { onToggleSource() }
+                            activePart = .hour
+                        }
+                }
+
+                if isEditing && !isUnscheduled {
+                    Button {
+                        onActivate()
+                        activePart = nil
+                        onToggleSource()
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: usesTable ? "checkmark.square.fill" : "square")
+                                .font(.system(size: 11))
+                            Text("Из таблицы")
+                                .font(.system(size: 9))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(Color.accentColor)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Из таблицы")
+                    .accessibilityValue(usesTable ? "Выбрано" : "Не выбрано")
+                }
+            }
+            .frame(height: 18)
+        }
+        .frame(width: 130, alignment: .center)
+        .padding(.vertical, 6)
+        .overlay(alignment: .topTrailing) {
+            if isEditing && hasChanges {
+                Button(action: onRestore) {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .offset(x: 5, y: -4)
+                .accessibilityLabel("Вернуть исходное расчётное время")
+            }
+        }
+        .onChange(of: isActive) { _, active in
+            if !active { activePart = nil }
+        }
+        .onChange(of: usesTable) { _, table in
+            if table { activePart = nil }
+        }
+        .onChange(of: isEditing) { _, editing in
+            if !editing { activePart = nil }
+        }
+    }
+
+    private func color(for part: Part) -> Color {
+        if isActive && activePart == part { return Color.accentColor.opacity(0.58) }
+        let changed: Bool
+        switch part {
+        case .hour: changed = hour != originalMinutes / 60
+        case .minute: changed = minute != originalMinutes % 60
+        }
+        return changed ? .indigo : .accentColor
+    }
+}
 
 private struct DutyEditSnapshot: Equatable {
     let legs: [FlightLeg]
