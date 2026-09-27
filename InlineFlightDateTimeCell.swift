@@ -7,6 +7,7 @@ enum DutyEditPalette {
             ? UIColor(red: 1.0, green: 0.78, blue: 0.22, alpha: 1)
             : UIColor(red: 0.55, green: 0.38, blue: 0.0, alpha: 1)
     })
+    static let selectedChanged = changed.opacity(0.62)
     static let calendarSelection = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(red: 0.10, green: 0.72, blue: 0.72, alpha: 1)
@@ -191,6 +192,12 @@ struct InlineFlightDateTimeCell: View {
                 showsCalendar = false
             }
         }
+        .onChange(of: showsCalendar) { _, visible in
+            if !visible && activePart == .date {
+                activePart = nil
+                onDismiss()
+            }
+        }
     }
 
     private var hour: Int { calendar.component(.hour, from: selection) }
@@ -199,10 +206,14 @@ struct InlineFlightDateTimeCell: View {
     private func color(for part: Part) -> Color {
         guard isEditing else { return .primary }
         if part == .date && showsCalendar {
-            return DutyEditPalette.calendarSelection
+            return hasChanged(part)
+                ? DutyEditPalette.selectedChanged
+                : DutyEditPalette.calendarSelection
         }
         if isActive && activePart == part {
-            return Color.accentColor.opacity(0.58)
+            return hasChanged(part)
+                ? DutyEditPalette.selectedChanged
+                : Color.accentColor.opacity(0.58)
         }
         if hasChanged(part) {
             return DutyEditPalette.changed

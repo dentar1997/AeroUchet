@@ -179,7 +179,7 @@ struct AeroMinutesPickerButton: View {
         } label: {
             Text(
                 String(
-                    format: "%d:%02d",
+                    format: "%02d:%02d",
                     max(0, minutes / 60),
                     max(0, minutes % 60)
                 )

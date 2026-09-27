@@ -498,9 +498,9 @@ private struct FixedGeometryAssignmentCard: View {
             }
 
             HStack(spacing: 8) {
-                PrototypeStaticTimeCell(title: "Рабочее время", value: "5:57 · ночь 0:35")
-                PrototypeStaticTimeCell(title: "Полётное время", value: "4:51 · ночь 0:05")
-                PrototypeStaticTimeCell(title: "Лётное время", value: "4:07 · ночь 0:00")
+                PrototypeStaticTimeCell(title: "Рабочее время", value: "05:57 · ночь 00:35")
+                PrototypeStaticTimeCell(title: "Полётное время", value: "04:51 · ночь 00:05")
+                PrototypeStaticTimeCell(title: "Лётное время", value: "04:07 · ночь 00:00")
             }
         }
         .onChange(of: isEditing) { _, newValue in
@@ -992,9 +992,9 @@ private struct PrototypeBottomRows: View {
             }
 
             HStack(spacing: 8) {
-                PrototypeStaticTimeCell(title: "Рабочее время", value: "5:57 · ночь 0:35")
-                PrototypeStaticTimeCell(title: "Полётное время", value: "4:51 · ночь 0:05")
-                PrototypeStaticTimeCell(title: "Лётное время", value: "4:07 · ночь 0:00")
+                PrototypeStaticTimeCell(title: "Рабочее время", value: "05:57 · ночь 00:35")
+                PrototypeStaticTimeCell(title: "Полётное время", value: "04:51 · ночь 00:05")
+                PrototypeStaticTimeCell(title: "Лётное время", value: "04:07 · ночь 00:00")
             }
         }
     }
