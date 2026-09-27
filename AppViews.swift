@@ -337,9 +337,9 @@ private struct DutyAssignmentOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
-            // Компактная ширина задания рассчитана от трёх временных
-            // колонок по 192 pt плюс внутренние отступы карточек.
-            let width = min(geometry.size.width * 0.92, 648)
+            // Три временные колонки по 176 pt + промежутки + внутренние
+            // отступы leg и задания дают компактную ширину около 600 pt.
+            let width = min(geometry.size.width * 0.92, 600)
 
             ZStack {
                 Color.black
@@ -608,7 +608,7 @@ struct DutyDetailView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private let timeColumns = Array(
-        repeating: GridItem(.fixed(192), spacing: 8),
+        repeating: GridItem(.fixed(176), spacing: 8),
         count: 3
     )
 
@@ -1349,7 +1349,13 @@ struct DutyDetailView: View {
 
     private func flightKindField(_ leg: FlightLeg, index: Int) -> some View {
         identityField("Вид полёта", field: .flightKind(index)) {
-            Text((leg.scheduleType ?? .planned).rawValue)
+            ZStack {
+                // Ширина всегда резервируется под самый длинный вариант,
+                // чтобы «Плановый» не сжимал верхнюю строку.
+                Text(FlightScheduleType.unscheduled.rawValue)
+                    .hidden()
+                Text((leg.scheduleType ?? .planned).rawValue)
+            }
         }
     }
 
@@ -2056,6 +2062,8 @@ struct DutyDetailView: View {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
 
             Text(value)
                 .font(.subheadline.weight(.semibold))
