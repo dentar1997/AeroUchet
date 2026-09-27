@@ -317,7 +317,8 @@ struct DutiesListView: View {
                 .zIndex(1)
             }
         }
-        .navigationTitle(selectedDuty == nil ? "Полёты" : "")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
