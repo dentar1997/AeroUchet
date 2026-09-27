@@ -3,19 +3,21 @@ from pathlib import Path
 p = Path("AppViews.swift")
 s = p.read_text()
 
-old = '''                    .foregroundStyle(
-                        isEditing ? Color.accentColor : Color.primary
-                    )'''
-new = '''                    .foregroundStyle(
-                        isEditing
-                            ? (isActive.wrappedValue
-                                ? Color.accentColor.opacity(0.58)
-                                : Color.accentColor)
-                            : Color.primary
-                    )'''
-assert s.count(old) >= 2, s.count(old)
-s = s.replace(old, new, 2)
+# Stable inline values: all editable values are accent; the focused one is darker.
+marker1 = "    private func stableInlineEditor("
+marker2 = "    private func identityField<Content: View>("
+assert marker1 in s and marker2 in s
+before, tail = s.split(marker1, 1)
+stable, after = tail.split(marker2, 1)
+needle = "isEditing ? Color.accentColor : Color.primary"
+assert stable.count(needle) == 2, stable.count(needle)
+stable = stable.replace(
+    needle,
+    "isEditing\n                            ? (isActive.wrappedValue\n                                ? Color.accentColor.opacity(0.58)\n                                : Color.accentColor)\n                            : Color.primary"
+)
+s = before + marker1 + stable + marker2 + after
 
+# Non-UITextField identity values (for example flight kind).
 old = '''                .foregroundStyle(isEditing ? Color.accentColor : Color.primary)'''
 new = '''                .foregroundStyle(
                     isEditing
@@ -27,6 +29,7 @@ new = '''                .foregroundStyle(
 assert old in s
 s = s.replace(old, new, 1)
 
+# Route: only the selected airport code gets the darker shade.
 old = '''            + Text(cleanCode)
                 .foregroundColor(isEditing ? .accentColor : .primary)
             + Text(")")'''
@@ -42,6 +45,7 @@ new = '''            + Text(cleanCode)
 assert old in s
 s = s.replace(old, new, 1)
 
+# Calculated time and editable date/time values: darker while their editor is open.
 old = '''                            compact: true,
                             valueColor: .accentColor
                         )'''
@@ -64,6 +68,7 @@ new = '''                        value: formatDateTime(point.date(in: times(for:
 assert old in s
 s = s.replace(old, new, 1)
 
+# stableInlineEditor accepts the original value to restore on one extra Backspace.
 old = '''        maxLength: Int? = nil,
         expands: Bool = true,
         allowsEditing: Bool = true,
@@ -86,6 +91,7 @@ new = '''                    maxLength: maxLength,
 assert old in s
 s = s.replace(old, new, 1)
 
+# Original assignment number.
 old = '''                expands: false,
                 allowsEditing: isEditing,
                 highlightHorizontalPadding: 0,
@@ -100,6 +106,7 @@ new = '''                expands: false,
 assert old in s
 s = s.replace(old, new, 1)
 
+# Original flight/leg number.
 old = '''                maxLength: 10,
                 expands: false,
                 allowsEditing: isEditing
@@ -122,6 +129,7 @@ new = '''                maxLength: 10,
 assert old in s
 s = s.replace(old, new, 1)
 
+# Original aircraft type.
 old = '''                maxLength: 10,
                 expands: false,
                 allowsEditing: isEditing
@@ -144,6 +152,7 @@ new = '''                maxLength: 10,
 assert old in s
 s = s.replace(old, new, 1)
 
+# Original registration digits; visible RA- prefix remains on screen while digits are empty.
 old = '''                maxLength: 5,
                 expands: false,
                 allowsEditing: isEditing,
@@ -161,6 +170,7 @@ new = '''                maxLength: 5,
 assert old in s
 s = s.replace(old, new, 1)
 
+# Original route code for each side.
 old = '''                        maxLength: 5,
                         isEnabled: true
                     )'''
@@ -175,6 +185,7 @@ new = '''                        maxLength: 5,
 assert old in s
 s = s.replace(old, new, 1)
 
+# InlineSelectAllTextField stores restoreValue and forwards it to the coordinator.
 old = '''    var maxLength: Int? = nil
     var isEnabled: Bool = true
 
@@ -236,6 +247,7 @@ new = '''        var maxLength: Int?
 assert old in s
 s = s.replace(old, new, 1)
 
+# Backspace: one character at a time. One extra Backspace on empty restores original.
 old = '''            var value = field.text ?? ""
 
             if replaceOnNextInput {
@@ -255,8 +267,6 @@ old = '''            var value = field.text ?? ""
 new = '''            var value = field.text ?? ""
 
             if deleting {
-                // Backspace removes one symbol at a time. One extra Backspace
-                // on an empty field restores the value from edit-mode entry.
                 replaceOnNextInput = false
                 if value.isEmpty,
                    let restoreValue,
