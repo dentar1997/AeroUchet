@@ -1434,30 +1434,29 @@ struct DutyDetailView: View {
         inputFont: UIFont = .systemFont(ofSize: 15, weight: .semibold),
         lineHeight: CGFloat = 18
     ) -> some View {
-        ZStack {
-            HStack(spacing: 0) {
-                if !prefix.isEmpty {
-                    Text(prefix)
-                        .font(textFont)
-                        .foregroundStyle(.primary)
-                }
-
-                Text(text.wrappedValue)
+        HStack(spacing: 0) {
+            if !prefix.isEmpty {
+                Text(prefix)
                     .font(textFont)
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .padding(.horizontal, highlightHorizontalPadding)
-                    .background {
-                        if isActive.wrappedValue {
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.accentColor.opacity(0.22))
-                        }
-                    }
             }
-            .fixedSize(horizontal: true, vertical: false)
-            .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
 
+            Text(text.wrappedValue)
+                .font(textFont)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, highlightHorizontalPadding)
+                .background {
+                    if isActive.wrappedValue {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.accentColor.opacity(0.22))
+                    }
+                }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
+        .overlay {
             if allowsEditing {
                 InlineSelectAllTextField(
                     text: text,
@@ -1469,8 +1468,8 @@ struct DutyDetailView: View {
                     maxLength: maxLength,
                     isEnabled: true
                 )
-                .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
-                .fixedSize(horizontal: !expands, vertical: false)
+                .frame(maxWidth: .infinity, minHeight: lineHeight, maxHeight: lineHeight)
+                .allowsHitTesting(false)
             }
         }
         .frame(height: lineHeight)
@@ -1582,28 +1581,34 @@ struct DutyDetailView: View {
         index: Int,
         side: RouteEditSide
     ) -> some View {
-        Group {
-            if isEditing {
-                HStack(spacing: 0) {
-                    Text("\(airportNameOnly(code.wrappedValue)) (")
+        let cleanCode = code.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isActive = routeFocusBinding(index: index, side: side)
 
-                    stableInlineEditor(
-                        text: code,
-                        isActive: routeFocusBinding(index: index, side: side),
-                        keyboardType: .asciiCapable,
-                        capitalization: .allCharacters,
-                        maxLength: 5,
-                        expands: false,
-                        allowsEditing: true,
-                        highlightHorizontalPadding: 0
-                    )
-                    .frame(width: routeCodeWidth(code.wrappedValue))
-
-                    Text(")")
+        return HStack(spacing: 0) {
+            Text("\(airportNameOnly(cleanCode)) (")
+            Text(cleanCode)
+                .background {
+                    if isActive.wrappedValue {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.accentColor.opacity(0.22))
+                    }
                 }
-            } else {
-                let cleanCode = code.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                Text("\(airportNameOnly(cleanCode)) (\(cleanCode))")
+            Text(")")
+        }
+        .overlay {
+            if isEditing {
+                InlineSelectAllTextField(
+                    text: code,
+                    isActive: isActive,
+                    keyboardType: .asciiCapable,
+                    capitalization: .allCharacters,
+                    textAlignment: .center,
+                    font: .systemFont(ofSize: 15, weight: .semibold),
+                    maxLength: 5,
+                    isEnabled: true
+                )
+                .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
+                .allowsHitTesting(false)
             }
         }
         .fixedSize(horizontal: true, vertical: false)
@@ -1617,12 +1622,6 @@ struct DutyDetailView: View {
             routeEditSide = side
             focusedField = .route(index)
         }
-    }
-
-    private func routeCodeWidth(_ code: String) -> CGFloat {
-        let font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-        let width = (code as NSString).size(withAttributes: [.font: font]).width
-        return max(1, ceil(width))
     }
     private func routeCodeBinding(index: Int, side: RouteEditSide) -> Binding<String> {
         Binding(
