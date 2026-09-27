@@ -22,55 +22,36 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           p = Path('AppViews.swift')
           s = p.read_text()
-          old = '''    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
-    VStack(spacing: 6) {
-        HStack(alignment: .top, spacing: 8) {
-            flightNumber(leg, index: index)
-                .frame(maxWidth: .infinity)
-            aircraftField(leg, index: index)
-                .frame(maxWidth: .infinity)
-            registrationField(leg, index: index)
-                .frame(maxWidth: .infinity)
-            flightKindField(leg, index: index)
-                .frame(maxWidth: .infinity)
-            calculatedTime(leg, index: index)
-                .frame(maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity)
-
-        routeField(leg, index: index)
-            .frame(maxWidth: .infinity)
-    }
-}
-
-private func flightNumber'''
-          new = '''    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
-        VStack(spacing: 6) {
-            HStack(alignment: .top, spacing: 8) {
-                flightNumber(leg, index: index)
-                    .frame(maxWidth: .infinity)
-                aircraftField(leg, index: index)
-                    .frame(maxWidth: .infinity)
-                registrationField(leg, index: index)
-                    .frame(maxWidth: .infinity)
-                flightKindField(leg, index: index)
-                    .frame(maxWidth: .infinity)
-                calculatedTime(leg, index: index)
-                    .frame(maxWidth: .infinity)
-            }
-            .frame(maxWidth: .infinity)
-
-            routeField(leg, index: index)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    private func flightNumber'''
-          assert old in s
-          p.write_text(s.replace(old, new, 1))
+          start = s.index('    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {')
+          end = s.index('private func flightNumber', start)
+          block = [
+              '    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {',
+              '        VStack(spacing: 6) {',
+              '            HStack(alignment: .top, spacing: 8) {',
+              '                flightNumber(leg, index: index)',
+              '                    .frame(maxWidth: .infinity)',
+              '                aircraftField(leg, index: index)',
+              '                    .frame(maxWidth: .infinity)',
+              '                registrationField(leg, index: index)',
+              '                    .frame(maxWidth: .infinity)',
+              '                flightKindField(leg, index: index)',
+              '                    .frame(maxWidth: .infinity)',
+              '                calculatedTime(leg, index: index)',
+              '                    .frame(maxWidth: .infinity)',
+              '            }',
+              '            .frame(maxWidth: .infinity)',
+              '',
+              '            routeField(leg, index: index)',
+              '                .frame(maxWidth: .infinity)',
+              '        }',
+              '    }',
+              '',
+              '    private func flightNumber',
+          ]
+          s = s[:start] + '\n'.join(block) + s[end + len('private func flightNumber'):]
+          p.write_text(s)
           PY
 
       - name: Commit
