@@ -423,39 +423,99 @@ private struct SeparatedSegment: View {
 private struct FixedGeometryAssignmentCard: View {
     let isEditing: Bool
 
+    @State private var engineStartMinutes = 1 * 60 + 36
     @State private var takeoffMinutes = 1 * 60 + 50
-    @State private var dayOffset = 0
+    @State private var engineStopMinutes = 6 * 60 + 10
+    @State private var engineStartDayOffset = 0
+    @State private var takeoffDayOffset = 0
+    @State private var engineStopDayOffset = 0
+    @State private var activeCell: FixedCellID?
     @State private var activePart: FixedInlinePart?
-
-    private let originalMinutes = 1 * 60 + 50
 
     var body: some View {
         PrototypeAssignmentShell(
             assignmentNumber: "5686217",
             flightNumber: "1512",
             route: "Москва (SVO/B) → Сургут (SGC)",
-            dateText: fixedTestDateText(offset: dayOffset)
+            dateText: "07.09.2026"
         ) {
             HStack(spacing: 8) {
                 PrototypeStaticTimeCell(title: "Начало работы", value: "07.09.2026 00:35")
-                PrototypeStaticTimeCell(title: "Включение двигателей", value: "07.09.2026 01:36")
 
                 FixedGeometryDateTimeCell(
-                    minutesOfDay: $takeoffMinutes,
-                    dayOffset: $dayOffset,
+                    id: .engineStart,
+                    title: "Включение двигателей",
+                    minutesOfDay: $engineStartMinutes,
+                    dayOffset: $engineStartDayOffset,
+                    originalMinutes: 1 * 60 + 36,
                     isEditing: isEditing,
-                    activePart: $activePart,
-                    onReset: {
-                        takeoffMinutes = originalMinutes
-                        dayOffset = 0
+                    isActive: activeCell == .engineStart,
+                    activePart: activeCell == .engineStart ? activePart : nil,
+                    onActivate: { part in
+                        activeCell = .engineStart
+                        activePart = part
                     }
                 )
-                .zIndex(activePart == nil ? 0 : 200)
+                .zIndex(activeCell == .engineStart ? 200 : 0)
+
+                FixedGeometryDateTimeCell(
+                    id: .takeoff,
+                    title: "Взлёт",
+                    minutesOfDay: $takeoffMinutes,
+                    dayOffset: $takeoffDayOffset,
+                    originalMinutes: 1 * 60 + 50,
+                    isEditing: isEditing,
+                    isActive: activeCell == .takeoff,
+                    activePart: activeCell == .takeoff ? activePart : nil,
+                    onActivate: { part in
+                        activeCell = .takeoff
+                        activePart = part
+                    }
+                )
+                .zIndex(activeCell == .takeoff ? 200 : 0)
             }
 
-            PrototypeBottomRows(dateText: "07.09.2026")
+            HStack(spacing: 8) {
+                PrototypeStaticTimeCell(title: "Завершение работы", value: "07.09.2026 06:32")
+
+                FixedGeometryDateTimeCell(
+                    id: .engineStop,
+                    title: "Выключение двигателей",
+                    minutesOfDay: $engineStopMinutes,
+                    dayOffset: $engineStopDayOffset,
+                    originalMinutes: 6 * 60 + 10,
+                    isEditing: isEditing,
+                    isActive: activeCell == .engineStop,
+                    activePart: activeCell == .engineStop ? activePart : nil,
+                    onActivate: { part in
+                        activeCell = .engineStop
+                        activePart = part
+                    }
+                )
+                .zIndex(activeCell == .engineStop ? 200 : 0)
+
+                PrototypeStaticTimeCell(title: "Посадка", value: "07.09.2026 05:58")
+            }
+
+            HStack(spacing: 8) {
+                PrototypeStaticTimeCell(title: "Рабочее время", value: "5:57 · ночь 0:35")
+                PrototypeStaticTimeCell(title: "Полётное время", value: "4:51 · ночь 0:05")
+                PrototypeStaticTimeCell(title: "Лётное время", value: "4:07 · ночь 0:00")
+            }
+        }
+        .onChange(of: isEditing) { _, newValue in
+            if !newValue {
+                activeCell = nil
+                activePart = nil
+            }
         }
     }
+}
+
+private enum FixedCellID: Hashable {
+    case engineStart
+    case takeoff
+    case engineStop
 }
 
 private enum FixedInlinePart {
@@ -465,68 +525,130 @@ private enum FixedInlinePart {
 }
 
 private struct FixedGeometryDateTimeCell: View {
+    let id: FixedCellID
+    let title: String
     @Binding var minutesOfDay: Int
     @Binding var dayOffset: Int
+    let originalMinutes: Int
     let isEditing: Bool
-    @Binding var activePart: FixedInlinePart?
-    let onReset: () -> Void
+    let isActive: Bool
+    let activePart: FixedInlinePart?
+    let onActivate: (FixedInlinePart) -> Void
+
+    @State private var showCalendar = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("Взлёт")
+            Text(title)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
 
             HStack(spacing: 3) {
                 FixedDateSegment(
                     dayOffset: $dayOffset,
                     isEditing: isEditing,
-                    isActive: activePart == .date,
-                    onActivate: { activePart = .date }
+                    isActive: isActive && activePart == .date,
+                    onActivate: { onActivate(.date) }
                 )
-                .zIndex(activePart == .date ? 10 : 0)
 
                 FixedTimeReadout(
                     minutesOfDay: $minutesOfDay,
                     isEditing: isEditing,
-                    activePart: $activePart
+                    activePart: isActive ? activePart : nil,
+                    onActivate: onActivate
                 )
-                .zIndex(activePart == .hour || activePart == .minute ? 10 : 0)
-
-                if isEditing {
-                    Button {
-                        activePart = .date
-                    } label: {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 9, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .frame(width: 18, height: 18)
-                    .accessibilityLabel("Выбрать дату")
-
-                    Button {
-                        onReset()
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward")
-                            .font(.system(size: 9, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .frame(width: 18, height: 18)
-                    .disabled(dayOffset == 0 && minutesOfDay == 1 * 60 + 50)
-                    .accessibilityLabel("Вернуть исходные дату и время")
-                }
             }
             .frame(height: 18, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 7)
+        .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .background(PrototypeStyle.cellBackground)
-        .onChange(of: isEditing) { _, newValue in
-            if !newValue {
-                activePart = nil
+        .overlay(alignment: .bottomTrailing) {
+            if isEditing, isActive {
+                HStack(spacing: 3) {
+                    Button {
+                        onActivate(.date)
+                        showCalendar = true
+                    } label: {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .frame(width: 17, height: 17)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor.opacity(0.82))
+                    .opacity(0.82)
+                    .accessibilityLabel("Открыть календарь")
+                    .popover(isPresented: $showCalendar, arrowEdge: .top) {
+                        CompactJumpCalendar(selection: calendarDateBinding)
+                            .presentationCompactAdaptation(.popover)
+                    }
+
+                    Button {
+                        minutesOfDay = originalMinutes
+                        dayOffset = 0
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .frame(width: 17, height: 17)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.accentColor.opacity(0.82))
+                    .opacity(hasChanges ? 0.82 : 0.28)
+                    .disabled(!hasChanges)
+                    .accessibilityLabel("Вернуть исходные дату и время")
+                }
+                .padding(.trailing, 5)
+                .padding(.bottom, 5)
+                .transition(.opacity)
             }
         }
+        .animation(.easeOut(duration: 0.12), value: isActive)
+        .onChange(of: isActive) { _, newValue in
+            if !newValue {
+                showCalendar = false
+            }
+        }
+        .onChange(of: isEditing) { _, newValue in
+            if !newValue {
+                showCalendar = false
+            }
+        }
+    }
+
+    private var hasChanges: Bool {
+        dayOffset != 0 || minutesOfDay != originalMinutes
+    }
+
+    private var calendarDateBinding: Binding<Date> {
+        Binding(
+            get: { fixedTestDate(offset: dayOffset) },
+            set: { date in
+                dayOffset = fixedTestDayOffset(for: date)
+                showCalendar = false
+                onActivate(.date)
+            }
+        )
+    }
+}
+
+private struct CompactJumpCalendar: View {
+    @Binding var selection: Date
+
+    var body: some View {
+        DatePicker(
+            "Дата",
+            selection: $selection,
+            displayedComponents: .date
+        )
+        .datePickerStyle(.graphical)
+        .labelsHidden()
+        .frame(width: 278, height: 292)
+        .padding(8)
     }
 }
 
@@ -543,36 +665,27 @@ private struct FixedDateSegment: View {
     private let rowHeight: CGFloat = 20
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .leading) {
             Text(fixedTestDateText(offset: dayOffset))
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .monospacedDigit()
+                .font(.caption.bold())
                 .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
+                .opacity(isActive ? 0 : 1)
 
             if isActive {
                 ForEach(-1...1, id: \.self) { relative in
-                    let center = relative == 0
-
                     Text(fixedTestDateText(offset: dayOffset + relative))
-                        .font(
-                            .system(
-                                size: center ? 10 : 9,
-                                weight: center ? .bold : .medium,
-                                design: .rounded
-                            )
-                        )
-                        .monospacedDigit()
+                        .font(.caption.bold())
                         .foregroundStyle(
-                            center
+                            relative == 0
                                 ? Color.accentColor
-                                : Color.secondary.opacity(0.58)
+                                : Color.secondary.opacity(0.52)
                         )
                         .offset(y: CGFloat(relative) * rowHeight + residualOffset)
                         .allowsHitTesting(false)
                 }
             }
         }
-        .frame(width: 64, height: 18)
+        .frame(width: 67, height: 18, alignment: .leading)
         .contentShape(Rectangle())
         .onTapGesture {
             guard isEditing else { return }
@@ -615,7 +728,8 @@ private struct FixedDateSegment: View {
 private struct FixedTimeReadout: View {
     @Binding var minutesOfDay: Int
     let isEditing: Bool
-    @Binding var activePart: FixedInlinePart?
+    let activePart: FixedInlinePart?
+    let onActivate: (FixedInlinePart) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -624,11 +738,11 @@ private struct FixedTimeReadout: View {
                 count: 24,
                 isEditing: isEditing,
                 isActive: activePart == .hour,
-                onActivate: { activePart = .hour }
+                onActivate: { onActivate(.hour) }
             )
 
             Text(":")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(.caption.bold())
                 .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
                 .frame(width: 5)
 
@@ -637,10 +751,10 @@ private struct FixedTimeReadout: View {
                 count: 60,
                 isEditing: isEditing,
                 isActive: activePart == .minute,
-                onActivate: { activePart = .minute }
+                onActivate: { onActivate(.minute) }
             )
         }
-        .frame(width: 39, height: 18)
+        .frame(width: 39, height: 18, alignment: .leading)
     }
 
     private var hourBinding: Binding<Int> {
@@ -678,27 +792,18 @@ private struct FixedNumberSegment: View {
     var body: some View {
         ZStack {
             Text(String(format: "%02d", value))
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .monospacedDigit()
+                .font(.caption.bold())
                 .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
+                .opacity(isActive ? 0 : 1)
 
             if isActive {
                 ForEach(-1...1, id: \.self) { relative in
-                    let center = relative == 0
-
                     Text(String(format: "%02d", wrappedTestValue(value + relative, count: count)))
-                        .font(
-                            .system(
-                                size: center ? 10 : 9,
-                                weight: center ? .bold : .medium,
-                                design: .rounded
-                            )
-                        )
-                        .monospacedDigit()
+                        .font(.caption.bold())
                         .foregroundStyle(
-                            center
+                            relative == 0
                                 ? Color.accentColor
-                                : Color.secondary.opacity(0.58)
+                                : Color.secondary.opacity(0.52)
                         )
                         .offset(y: CGFloat(relative) * rowHeight + residualOffset)
                         .allowsHitTesting(false)
@@ -743,6 +848,24 @@ private struct FixedNumberSegment: View {
         let steps = Int((-dragTranslation / rowHeight).rounded())
         return dragTranslation + CGFloat(steps) * rowHeight
     }
+}
+
+private func fixedTestDate(offset: Int) -> Date {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Europe/Moscow") ?? .current
+    let base = calendar.date(from: DateComponents(year: 2026, month: 9, day: 7)) ?? Date()
+    return calendar.date(byAdding: .day, value: offset, to: base) ?? base
+}
+
+private func fixedTestDayOffset(for date: Date) -> Int {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "Europe/Moscow") ?? .current
+    let base = calendar.date(from: DateComponents(year: 2026, month: 9, day: 7)) ?? Date()
+    return calendar.dateComponents(
+        [.day],
+        from: calendar.startOfDay(for: base),
+        to: calendar.startOfDay(for: date)
+    ).day ?? 0
 }
 
 // MARK: - Shared prototype shell
