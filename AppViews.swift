@@ -196,15 +196,44 @@ struct HomeView: View {
 
 // MARK: - Полёты
 
+private enum DutySearchField: String, CaseIterable, Identifiable {
+    case airport = "Аэропорт / IATA"
+    case assignment = "Задание на полёт"
+    case date = "Дата"
+    case scheduleType = "Вид полёта"
+    case flightNumber = "Рейс"
+    case registration = "Бортовой номер"
+    var id: String { rawValue }
+}
+
+private enum DutyFlightCountFilter: String, CaseIterable, Identifiable {
+    case all = "Все"
+    case one = "1 рейс"
+    case two = "2 рейса"
+    case three = "3 рейса"
+    case four = "4 рейса"
+    case fourPlus = "4+ рейса"
+    var id: String { rawValue }
+}
+
+private enum DutySortOrder: String, CaseIterable, Identifiable {
+    case newest = "Сначала новые"
+    case oldest = "Сначала старые"
+    case assignment = "По заданию"
+    case route = "По маршруту"
+    case flightCount = "По количеству рейсов"
+    var id: String { rawValue }
+}
+
 struct FlightsView: View {
-    
-    @ObservedObject
-    var store: AppStore
-    
-    
-      @State
-    private var showAddFlight =
-    false
+    @ObservedObject var store: AppStore
+
+    @State private var newDuty: FlightDuty?
+    @State private var showSearchTools = false
+    @State private var searchField: DutySearchField = .airport
+    @State private var searchText = ""
+    @State private var flightCountFilter: DutyFlightCountFilter = .all
+    @State private var sortOrder: DutySortOrder = .newest
 
     @State private var showImport = false
     @State private var showImportConfirmation = false
@@ -213,33 +242,127 @@ struct FlightsView: View {
     @State private var pendingFlights: [FlightLeg] = []
     @State private var verificationStatus = ""
 
-    var body: some View {
-        
-        NavigationStack {
-            
-            DutiesListView(store: store)
-            
+    private var visibleDuties: [FlightDuty] {
+        var values = store.duties.filter { duty in
+            matchesCount(duty) && matchesSearch(duty)
+        }
 
-            
-            
-            .toolbar {
-                Button("Импорт истории", systemImage: "square.and.arrow.down") { showImport = true }
-                Button {
-                    
-                    showAddFlight =
-                    true
-                    
-                } label: {
-                    
-                    Image(
-                        systemName:
-                            "plus"
+        switch sortOrder {
+        case .newest:
+            values.sort { $0.start > $1.start }
+        case .oldest:
+            values.sort { $0.start < $1.start }
+        case .assignment:
+            values.sort {
+                ($0.firstLeg.assignmentNumber ?? "")
+                    .localizedStandardCompare($1.firstLeg.assignmentNumber ?? "") == .orderedAscending
+            }
+        case .route:
+            values.sort {
+                AirportDatabase.routeDisplayName([$0.firstLeg.departure] + $0.legs.map(\.arrival))
+                    .localizedStandardCompare(
+                        AirportDatabase.routeDisplayName([$1.firstLeg.departure] + $1.legs.map(\.arrival))
+                    ) == .orderedAscending
+            }
+        case .flightCount:
+            values.sort {
+                if $0.legs.count == $1.legs.count { return $0.start > $1.start }
+                return $0.legs.count < $1.legs.count
+            }
+        }
+        return values
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                DutiesListView(store: store, duties: visibleDuties)
+
+                if let duty = newDuty {
+                    DutyAssignmentOverlay(
+                        duty: duty,
+                        store: store,
+                        isCreating: true,
+                        onCreate: { legs in
+                            store.addDutyLegs(legs)
+                            newDuty = nil
+                        },
+                        onClose: { newDuty = nil }
                     )
+                    .zIndex(10)
                 }
             }
-            
-            
-            .fileImporter(isPresented: $showImport, allowedContentTypes: [UTType(filenameExtension: "xls") ?? .data]) { result in
+            .toolbar {
+                Button {
+                    showSearchTools = true
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
+                .accessibilityLabel("Поиск, фильтр и сортировка")
+                .popover(isPresented: $showSearchTools, arrowEdge: .top) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Поиск, фильтр и сортировка")
+                            .font(.headline)
+
+                        Picker("Искать по", selection: $searchField) {
+                            ForEach(DutySearchField.allCases) { field in
+                                Text(field.rawValue).tag(field)
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        TextField("Введите значение", text: $searchText)
+                            .textFieldStyle(.roundedBorder)
+
+                        Divider()
+
+                        Picker("Количество рейсов", selection: $flightCountFilter) {
+                            ForEach(DutyFlightCountFilter.allCases) { value in
+                                Text(value.rawValue).tag(value)
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Picker("Сортировка", selection: $sortOrder) {
+                            ForEach(DutySortOrder.allCases) { value in
+                                Text(value.rawValue).tag(value)
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        HStack {
+                            Button("Сбросить") {
+                                searchText = ""
+                                searchField = .airport
+                                flightCountFilter = .all
+                                sortOrder = .newest
+                            }
+                            .buttonStyle(.bordered)
+                            Spacer()
+                            Button("Готово") { showSearchTools = false }
+                                .buttonStyle(.borderedProminent)
+                        }
+                    }
+                    .padding(16)
+                    .frame(width: 330)
+                    .presentationCompactAdaptation(.popover)
+                }
+
+                Button("Импорт истории", systemImage: "square.and.arrow.down") {
+                    showImport = true
+                }
+
+                Button {
+                    newDuty = makeManualDuty()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Новое задание на полёт")
+            }
+            .fileImporter(
+                isPresented: $showImport,
+                allowedContentTypes: [UTType(filenameExtension: "xls") ?? .data]
+            ) { result in
                 do {
                     let url = try result.get()
                     let access = url.startAccessingSecurityScopedResource()
@@ -264,26 +387,114 @@ struct FlightsView: View {
             } message: {
                 let known = Set(store.flights.map { $0.historyKey })
                 let unique = Set(pendingFlights.map { $0.historyKey })
-                Text("\(verificationStatus) В файле \(pendingFlights.count) легов, новых: \(unique.subtracting(known).count).")
+                Text("\(verificationStatus) В файле \(pendingFlights.count) рейсов, новых: \(unique.subtracting(known).count).")
             }
             .alert("История рейсов", isPresented: $showImportResult) {
                 Button("OK", role: .cancel) { }
-            } message: { Text(importMessage) }
-            .sheet(
-                isPresented:
-                    $showAddFlight
-            ) {
-                
-                AddFlightView {
-                    
-                    flight in
-                    
-                    store.addFlight(
-                        flight
-                    )
-                }
+            } message: {
+                Text(importMessage)
             }
         }
+    }
+
+    private func matchesCount(_ duty: FlightDuty) -> Bool {
+        switch flightCountFilter {
+        case .all: return true
+        case .one: return duty.legs.count == 1
+        case .two: return duty.legs.count == 2
+        case .three: return duty.legs.count == 3
+        case .four: return duty.legs.count == 4
+        case .fourPlus: return duty.legs.count >= 4
+        }
+    }
+
+    private func matchesSearch(_ duty: FlightDuty) -> Bool {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        let needle = query.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+
+        func contains(_ value: String) -> Bool {
+            value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+                .contains(needle)
+        }
+
+        switch searchField {
+        case .airport:
+            return duty.legs.contains { leg in
+                contains(leg.departure)
+                    || contains(leg.arrival)
+                    || contains(AirportDatabase.displayName(for: leg.departure))
+                    || contains(AirportDatabase.displayName(for: leg.arrival))
+            }
+        case .assignment:
+            return contains(duty.firstLeg.assignmentNumber ?? "")
+        case .date:
+            return contains(formatDate(duty.start))
+        case .scheduleType:
+            return duty.legs.contains { contains(($0.scheduleType ?? .planned).rawValue) }
+        case .flightNumber:
+            return duty.legs.contains {
+                contains($0.flightNumber) || contains($0.legNumber ?? "")
+            }
+        case .registration:
+            return duty.legs.contains { contains(formattedRegistration($0.registration)) }
+        }
+    }
+
+    private func nextManualAssignmentNumber() -> String {
+        let values = store.flights.compactMap(\.assignmentNumber)
+        let manualNumbers = values.compactMap { value -> Int? in
+            guard value.hasPrefix("Manual ") else { return nil }
+            return Int(value.dropFirst("Manual ".count))
+        }
+        let next = (manualNumbers.max() ?? 0) + 1
+        if next <= 999 {
+            return String(format: "Manual %03d", next)
+        }
+
+        let overflowNumbers = values.compactMap { value -> Int? in
+            guard value.hasPrefix("ManuA ") else { return nil }
+            return Int(value.dropFirst("ManuA ".count))
+        }
+        return String(format: "ManuA %03d", (overflowNumbers.max() ?? 0) + 1)
+    }
+
+    private func makeManualDuty() -> FlightDuty {
+        let start = Date()
+        let engineOn = moscowCalendar.date(byAdding: .minute, value: 60, to: start) ?? start
+        let takeoff = moscowCalendar.date(byAdding: .minute, value: 10, to: engineOn) ?? engineOn
+        let landing = takeoff
+        let engineOff = moscowCalendar.date(byAdding: .minute, value: 10, to: landing) ?? landing
+        let workEnd = moscowCalendar.date(byAdding: .minute, value: 30, to: engineOff) ?? engineOff
+        let assignment = nextManualAssignmentNumber()
+        let times = PortalFlightTimes(
+            workStart: start,
+            engineOn: engineOn,
+            takeoff: takeoff,
+            landing: landing,
+            engineOff: engineOff,
+            workEnd: workEnd
+        )
+        let leg = FlightLeg(
+            date: formatDate(engineOn),
+            flightNumber: "1111",
+            departure: "SVO",
+            arrival: "",
+            aircraft: "A321B",
+            registration: "73-709",
+            plannedDeparture: formatClock(engineOn),
+            workStart: formatClock(start),
+            engineOn: formatClock(engineOn),
+            takeoff: formatClock(takeoff),
+            landing: formatClock(landing),
+            engineOff: formatClock(engineOff),
+            portalTimes: times,
+            assignmentNumber: assignment,
+            legNumber: "1111",
+            scheduleType: .planned,
+            calculatedMinutesOverride: nil
+        )
+        return FlightDuty(id: UUID(), legs: [leg])
     }
 }
 
@@ -292,11 +503,12 @@ struct FlightsView: View {
 
 struct DutiesListView: View {
     @ObservedObject var store: AppStore
+    let duties: [FlightDuty]
     @State private var selectedDuty: FlightDuty?
 
     var body: some View {
         ZStack {
-            List(store.duties) { duty in
+            List(duties) { duty in
                 Button {
                     selectedDuty = duty
                 } label: {
@@ -324,7 +536,23 @@ struct DutiesListView: View {
 private struct DutyAssignmentOverlay: View {
     let duty: FlightDuty
     @ObservedObject var store: AppStore
+    let isCreating: Bool
+    let onCreate: (([FlightLeg]) -> Void)?
     let onClose: () -> Void
+
+    init(
+        duty: FlightDuty,
+        store: AppStore,
+        isCreating: Bool = false,
+        onCreate: (([FlightLeg]) -> Void)? = nil,
+        onClose: @escaping () -> Void
+    ) {
+        self.duty = duty
+        self.store = store
+        self.isCreating = isCreating
+        self.onCreate = onCreate
+        self.onClose = onClose
+    }
 
     @State private var settledDragOffset: CGFloat = 0
     @GestureState private var gestureDragOffset: CGFloat = 0
@@ -353,7 +581,7 @@ private struct DutyAssignmentOverlay: View {
                     .onTapGesture {
                         if editorIsActive {
                             dismissEditorSignal += 1
-                        } else if !editModeIsActive {
+                        } else if isCreating || !editModeIsActive {
                             onClose()
                         }
                     }
@@ -365,7 +593,9 @@ private struct DutyAssignmentOverlay: View {
                         scrollsAsPage: true,
                         onEditorFocusChange: { editorIsActive = $0 },
                         onEditModeChange: { editModeIsActive = $0 },
-                        externalEditorDismissSignal: dismissEditorSignal
+                        externalEditorDismissSignal: dismissEditorSignal,
+                        isCreating: isCreating,
+                        onCreate: onCreate
                     )
                     .environmentObject(store)
                     .frame(width: width)
@@ -411,7 +641,7 @@ private struct DutyAssignmentOverlay: View {
                     dismissDrag(
                         in: geometry.size.height,
                         canStart: !editorIsActive
-                            && !editModeIsActive
+                            && (isCreating || !editModeIsActive)
                             && scrollIsAtTop,
                         allowUpwardRubberBand: !scrollContentIsScrollable
                     )
@@ -520,83 +750,79 @@ private struct DutyAssignmentOverlay: View {
 // MARK: - Строка смены
 
 struct DutyRow: View {
-    
-    let duty:
-    FlightDuty
-    
-    
+    let duty: FlightDuty
+
     var body: some View {
-        
-        HStack(
-            spacing: 12
-        ) {
-            
-            Image(
-                systemName:
-                    "airplane.departure"
-            )
-            .foregroundStyle(
-                .blue
-            )
-            
-            
-            VStack(
-                alignment:
-                        .leading,
-                spacing: 4
-            ) {
-                
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "airplane.departure")
+                .foregroundStyle(.blue)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(formatDate(duty.start))
+                    .font(.subheadline.bold())
+
                 Text(
                     AirportDatabase.routeDisplayName(
                         [duty.firstLeg.departure] + duty.legs.map(\.arrival)
                     )
                 )
-                .bold()
-                
-                
-                Text(
-                    "\(duty.firstLeg.assignmentNumber.map { "Задание на полёт № \($0) • " } ?? "")\(duty.legs.count) лег. • \(formatDate(duty.start))"
-                )
-                .font(.caption)
-                .foregroundStyle(
-                    .secondary
-                )
-                
-                
-                Text(
-                    "\(formatClock(duty.start)) – \(formatClock(duty.end))\(duty.restMinutes > 0 ? " • разделена" : "")"
-                )
-                .font(.caption2)
-                .foregroundStyle(
-                    .secondary
-                )
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+                Text(summaryLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
-            
-            
-            Spacer()
-            
-            
-            VStack(
-                alignment:
-                        .trailing
-            ) {
-                
-                Text(
-                    timeText(
-                        duty.workMinutes
-                    )
-                )
-                .bold()
-                
-                
-                Text(
-                    "рабочее"
-                )
-                .font(.caption2)
-                .foregroundStyle(
-                    .secondary
-                )
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                if duty.legs.count > 1 {
+                    ForEach(duty.legs.indices, id: \.self) { index in
+                        HStack(spacing: 5) {
+                            Text(duty.legs[index].displayedLegNumber)
+                                .foregroundStyle(.secondary)
+                            Text(timeText(duty.legs[index].flightMinutes))
+                                .monospacedDigit()
+                        }
+                        .font(.caption2)
+                    }
+                    Divider()
+                        .frame(width: 72)
+                }
+
+                Text(timeText(duty.workMinutes))
+                    .font(.subheadline.bold())
+                    .monospacedDigit()
+                Text("полётная смена")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
+        }
+        .padding(.vertical, 3)
+    }
+
+    private var summaryLine: String {
+        let assignment = duty.firstLeg.assignmentNumber.map { "Задание на полёт № \($0)" }
+            ?? "Задание на полёт"
+        let count = flightCountText(duty.legs.count)
+        let interval = "\(formatClock(duty.start)) – \(formatClock(duty.end))"
+        let divided = duty.restMinutes > 0 ? " • разделена" : ""
+        return "\(assignment) • \(count) • \(interval)\(divided)"
+    }
+
+    private func flightCountText(_ count: Int) -> String {
+        let lastTwo = count % 100
+        let last = count % 10
+        if (11...14).contains(lastTwo) { return "\(count) рейсов" }
+        switch last {
+        case 1: return "\(count) рейс"
+        case 2...4: return "\(count) рейса"
+        default: return "\(count) рейсов"
         }
     }
 }
@@ -614,6 +840,8 @@ struct DutyDetailView: View {
     let onEditorFocusChange: ((Bool) -> Void)?
     let onEditModeChange: ((Bool) -> Void)?
     let externalEditorDismissSignal: Int
+    let isCreating: Bool
+    let onCreate: (([FlightLeg]) -> Void)?
 
     init(
         duty: FlightDuty,
@@ -621,7 +849,9 @@ struct DutyDetailView: View {
         scrollsAsPage: Bool = false,
         onEditorFocusChange: ((Bool) -> Void)? = nil,
         onEditModeChange: ((Bool) -> Void)? = nil,
-        externalEditorDismissSignal: Int = 0
+        externalEditorDismissSignal: Int = 0,
+        isCreating: Bool = false,
+        onCreate: (([FlightLeg]) -> Void)? = nil
     ) {
         self.duty = duty
         self.onClose = onClose
@@ -629,6 +859,15 @@ struct DutyDetailView: View {
         self.onEditorFocusChange = onEditorFocusChange
         self.onEditModeChange = onEditModeChange
         self.externalEditorDismissSignal = externalEditorDismissSignal
+        self.isCreating = isCreating
+        self.onCreate = onCreate
+        _isEditing = State(initialValue: isCreating)
+        _draft = State(initialValue: isCreating ? duty.legs : [])
+        _original = State(initialValue: isCreating ? duty.legs : [])
+        _assignmentNumber = State(initialValue: isCreating ? (duty.firstLeg.assignmentNumber ?? "") : "")
+        _editHistory = State(initialValue: isCreating
+            ? [DutyEditSnapshot(legs: duty.legs, assignment: duty.firstLeg.assignmentNumber ?? "")]
+            : [])
     }
 
     private func close() {
@@ -667,7 +906,10 @@ struct DutyDetailView: View {
     }
 
     private var current: FlightDuty {
-        store.duties.first { candidate in
+        if isCreating, !draft.isEmpty {
+            return FlightDuty(id: duty.id, legs: updatedLegs)
+        }
+        return store.duties.first { candidate in
             candidate.legs.contains { $0.id == duty.firstLeg.id }
         } ?? duty
     }
@@ -701,6 +943,9 @@ struct DutyDetailView: View {
                 .scrollBounceBehavior(.basedOnSize)
                 .zIndex(editorCoversHeader ? 100 : 0)
             }
+        }
+        .onAppear {
+            if isCreating { onEditModeChange?(true) }
         }
         .onChange(of: draft) { _ in recordEdit() }
         .onChange(of: assignmentNumber) { _ in recordEdit() }
@@ -740,17 +985,19 @@ struct DutyDetailView: View {
         HStack(spacing: 8) {
             HStack(spacing: 8) {
                 if isEditing {
-                    Button {
-                        focusedField = nil
-                        isEditing = false
-                        draft = []
-                        original = []
-                        editHistory = []
-                    } label: {
-                        Image(systemName: "xmark")
-                            .frame(width: 18, height: 18)
+                    if !isCreating {
+                        Button {
+                            focusedField = nil
+                            isEditing = false
+                            draft = []
+                            original = []
+                            editHistory = []
+                        } label: {
+                            Image(systemName: "xmark")
+                                .frame(width: 18, height: 18)
+                        }
+                        .accessibilityLabel("Отменить все изменения")
                     }
-                    .accessibilityLabel("Отменить все изменения")
 
                     Button {
                         focusedField = nil
@@ -759,16 +1006,18 @@ struct DutyDetailView: View {
                         Image(systemName: "checkmark")
                             .frame(width: 18, height: 18)
                     }
-                    .disabled(!isValid || differences.isEmpty)
-                    .accessibilityLabel("Применить изменения")
+                    .disabled(!isValid || (!isCreating && differences.isEmpty))
+                    .accessibilityLabel(isCreating ? "Сохранить задание на полёт" : "Применить изменения")
                     .popover(isPresented: $showReview, arrowEdge: .top) {
                         VStack(spacing: 12) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.title2)
                                 .foregroundStyle(Color.accentColor)
-                            Text("Сохранить изменения?")
+                            Text(isCreating ? "Сохранить задание на полёт?" : "Сохранить изменения?")
                                 .font(.headline)
-                            Text("Данные задания на полёт будут обновлены.")
+                            Text(isCreating
+                                 ? "Новое задание на полёт будет добавлено."
+                                 : "Данные задания на полёт будут обновлены.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -777,13 +1026,20 @@ struct DutyDetailView: View {
                                 Button("Отмена") { showReview = false }
                                     .buttonStyle(.bordered)
                                 Button("Сохранить") {
-                                    store.updateDutyLegs(updatedLegs)
-                                    showReview = false
-                                    focusedField = nil
-                                    isEditing = false
-                                    draft = []
-                                    original = []
-                                    editHistory = []
+                                    if isCreating {
+                                        onCreate?(updatedLegs)
+                                        showReview = false
+                                        focusedField = nil
+                                        close()
+                                    } else {
+                                        store.updateDutyLegs(updatedLegs)
+                                        showReview = false
+                                        focusedField = nil
+                                        isEditing = false
+                                        draft = []
+                                        original = []
+                                        editHistory = []
+                                    }
                                 }
                                 .buttonStyle(.borderedProminent)
                             }
@@ -818,7 +1074,7 @@ struct DutyDetailView: View {
             .frame(width: 104, alignment: .leading)
 
             dutyTitle(
-                isEditing && isValid
+                isEditing && !draft.isEmpty
                 ? FlightDuty(id: duty.id, legs: updatedLegs)
                 : duty
             )
@@ -860,7 +1116,7 @@ struct DutyDetailView: View {
                                 .foregroundStyle(.red)
                             Text("Удалить задание на полёт?")
                                 .font(.headline)
-                            Text("Задание и \(legCountText(duty.legs.count)) будут удалены.")
+                            Text("Задание с \(deletionFlightCountText(duty.legs.count)) будет удалено.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -915,7 +1171,7 @@ struct DutyDetailView: View {
     }
 
     private func assignmentContents(_ duty: FlightDuty) -> some View {
-        dutyCard(isEditing && isValid
+        dutyCard(isEditing && !draft.isEmpty
                  ? FlightDuty(id: duty.id, legs: updatedLegs)
                  : duty)
             .padding(.horizontal, 16)
@@ -1298,7 +1554,99 @@ struct DutyDetailView: View {
                     }
                 }
             }
+
+            if isCreating && draft.count < 10 {
+                Button {
+                    appendManualLeg()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title3)
+                        Text("Добавить рейс \(draft.count + 1)")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
         }
+    }
+
+    private func deletionFlightCountText(_ count: Int) -> String {
+        switch count {
+        case 1: return "одним рейсом"
+        case 2: return "двумя рейсами"
+        case 3: return "тремя рейсами"
+        case 4: return "четырьмя рейсами"
+        default: return "\(count) рейсами"
+        }
+    }
+
+    private func appendManualLeg() {
+        guard isCreating, draft.count < 10, let lastIndex = draft.indices.last else { return }
+
+        var previousLeg = draft[lastIndex]
+        let previousTimes = times(for: previousLeg)
+        let previousUpdated = PortalFlightTimes(
+            workStart: previousTimes.workStart,
+            engineOn: previousTimes.engineOn,
+            takeoff: previousTimes.takeoff,
+            landing: previousTimes.landing,
+            engineOff: previousTimes.engineOff,
+            workEnd: previousTimes.engineOff
+        )
+        previousLeg.portalTimes = previousUpdated
+        previousLeg.workStart = formatClock(previousUpdated.workStart)
+        previousLeg.engineOn = formatClock(previousUpdated.engineOn)
+        previousLeg.takeoff = formatClock(previousUpdated.takeoff)
+        previousLeg.landing = formatClock(previousUpdated.landing)
+        previousLeg.engineOff = formatClock(previousUpdated.engineOff)
+        draft[lastIndex] = previousLeg
+
+        let workStart = previousUpdated.engineOff
+        let engineOn = moscowCalendar.date(byAdding: .minute, value: 60, to: workStart) ?? workStart
+        let takeoff = moscowCalendar.date(byAdding: .minute, value: 10, to: engineOn) ?? engineOn
+        let landing = takeoff
+        let engineOff = moscowCalendar.date(byAdding: .minute, value: 10, to: landing) ?? landing
+        let workEnd = moscowCalendar.date(byAdding: .minute, value: 30, to: engineOff) ?? engineOff
+        let values = PortalFlightTimes(
+            workStart: workStart,
+            engineOn: engineOn,
+            takeoff: takeoff,
+            landing: landing,
+            engineOff: engineOff,
+            workEnd: workEnd
+        )
+        let newLeg = FlightLeg(
+            date: formatDate(engineOn),
+            flightNumber: "1111",
+            departure: previousLeg.arrival,
+            arrival: "",
+            aircraft: "A321B",
+            registration: "73-709",
+            plannedDeparture: formatClock(engineOn),
+            workStart: formatClock(workStart),
+            engineOn: formatClock(engineOn),
+            takeoff: formatClock(takeoff),
+            landing: formatClock(landing),
+            engineOff: formatClock(engineOff),
+            portalTimes: values,
+            assignmentNumber: assignmentNumber,
+            legNumber: "1111",
+            scheduleType: .planned,
+            calculatedMinutesOverride: nil
+        )
+        draft.append(newLeg)
+        focusedField = nil
     }
 
     private func restCard(start: Date, end: Date) -> some View {
@@ -1350,16 +1698,16 @@ struct DutyDetailView: View {
                 text: isEditing ? $assignmentNumber : .constant(duty.firstLeg.assignmentNumber ?? ""),
                 isActive: isEditing ? focusBinding(.assignment) : .constant(false),
                 field: .assignment,
-                keyboardType: .numberPad,
-                capitalization: .none,
-                maxLength: 9,
+                keyboardType: .asciiCapable,
+                capitalization: .allCharacters,
+                maxLength: 12,
                 expands: false,
                 allowsEditing: isEditing,
                 restoreValue: original.first?.assignmentNumber
                     ?? duty.firstLeg.assignmentNumber
                     ?? "",
-                numbersOnly: true,
-                reserveText: "888888888",
+                numbersOnly: false,
+                reserveText: "Manual 888",
                 highlightHorizontalPadding: 0,
                 textFont: .title3.bold(),
                 inputFont: .systemFont(ofSize: 20, weight: .bold),
@@ -2508,8 +2856,11 @@ private struct InlineCalculatedTimeValue: View {
         .frame(width: 130, alignment: .center)
         .padding(.vertical, 6)
         .overlay(alignment: .bottomTrailing) {
-            if isEditing && isActive {
-                Button(action: onRestore) {
+            if isEditing && hasChanges {
+                Button {
+                    onRestore()
+                    activePart = nil
+                } label: {
                     Image(systemName: "arrow.uturn.backward")
                         .font(.system(size: 9, weight: .semibold))
                         .frame(width: 17, height: 17)
@@ -2517,7 +2868,6 @@ private struct InlineCalculatedTimeValue: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
-                .disabled(!hasChanges)
                 .padding(.bottom, 6)
                 .accessibilityLabel("Вернуть исходное расчётное время")
             }
@@ -2978,518 +3328,6 @@ private struct HardwareKeyboardTextField: UIViewRepresentable {
         }
     }
 }
-
-struct AddFlightView: View {
-    
-    @Environment(
-        \.dismiss
-    )
-    private var dismiss
-    
-    
-    let flightToEdit:
-    FlightLeg?
-    
-    
-    let onSave:
-    (FlightLeg) -> Void
-    
-    
-    @State
-    private var date:
-    Date
-    
-    
-    @State
-    private var flightNumber:
-    String
-
-    @State private var chosenLegNumber: String
-
-    private var numberParts: [String] {
-        flightNumber.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-    }
-
-    
-    @State
-    private var departure:
-    String
-    
-    
-    @State
-    private var arrival:
-    String
-    
-    
-    @State
-    private var aircraft:
-    String
-    
-    
-    @State
-    private var registration:
-    String
-    
-    
-    @State private var scheduleType: FlightScheduleType
-
-    @State
-    private var workStart:
-    Date
-    
-    
-    @State
-    private var engineOn:
-    Date
-    
-    
-    @State
-    private var takeoff:
-    Date
-    
-    
-    @State
-    private var landing:
-    Date
-    
-    
-    @State
-    private var engineOff:
-    Date
-    
-    
-    init(
-        flight: FlightLeg? = nil,
-        onSave: @escaping (FlightLeg) -> Void
-    ) {
-        
-        self.flightToEdit =
-        flight
-        
-        self.onSave =
-        onSave
-        
-        
-        let now =
-        Date()
-        
-        
-        if let flight {
-            
-            _date =
-            State(
-                initialValue:
-                    moscowCalendar
-                    .startOfDay(
-                        for:
-                            (flight.portalTimes == nil ? flight.timeline.plannedDeparture : flight.timeline.engineOn)
-                    )
-            )
-            
-            
-            _flightNumber =
-            State(
-                initialValue:
-                    flight.flightNumber
-            )
-            _chosenLegNumber = State(initialValue: flight.legNumber ?? flight.flightNumber.components(separatedBy: "/").first ?? "")
-
-            _departure =
-            State(
-                initialValue:
-                    flight.departure
-            )
-            
-            
-            _arrival =
-            State(
-                initialValue:
-                    flight.arrival
-            )
-            
-            
-            _aircraft =
-            State(
-                initialValue:
-                    flight.aircraft
-            )
-            
-            
-            _registration =
-            State(
-                initialValue:
-                    flight.registration
-            )
-            
-            
-            _scheduleType = State(initialValue: flight.scheduleType ?? .planned)
-
-            _workStart =
-            State(
-                initialValue:
-                    flight.timeline.workStart
-            )
-            
-            
-            _engineOn =
-            State(
-                initialValue:
-                    flight.timeline.engineOn
-            )
-            
-            
-            _takeoff =
-            State(
-                initialValue:
-                    flight.timeline.takeoff
-            )
-            
-            
-            _landing =
-            State(
-                initialValue:
-                    flight.timeline.landing
-            )
-            
-            
-            _engineOff =
-            State(
-                initialValue:
-                    flight.timeline.engineOff
-            )
-            
-        } else {
-            
-            _date =
-            State(
-                initialValue:
-                    now
-            )
-            
-            
-            _flightNumber =
-            State(
-                initialValue:
-                    ""
-            )
-            _chosenLegNumber = State(initialValue: "")
-
-            _departure =
-            State(
-                initialValue:
-                    "SVO"
-            )
-            
-            
-            _arrival =
-            State(
-                initialValue:
-                    ""
-            )
-            
-            
-            _aircraft =
-            State(
-                initialValue:
-                    "Airbus A320"
-            )
-            
-            
-            _registration =
-            State(
-                initialValue:
-                    ""
-            )
-            
-            
-            _scheduleType = State(initialValue: .planned)
-
-            _workStart =
-            State(
-                initialValue:
-                    now
-            )
-            
-            
-            _engineOn =
-            State(
-                initialValue:
-                    now
-            )
-            
-            
-            _takeoff =
-            State(
-                initialValue:
-                    now
-            )
-            
-            
-            _landing =
-            State(
-                initialValue:
-                    now
-            )
-            
-            
-            _engineOff =
-            State(
-                initialValue:
-                    now
-            )
-        }
-    }
-    
-    
-    var canSave: Bool {
-        
-        !departure
-            .trimmingCharacters(
-                in: .whitespaces
-            )
-            .isEmpty
-        
-        &&
-        !arrival
-            .trimmingCharacters(
-                in: .whitespaces
-            )
-            .isEmpty
-        &&
-        numberParts.allSatisfy({ part in
-            part.count >= 1 && part.count <= 4 &&
-            part.utf8.allSatisfy({ byte in byte >= 48 && byte <= 57 })
-        })
-    }
-    
-    
-    var body: some View {
-        
-        NavigationStack {
-            
-            Form {
-                
-                Section("Рейс") {
-                    
-                    DatePicker(
-                        "Дата",
-                        selection:
-                            $date,
-                        displayedComponents:
-                                .date
-                    )
-                    .disabled(flightToEdit?.portalTimes != nil)
-                    
-                    
-                    HardwareKeyboardTextField(
-                        text: $flightNumber,
-                        placeholder: "Номер рейса"
-                    )
-                    .frame(minHeight: 22)
-                    if numberParts.count > 1 {
-                        Picker("Номер этого лега", selection: $chosenLegNumber) {
-                            ForEach(numberParts, id: \.self) { number in
-                                Text(number).tag(number)
-                            }
-                        }
-                    }
-                    
-                    TextField(
-                        "Аэропорт вылета",
-                        text:
-                            $departure
-                    )
-                    
-                    
-                    TextField(
-                        "Аэропорт прилёта",
-                        text:
-                            $arrival
-                    )
-                    
-                    
-                    TextField(
-                        "Тип ВС",
-                        text:
-                            $aircraft
-                    )
-                    
-                    
-                    TextField(
-                        "Борт",
-                        text:
-                            $registration
-                    )
-                    Picker("Тип рейса", selection: $scheduleType) {
-                        ForEach(FlightScheduleType.allCases) { kind in
-                            Text(kind.rawValue).tag(kind)
-                        }
-                    }
-                }
-                
-                
-                Section(
-                    "Рабочее время"
-                ) {
-                    
-                    AeroTimePickerRow(
-                        title: "Начало работы",
-                        selection: $workStart
-                    )
-                    .disabled(flightToEdit?.portalTimes != nil)
-                }
-                
-                
-                Section("Полёт") {
-                    
-                    AeroTimePickerRow(
-                        title: "Включение двигателей",
-                        selection: $engineOn
-                    )
-                    .disabled(flightToEdit?.portalTimes != nil)
-                    
-                    
-                    AeroTimePickerRow(
-                        title: "Взлёт",
-                        selection: $takeoff
-                    )
-                    .disabled(flightToEdit?.portalTimes != nil)
-                    
-                    
-                    AeroTimePickerRow(
-                        title: "Посадка",
-                        selection: $landing
-                    )
-                    .disabled(flightToEdit?.portalTimes != nil)
-                    
-                    
-                    AeroTimePickerRow(
-                        title: "Выключение двигателей",
-                        selection: $engineOff
-                    )
-                    .disabled(flightToEdit?.portalTimes != nil)
-                }
-            }
-            
-            
-            .environment(
-                \.timeZone,
-                 moscowTimeZone
-            )
-            
-            
-            .navigationTitle(
-                flightToEdit == nil
-                ? "Новый лег"
-                : "Редактирование лега"
-            )
-            
-            
-            .navigationBarTitleDisplayMode(
-                .inline
-            )
-            
-            
-            .toolbar {
-                
-                ToolbarItem(
-                    placement:
-                            .cancellationAction
-                ) {
-                    
-                    Button(
-                        "Отмена"
-                    ) {
-                        
-                        dismiss()
-                    }
-                }
-                
-                
-                ToolbarItem(
-                    placement:
-                            .confirmationAction
-                ) {
-                    
-                    Button(
-                        "Сохранить"
-                    ) {
-                        
-                        saveFlight()
-                    }
-                    .disabled(
-                        !canSave
-                    )
-                }
-            }
-        }
-    }
-    
-    
-    func saveFlight() {
-        
-        let flight =
-        FlightLeg(
-            id:
-                flightToEdit?.id
-            ?? UUID(),
-            date:
-                formatDate(
-                    date
-                ),
-            flightNumber:
-                flightNumber.isEmpty
-            ? "Без номера"
-            : flightNumber,
-            departure:
-                departure
-                .uppercased(),
-            arrival:
-                arrival
-                .uppercased(),
-            aircraft:
-                aircraft,
-            registration:
-                registration
-                .uppercased(),
-            plannedDeparture:
-                flightToEdit?.plannedDeparture ?? "",
-            workStart:
-                formatClock(
-                    workStart
-                ),
-            engineOn:
-                formatClock(
-                    engineOn
-                ),
-            takeoff:
-                formatClock(
-                    takeoff
-                ),
-            landing:
-                formatClock(
-                    landing
-                ),
-            engineOff:
-                formatClock(
-                    engineOff
-                ),
-            portalTimes: flightToEdit?.portalTimes,
-            assignmentNumber: flightToEdit?.assignmentNumber,
-            legNumber: numberParts.contains(chosenLegNumber) ? chosenLegNumber : numberParts.first,
-            scheduleType: scheduleType
-        )
-        
-        
-        onSave(
-            flight
-        )
-        
-        
-        dismiss()
-    }
-}
-
 
 // MARK: - План работ
 
