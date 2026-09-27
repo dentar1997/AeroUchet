@@ -19,8 +19,9 @@ jobs:
           ref: ui/v76-static-dim-during-swipe
 
       - name: Patch version 76
-        shell: python
+        shell: bash
         run: |
+          python3 - <<'PY'
           from pathlib import Path
 
           path = Path("AppViews.swift")
@@ -62,8 +63,10 @@ jobs:
           package.write_text(value)
 
           Path(".github/workflows/v76-source-patch.yml").unlink()
+          PY
 
       - name: Commit v76
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
