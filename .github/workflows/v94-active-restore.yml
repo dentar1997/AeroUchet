@@ -26,3 +26,5 @@ jobs:
           git add AppViews.swift AppVersion.swift Package.swift
           git commit -m "v94: active field shade and restore on extra backspace"
           git push origin ui/v94-active-field-restore
+
+# rerun 2
