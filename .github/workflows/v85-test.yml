@@ -1,4 +1,4 @@
-name: Apply v85 layout
+name: Format v85 header
 
 on:
   push:
@@ -18,59 +18,65 @@ jobs:
         with:
           ref: ui/v85-two-row-leg-header
 
-      - name: Apply patch
+      - name: Fix formatting
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           p = Path('AppViews.swift')
           s = p.read_text()
-          replacement = '''    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
-              VStack(spacing: 6) {
-                  HStack(alignment: .top, spacing: 8) {
-                      flightNumber(leg, index: index)
-                          .frame(maxWidth: .infinity)
-                      aircraftField(leg, index: index)
-                          .frame(maxWidth: .infinity)
-                      registrationField(leg, index: index)
-                          .frame(maxWidth: .infinity)
-                      flightKindField(leg, index: index)
-                          .frame(maxWidth: .infinity)
-                      calculatedTime(leg, index: index)
-                          .frame(maxWidth: .infinity)
-                  }
-                  .frame(maxWidth: .infinity)
+          old = '''    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
+    VStack(spacing: 6) {
+        HStack(alignment: .top, spacing: 8) {
+            flightNumber(leg, index: index)
+                .frame(maxWidth: .infinity)
+            aircraftField(leg, index: index)
+                .frame(maxWidth: .infinity)
+            registrationField(leg, index: index)
+                .frame(maxWidth: .infinity)
+            flightKindField(leg, index: index)
+                .frame(maxWidth: .infinity)
+            calculatedTime(leg, index: index)
+                .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity)
 
-                  routeField(leg, index: index)
-                      .frame(maxWidth: .infinity)
-              }
-          }
+        routeField(leg, index: index)
+            .frame(maxWidth: .infinity)
+    }
+}
 
-          private func flightNumber'''
-          s, count = re.subn(
-              r"    private func legHeader\(_ leg: FlightLeg, index: Int\) -> some View \{.*?\n    \}\n\n    private func flightNumber",
-              replacement,
-              s,
-              count=1,
-              flags=re.S,
-          )
-          assert count == 1
-          p.write_text(s)
+private func flightNumber'''
+          new = '''    private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
+        VStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
+                flightNumber(leg, index: index)
+                    .frame(maxWidth: .infinity)
+                aircraftField(leg, index: index)
+                    .frame(maxWidth: .infinity)
+                registrationField(leg, index: index)
+                    .frame(maxWidth: .infinity)
+                flightKindField(leg, index: index)
+                    .frame(maxWidth: .infinity)
+                calculatedTime(leg, index: index)
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity)
 
-          p = Path('AppVersion.swift')
-          s = p.read_text().replace('static let number = 84', 'static let number = 85').replace('static let label = "Версия 84"', 'static let label = "Версия 85"')
-          p.write_text(s)
+            routeField(leg, index: index)
+                .frame(maxWidth: .infinity)
+        }
+    }
 
-          p = Path('Package.swift')
-          s = p.read_text().replace('displayVersion: "84"', 'displayVersion: "85"').replace('bundleVersion: "84"', 'bundleVersion: "85"')
-          p.write_text(s)
+    private func flightNumber'''
+          assert old in s
+          p.write_text(s.replace(old, new, 1))
           PY
 
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add AppViews.swift AppVersion.swift Package.swift
-          git commit -m "v85: move route to second header row"
+          git add AppViews.swift
+          git commit -m "chore: normalize v85 header formatting"
           git push origin ui/v85-two-row-leg-header
