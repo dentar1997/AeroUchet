@@ -1313,17 +1313,12 @@ struct DutyDetailView: View {
         VStack(spacing: 6) {
             HStack(alignment: .top, spacing: 8) {
                 flightNumber(leg, index: index)
-                    .frame(maxWidth: .infinity)
                 aircraftField(leg, index: index)
-                    .frame(maxWidth: .infinity)
                 registrationField(leg, index: index)
-                    .frame(maxWidth: .infinity)
                 flightKindField(leg, index: index)
-                    .frame(maxWidth: .infinity)
                 calculatedTime(leg, index: index)
-                    .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .center)
 
             routeField(leg, index: index)
                 .frame(maxWidth: .infinity)
@@ -1476,8 +1471,8 @@ struct DutyDetailView: View {
         }
         .multilineTextAlignment(.center)
         .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 6)
+        .fixedSize(horizontal: true, vertical: false)
         .background {
             if isEditing {
                 RoundedRectangle(cornerRadius: 10)
@@ -1822,7 +1817,7 @@ struct DutyDetailView: View {
                             title: "Расчётное время",
                             value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
                             centered: true,
-                            compact: false
+                            compact: true
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
@@ -1905,7 +1900,7 @@ struct DutyDetailView: View {
                     title: "Расчётное время",
                     value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
                     centered: true,
-                    compact: false
+                    compact: true
                 )
             }
         }
