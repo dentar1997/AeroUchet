@@ -13,6 +13,7 @@ struct InlineFlightDateTimeCell: View {
     let showsCalendarButton: Bool
     let dateCanToggle: Bool
     let onToggleDate: () -> Void
+    let backgroundColor: Color
 
     @State private var activePart: Part?
     @State private var showsCalendar = false
@@ -28,7 +29,7 @@ struct InlineFlightDateTimeCell: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
@@ -54,51 +55,54 @@ struct InlineFlightDateTimeCell: View {
                         }
                     }
 
-                InlineFlightWheelSegment(
-                    value: twoDigits(hour),
-                    previous: twoDigits(wrap(hour - 1, count: 24)),
-                    next: twoDigits(wrap(hour + 1, count: 24)),
-                    width: 17,
-                    isEditing: isEditing,
-                    isActive: isActive && activePart == .hour,
-                    onActivate: { activate(.hour) },
-                    onStep: { delta in
-                        setClock(
-                            hour: wrap(calendar.component(.hour, from: selection) + delta, count: 24),
-                            minute: calendar.component(.minute, from: selection)
-                        )
-                    }
-                )
+                HStack(spacing: 0) {
+                    InlineFlightWheelSegment(
+                        value: twoDigits(hour),
+                        previous: twoDigits(wrap(hour - 1, count: 24)),
+                        next: twoDigits(wrap(hour + 1, count: 24)),
+                        width: 17,
+                        isEditing: isEditing,
+                        isActive: isActive && activePart == .hour,
+                        onActivate: { activate(.hour) },
+                        onStep: { delta in
+                            setClock(
+                                hour: wrap(hour + delta, count: 24),
+                                minute: minute
+                            )
+                        }
+                    )
 
-                Text(":")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
-                    .frame(width: 4)
+                    Text(":")
+                        .font(.caption.bold())
+                        .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
+                        .frame(width: 5)
 
-                InlineFlightWheelSegment(
-                    value: twoDigits(minute),
-                    previous: twoDigits(wrap(minute - 1, count: 60)),
-                    next: twoDigits(wrap(minute + 1, count: 60)),
-                    width: 17,
-                    isEditing: isEditing,
-                    isActive: isActive && activePart == .minute,
-                    onActivate: { activate(.minute) },
-                    onStep: { delta in
-                        setClock(
-                            hour: calendar.component(.hour, from: selection),
-                            minute: wrap(calendar.component(.minute, from: selection) + delta, count: 60)
-                        )
-                    }
-                )
+                    InlineFlightWheelSegment(
+                        value: twoDigits(minute),
+                        previous: twoDigits(wrap(minute - 1, count: 60)),
+                        next: twoDigits(wrap(minute + 1, count: 60)),
+                        width: 17,
+                        isEditing: isEditing,
+                        isActive: isActive && activePart == .minute,
+                        onActivate: { activate(.minute) },
+                        onStep: { delta in
+                            setClock(
+                                hour: hour,
+                                minute: wrap(minute + delta, count: 60)
+                            )
+                        }
+                    )
+                }
+                .frame(width: 39, height: 18, alignment: .leading)
             }
             .frame(height: 18, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+                .fill(backgroundColor)
         )
         .overlay(alignment: .bottomTrailing) {
             if isEditing && isActive {
@@ -235,10 +239,10 @@ private struct InlineFlightWheelSegment: View {
                     .allowsHitTesting(false)
             }
         }
-        .font(.caption.weight(.semibold))
+        .font(.caption.bold())
         .monospacedDigit()
         .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
-        .frame(width: width, height: 18, alignment: .leading)
+        .frame(width: width, height: 18)
         .contentShape(Rectangle())
         .onTapGesture {
             guard isEditing else { return }

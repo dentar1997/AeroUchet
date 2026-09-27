@@ -787,15 +787,6 @@ struct DutyDetailView: View {
                 if isEditing {
                     Button {
                         focusedField = nil
-                        showReview = true
-                    } label: {
-                        Image(systemName: "checkmark")
-                    }
-                    .disabled(!isValid || differences.isEmpty)
-                    .accessibilityLabel("Применить изменения")
-
-                    Button {
-                        focusedField = nil
                         isEditing = false
                         draft = []
                         original = []
@@ -804,6 +795,15 @@ struct DutyDetailView: View {
                         Image(systemName: "xmark")
                     }
                     .accessibilityLabel("Отменить все изменения")
+
+                    Button {
+                        focusedField = nil
+                        showReview = true
+                    } label: {
+                        Image(systemName: "checkmark")
+                    }
+                    .disabled(!isValid || differences.isEmpty)
+                    .accessibilityLabel("Применить изменения")
                 } else {
                     Button {
                         original = duty.legs
@@ -823,6 +823,8 @@ struct DutyDetailView: View {
                     .accessibilityLabel("Редактировать задание на полёт")
                 }
             }
+            .font(.system(size: 11, weight: .semibold))
+            .labelStyle(.iconOnly)
             .frame(width: 104, alignment: .leading)
 
             dutyTitle(
@@ -860,10 +862,13 @@ struct DutyDetailView: View {
                     .accessibilityLabel("Удалить задание на полёт")
                 }
             }
+            .font(.system(size: 11, weight: .semibold))
+            .labelStyle(.iconOnly)
             .frame(width: 104, alignment: .trailing)
         }
         .frame(maxWidth: .infinity)
         .buttonStyle(.bordered)
+        .controlSize(.mini)
     }
 
     private func recordEdit() {
@@ -1426,33 +1431,33 @@ struct DutyDetailView: View {
             LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 6) {
                 timeCell(
                     title: "Начало работы",
-                    value: formatDateTime(leg.timeline.workStart),
+                    date: leg.timeline.workStart,
                     index: index, point: .workStart
                 )
                 timeCell(
                     title: "Включение двигателей",
-                    value: formatDateTime(leg.timeline.engineOn),
+                    date: leg.timeline.engineOn,
                     index: index, point: .engineOn
                 )
                 timeCell(
                     title: "Взлёт",
-                    value: formatDateTime(leg.timeline.takeoff),
+                    date: leg.timeline.takeoff,
                     index: index, point: .takeoff
                 )
                 timeCell(
                     title: "Завершение работы",
-                    value: formatDateTime(times(for: leg).workEnd),
+                    date: times(for: leg).workEnd,
                     index: index,
                     point: .workEnd
                 )
                 timeCell(
                     title: "Выключение двигателей",
-                    value: formatDateTime(leg.timeline.engineOff),
+                    date: leg.timeline.engineOff,
                     index: index, point: .engineOff
                 )
                 timeCell(
                     title: "Посадка",
-                    value: formatDateTime(leg.timeline.landing),
+                    date: leg.timeline.landing,
                     index: index, point: .landing
                 )
                 legValueCard(
@@ -2331,30 +2336,24 @@ struct DutyDetailView: View {
 
     private func timeCell(
         title: String,
-        value: String,
+        date: Date,
         index: Int,
-        point: DutyEditPoint?
+        point: DutyEditPoint
     ) -> some View {
-        Group {
-            if isEditing, let point {
-                InlineFlightDateTimeCell(
-                    title: title,
-                    selection: timeBinding(index, point),
-                    original: original.indices.contains(index)
-                        ? point.date(in: times(for: original[index]))
-                        : point.date(in: times(for: draft[index])),
-                    isEditing: true,
-                    isActive: focusedField == .time(index, point),
-                    onActivate: { focusedField = .time(index, point) },
-                    showsCalendarButton: index == 0 && point == .workStart,
-                    dateCanToggle: canToggleDutyDate(index: index, point: point),
-                    onToggleDate: { toggleDutyDate(index: index, point: point) }
-                )
-                .zIndex(focusedField == .time(index, point) ? 100 : 0)
-            } else {
-                legValueCard(title: title, value: value)
-            }
-        }
+        InlineFlightDateTimeCell(
+            title: title,
+            selection: isEditing ? timeBinding(index, point) : .constant(date),
+            original: isEditing && original.indices.contains(index)
+                ? point.date(in: times(for: original[index])) : date,
+            isEditing: isEditing,
+            isActive: isEditing && focusedField == .time(index, point),
+            onActivate: { focusedField = .time(index, point) },
+            showsCalendarButton: index == 0 && point == .workStart,
+            dateCanToggle: isEditing && canToggleDutyDate(index: index, point: point),
+            onToggleDate: { toggleDutyDate(index: index, point: point) },
+            backgroundColor: valueTileColor
+        )
+        .zIndex(focusedField == .time(index, point) ? 100 : 0)
     }
 
     private func compactTimeWheel(selection: Binding<Date>) -> some View {
