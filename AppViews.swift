@@ -404,62 +404,61 @@ private struct DutyAssignmentOverlay: View {
     }
 
     private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {
-    DragGesture(minimumDistance: 3)
-        .onChanged { value in
-            guard enabled else {
-                dragOffset = 0
-                return
-            }
-
-            // Вниз карточка идёт за пальцем без задержки.
-            // Вверх используется плавная нелинейная резинка без жёсткого упора.
-            if value.translation.height >= 0 {
-                dragOffset = value.translation.height
-            } else {
-                dragOffset = upwardRubberBand(value.translation.height)
-            }
-        }
-        .onEnded { value in
-            guard enabled else {
-                dragOffset = 0
-                return
-            }
-
-            let predicted = max(
-                value.translation.height,
-                value.predictedEndTranslation.height
-            )
-            let shouldClose =
-                value.translation.height > 110
-                || predicted > 220
-
-            if shouldClose {
-                withAnimation(
-                    .spring(response: 0.34, dampingFraction: 0.92)
-                ) {
-                    dragOffset = max(height + 80, 580)
-                }
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
-                    onClose()
-                }
-            } else {
-                withAnimation(
-                    .spring(response: 0.42, dampingFraction: 0.88)
-                ) {
+        DragGesture(minimumDistance: 3)
+            .onChanged { value in
+                guard enabled else {
                     dragOffset = 0
+                    return
+                }
+
+                // Вниз карточка идёт за пальцем без задержки.
+                // Вверх используется плавная нелинейная резинка без жёсткого упора.
+                if value.translation.height >= 0 {
+                    dragOffset = value.translation.height
+                } else {
+                    dragOffset = upwardRubberBand(value.translation.height)
                 }
             }
-        }
-}
+            .onEnded { value in
+                guard enabled else {
+                    dragOffset = 0
+                    return
+                }
 
-private func upwardRubberBand(_ translation: CGFloat) -> CGFloat {
-    let distance = abs(min(translation, 0))
-    let maxLift: CGFloat = 36
-    let softness: CGFloat = 90
-    return -maxLift * distance / (distance + softness)
-}
+                let predicted = max(
+                    value.translation.height,
+                    value.predictedEndTranslation.height
+                )
+                let shouldClose =
+                    value.translation.height > 110
+                    || predicted > 220
 
+                if shouldClose {
+                    withAnimation(
+                        .spring(response: 0.34, dampingFraction: 0.92)
+                    ) {
+                        dragOffset = max(height + 80, 580)
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+                        onClose()
+                    }
+                } else {
+                    withAnimation(
+                        .spring(response: 0.42, dampingFraction: 0.88)
+                    ) {
+                        dragOffset = 0
+                    }
+                }
+            }
+    }
+
+    private func upwardRubberBand(_ translation: CGFloat) -> CGFloat {
+        let distance = abs(min(translation, 0))
+        let maxLift: CGFloat = 36
+        let softness: CGFloat = 90
+        return -maxLift * distance / (distance + softness)
+    }
 }
 
 
@@ -1600,11 +1599,10 @@ struct DutyDetailView: View {
     }
 
     private func routeCodeWidth(_ code: String) -> CGFloat {
-    let font = UIFont.systemFont(ofSize: 15, weight: .semibold)
-    let width = (code as NSString).size(withAttributes: [.font: font]).width
-    return max(1, ceil(width))
-}
-
+        let font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        let width = (code as NSString).size(withAttributes: [.font: font]).width
+        return max(1, ceil(width))
+    }
     private func routeCodeBinding(index: Int, side: RouteEditSide) -> Binding<String> {
         Binding(
             get: {
