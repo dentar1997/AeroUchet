@@ -649,8 +649,6 @@ struct DutyDetailView: View {
     @State private var editHistory: [DutyEditSnapshot] = []
     @State private var historyIndex = 0
     @State private var routeEditSide: RouteEditSide = .departure
-    @State private var showsCompactCalendar = false
-    @State private var compactCalendarMonth = Date()
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private let timeColumns = Array(
@@ -707,7 +705,6 @@ struct DutyDetailView: View {
         .onChange(of: draft) { _ in recordEdit() }
         .onChange(of: assignmentNumber) { _ in recordEdit() }
         .onChange(of: focusedField) { value in
-            showsCompactCalendar = false
             onEditorFocusChange?(value != nil)
         }
         .onChange(of: isEditing) { value in
@@ -926,9 +923,27 @@ struct DutyDetailView: View {
             && $0.hasValidStoredDates
         }) else { return false }
 
-        return zip(legs, legs.dropFirst()).allSatisfy {
-            $0.0.timeline.workStart <= $0.1.timeline.workStart
+        let dates = legs.flatMap { leg in
+            let values = times(for: leg)
+            return DutyEditPoint.allCases.map { $0.date(in: values) }
         }
+        guard let first = dates.first, let last = dates.max() else { return false }
+        let daySpan = moscowCalendar.dateComponents(
+            [.day],
+            from: moscowCalendar.startOfDay(for: first),
+            to: moscowCalendar.startOfDay(for: last)
+        ).day ?? 0
+        guard (0...1).contains(daySpan) else { return false }
+
+        let legsAreOrdered = zip(legs, legs.dropFirst()).allSatisfy {
+            times(for: $0.0).workStart <= times(for: $0.1).workStart
+        }
+        let eachLegIsOrdered = legs.allSatisfy { leg in
+            let values = times(for: leg)
+            let dates = DutyEditPoint.allCases.map { $0.date(in: values) }
+            return zip(dates, dates.dropFirst()).allSatisfy { $0 <= $1 }
+        }
+        return legsAreOrdered && eachLegIsOrdered
     }
 
     private var differences: [String] {
@@ -1081,30 +1096,157 @@ struct DutyDetailView: View {
     private func timeBinding(_ index: Int, _ point: DutyEditPoint) -> Binding<Date> {
         Binding(
             get: { point.date(in: times(for: draft[index])) },
-            set: { newDate in
-                var leg = draft[index]
-                let previous = times(for: leg)
-                let updated = PortalFlightTimes(
-                    workStart: point == .workStart ? newDate : previous.workStart,
-                    engineOn: point == .engineOn ? newDate : previous.engineOn,
-                    takeoff: point == .takeoff ? newDate : previous.takeoff,
-                    landing: point == .landing ? newDate : previous.landing,
-                    engineOff: point == .engineOff ? newDate : previous.engineOff,
-                    workEnd: point == .workEnd ? newDate :
-                        (point == .engineOff && index == draft.count - 1
-                         ? max(previous.workEnd, newDate)
-                         : previous.workEnd)
-                )
-                leg.portalTimes = updated
-                leg.date = formatDate(updated.engineOn)
-                leg.workStart = formatClock(updated.workStart)
-                leg.engineOn = formatClock(updated.engineOn)
-                leg.takeoff = formatClock(updated.takeoff)
-                leg.landing = formatClock(updated.landing)
-                leg.engineOff = formatClock(updated.engineOff)
-                draft[index] = leg
-            }
+            set: { setDutyTime($0, index: index, point: point) }
         )
+    }
+
+    private var orderedDutyPoints: [(index: Int, point: DutyEditPoint)] {
+        draft.indices.flatMap { index in
+            DutyEditPoint.allCases.map { (index: index, point: $0) }
+        }
+    }
+
+    private func dayOffset(_ date: Date) -> Int {
+        guard let first = draft.first else { return 0 }
+        return moscowCalendar.dateComponents(
+            [.day],
+            from: moscowCalendar.startOfDay(for: times(for: first).workStart),
+            to: moscowCalendar.startOfDay(for: date)
+        ).day ?? 0
+    }
+
+    private func canToggleDutyDate(index: Int, point: DutyEditPoint) -> Bool {
+        let points = orderedDutyPoints
+        guard let position = points.firstIndex(where: { $0.index == index && $0.point == point }),
+              position > 0 else { return false }
+        let previous = points[position - 1]
+        let previousDate = previous.point.date(in: times(for: draft[previous.index]))
+        let currentDate = point.date(in: times(for: draft[index]))
+        return dayOffset(previousDate) == 0 && (0...1).contains(dayOffset(currentDate))
+    }
+
+    private func toggleDutyDate(index: Int, point: DutyEditPoint) {
+        guard canToggleDutyDate(index: index, point: point) else { return }
+        let points = orderedDutyPoints
+        guard let position = points.firstIndex(where: { $0.index == index && $0.point == point })
+        else { return }
+
+        let current = point.date(in: times(for: draft[index]))
+        let goingForward = dayOffset(current) == 0
+        let delta = goingForward ? 1 : -1
+        guard let changed = moscowCalendar.date(byAdding: .day, value: delta, to: current)
+        else { return }
+        writeDutyTime(changed, index: index, point: point)
+
+        // A jump to tomorrow carries following events with it. Tapping again
+        // brings them back; chronological normalization may retain tomorrow
+        // for a later clock time that cannot fit on the first day.
+        for item in points.dropFirst(position + 1) {
+            let date = item.point.date(in: times(for: draft[item.index]))
+            if dayOffset(date) == (goingForward ? 0 : 1),
+               let shifted = moscowCalendar.date(byAdding: .day, value: delta, to: date) {
+                writeDutyTime(shifted, index: item.index, point: item.point)
+            }
+        }
+        normalizeDuty(after: position)
+    }
+
+    private func setDutyTime(_ date: Date, index: Int, point: DutyEditPoint) {
+        let points = orderedDutyPoints
+        guard let position = points.firstIndex(where: { $0.index == index && $0.point == point })
+        else { return }
+        let previousStart = draft.first.map { times(for: $0).workStart }
+        writeDutyTime(date, index: index, point: point)
+
+        if position == 0, let previousStart {
+            let delta = moscowCalendar.dateComponents(
+                [.day],
+                from: moscowCalendar.startOfDay(for: previousStart),
+                to: moscowCalendar.startOfDay(for: date)
+            ).day ?? 0
+            if delta != 0 {
+                for item in points.dropFirst() {
+                    let value = item.point.date(in: times(for: draft[item.index]))
+                    if let shifted = moscowCalendar.date(byAdding: .day, value: delta, to: value) {
+                        writeDutyTime(shifted, index: item.index, point: item.point)
+                    }
+                }
+            }
+        }
+        normalizeDuty(after: position)
+    }
+
+    private func normalizeDuty(after position: Int) {
+        let points = orderedDutyPoints
+        guard !points.isEmpty else { return }
+        let start = times(for: draft[points[0].index]).workStart
+        let secondDay = moscowCalendar.date(
+            byAdding: .day, value: 1, to: moscowCalendar.startOfDay(for: start)
+        ) ?? start
+
+        for offset in max(1, position)...max(1, points.count - 1) {
+            guard offset < points.count else { break }
+            let previous = points[offset - 1]
+            let item = points[offset]
+            let minimum: Date
+            if item.index != previous.index && item.point == .workStart {
+                minimum = times(for: draft[previous.index]).workStart
+            } else {
+                minimum = previous.point.date(in: times(for: draft[previous.index]))
+            }
+            let existing = item.point.date(in: times(for: draft[item.index]))
+            var candidate = existing
+
+            if candidate < minimum {
+                let clock = moscowCalendar.dateComponents([.hour, .minute], from: existing)
+                candidate = moscowCalendar.date(
+                    bySettingHour: clock.hour ?? 0,
+                    minute: clock.minute ?? 0,
+                    second: 0,
+                    of: minimum
+                ) ?? minimum
+                if candidate < minimum {
+                    candidate = moscowCalendar.date(byAdding: .day, value: 1, to: candidate)
+                        ?? minimum
+                }
+            }
+
+            if moscowCalendar.startOfDay(for: candidate) > secondDay {
+                candidate = max(minimum, moscowCalendar.date(
+                    bySettingHour: moscowCalendar.component(.hour, from: existing),
+                    minute: moscowCalendar.component(.minute, from: existing),
+                    second: 0,
+                    of: secondDay
+                ) ?? minimum)
+            }
+            if candidate != existing {
+                writeDutyTime(candidate, index: item.index, point: item.point)
+            }
+        }
+    }
+
+    private func writeDutyTime(_ newDate: Date, index: Int, point: DutyEditPoint) {
+        guard draft.indices.contains(index) else { return }
+        var leg = draft[index]
+        let previous = times(for: leg)
+        let updated = PortalFlightTimes(
+            workStart: point == .workStart ? newDate : previous.workStart,
+            engineOn: point == .engineOn ? newDate : previous.engineOn,
+            takeoff: point == .takeoff ? newDate : previous.takeoff,
+            landing: point == .landing ? newDate : previous.landing,
+            engineOff: point == .engineOff ? newDate : previous.engineOff,
+            workEnd: point == .workEnd ? newDate :
+                (point == .engineOff && index == draft.count - 1
+                 ? max(previous.workEnd, newDate) : previous.workEnd)
+        )
+        leg.portalTimes = updated
+        leg.date = formatDate(updated.engineOn)
+        leg.workStart = formatClock(updated.workStart)
+        leg.engineOn = formatClock(updated.engineOn)
+        leg.takeoff = formatClock(updated.takeoff)
+        leg.landing = formatClock(updated.landing)
+        leg.engineOff = formatClock(updated.engineOff)
+        draft[index] = leg
     }
     // Уровень 1: одна общая карточка полётного задания.
     private func dutyCard(_ duty: FlightDuty) -> some View {
@@ -1119,10 +1261,6 @@ struct DutyDetailView: View {
                     index: index,
                     workEnd: duty.workIntervals[index].end
                 )
-                .anchorPreference(
-                    key: LegBoundsPreferenceKey.self,
-                    value: .bounds
-                ) { [index: $0] }
                 .zIndex(legEditorZIndex(index))
 
                 if index + 1 < duty.legs.count {
@@ -1132,39 +1270,6 @@ struct DutyDetailView: View {
                     if restEnd > restStart {
                         restCard(start: restStart, end: restEnd)
                     }
-                }
-            }
-        }
-        .overlayPreferenceValue(LegBoundsPreferenceKey.self) { anchors in
-            GeometryReader { proxy in
-                if case let .time(index, point) = focusedField,
-                   let anchor = anchors[index],
-                   draft.indices.contains(index) {
-                    let frame = proxy[anchor]
-
-                    ZStack {
-                        Color.black.opacity(0.001)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                focusedField = nil
-                            }
-
-                        timeEditor(index: index, point: point)
-                            .position(
-                                x: timeEditorCenterX(
-                                    width: proxy.size.width,
-                                    point: point
-                                ),
-                                y: timeEditorCenterY(
-                                    legFrame: frame,
-                                    legIndex: index
-                                )
-                            )
-                    }
-                    .frame(
-                        width: proxy.size.width,
-                        height: proxy.size.height
-                    )
                 }
             }
         }
@@ -2052,17 +2157,6 @@ struct DutyDetailView: View {
         }
     }
 
-    private func timeEditorAlignment(for point: DutyEditPoint) -> Alignment {
-        switch point {
-        case .workStart, .workEnd:
-            return .topLeading
-        case .engineOn, .engineOff:
-            return .top
-        case .takeoff, .landing:
-            return .topTrailing
-        }
-    }
-
     private func editPopoverWidth(for field: DutyFocusedField) -> CGFloat {
         switch field {
         case .legNumber:
@@ -2243,87 +2337,22 @@ struct DutyDetailView: View {
     ) -> some View {
         Group {
             if isEditing, let point {
-                Button {
-                    focusedField = .time(index, point)
-                } label: {
-                    legValueCard(
-                        title: title,
-                        value: formatDateTime(point.date(in: times(for: draft[index]))),
-                        valueColor: editorValueColor(
-                            for: .time(index, point),
-                            isActive: focusedField == .time(index, point)
-                        )
-                    )
-                }
-                .buttonStyle(.plain)
+                InlineFlightDateTimeCell(
+                    title: title,
+                    selection: timeBinding(index, point),
+                    original: original.indices.contains(index)
+                        ? point.date(in: times(for: original[index]))
+                        : point.date(in: times(for: draft[index])),
+                    isEditing: true,
+                    isActive: focusedField == .time(index, point),
+                    onActivate: { focusedField = .time(index, point) },
+                    showsCalendarButton: index == 0 && point == .workStart,
+                    dateCanToggle: canToggleDutyDate(index: index, point: point),
+                    onToggleDate: { toggleDutyDate(index: index, point: point) }
+                )
+                .zIndex(focusedField == .time(index, point) ? 100 : 0)
             } else {
                 legValueCard(title: title, value: value)
-            }
-        }
-    }
-
-    private func timeEditor(index: Int, point: DutyEditPoint) -> some View {
-        let editorHeight: CGFloat = showsCompactCalendar ? 236 : 132
-        let selectedDate = point.date(in: times(for: draft[index]))
-
-        return floatingEditor(
-            width: 230,
-            height: editorHeight,
-            backgroundOpacity: 0.82
-        ) {
-            HStack(alignment: .top, spacing: 6) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(formatDate(selectedDate))
-                        .font(.subheadline.weight(.semibold))
-                        .monospacedDigit()
-                        .frame(width: 174, alignment: .leading)
-
-                    if showsCompactCalendar {
-                        compactDateCalendar(index: index, point: point)
-                            .frame(width: 174, alignment: .leading)
-                    } else {
-                        compactTimeWheel(selection: timeBinding(index, point))
-                    }
-                }
-                .frame(width: 174, alignment: .topLeading)
-
-                VStack(spacing: 8) {
-                    Button {
-                        if !showsCompactCalendar {
-                            compactCalendarMonth = compactMonthStart(selectedDate)
-                        }
-                        showsCompactCalendar.toggle()
-                    } label: {
-                        Image(systemName: showsCompactCalendar ? "clock" : "calendar")
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.circle)
-                    .controlSize(.small)
-                    .accessibilityLabel(
-                        showsCompactCalendar ? "Показать время" : "Показать календарь"
-                    )
-
-                    Button {
-                        restoreOriginalTime(index: index, point: point)
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward")
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.circle)
-                    .controlSize(.small)
-                    .disabled(!fieldHasChanges(.time(index, point)))
-                    .accessibilityLabel("Вернуть исходные дату и время")
-
-                    Button {
-                        focusedField = nil
-                    } label: {
-                        Image(systemName: "checkmark")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .controlSize(.small)
-                    .accessibilityLabel("Готово")
-                }
             }
         }
     }
@@ -2340,176 +2369,6 @@ struct DutyDetailView: View {
         .scaleEffect(0.78, anchor: .topLeading)
         .frame(width: 126, height: 86, alignment: .topLeading)
         .clipped()
-    }
-
-    private func restoreOriginalTime(index: Int, point: DutyEditPoint) {
-        guard original.indices.contains(index) else { return }
-        let originalDate = point.date(in: times(for: original[index]))
-        timeBinding(index, point).wrappedValue = originalDate
-        compactCalendarMonth = compactMonthStart(originalDate)
-    }
-
-
-
-    private func compactDateCalendar(index: Int, point: DutyEditPoint) -> some View {
-        let selectedDate = point.date(in: times(for: draft[index]))
-        let days = compactCalendarDays(for: compactCalendarMonth)
-        let columns = Array(repeating: GridItem(.fixed(22), spacing: 3), count: 7)
-        let weekdays = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
-
-        return VStack(spacing: 4) {
-            HStack(spacing: 5) {
-                Button {
-                    shiftCompactCalendarMonth(by: -1)
-                } label: {
-                    Image(systemName: "chevron.left")
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                Text(compactMonthTitle(compactCalendarMonth))
-                    .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
-
-                Spacer()
-
-                Button {
-                    shiftCompactCalendarMonth(by: 1)
-                } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .buttonStyle(.plain)
-            }
-
-            LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(weekdays, id: \.self) { weekday in
-                    Text(weekday)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 22, height: 14)
-                }
-
-                ForEach(Array(days.enumerated()), id: \.offset) { _, day in
-                    if let day {
-                        Button {
-                            setTimeEditorDate(index: index, point: point, day: day)
-                            showsCompactCalendar = false
-                        } label: {
-                            Text("\(moscowCalendar.component(.day, from: day))")
-                                .font(.system(
-                                    size: 10,
-                                    weight: moscowCalendar.isDate(day, inSameDayAs: selectedDate)
-                                        ? .bold
-                                        : .regular
-                                ))
-                                .frame(width: 22, height: 20)
-                                .background {
-                                    if moscowCalendar.isDate(day, inSameDayAs: selectedDate) {
-                                        Circle()
-                                            .fill(Color.accentColor.opacity(0.22))
-                                    }
-                                }
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        Color.clear
-                            .frame(width: 22, height: 20)
-                    }
-                }
-            }
-        }
-        .frame(width: 172)
-    }
-
-    private func compactMonthStart(_ date: Date) -> Date {
-        let components = moscowCalendar.dateComponents([.year, .month], from: date)
-        return moscowCalendar.date(from: components) ?? date
-    }
-
-    private func compactCalendarDays(for month: Date) -> [Date?] {
-        let start = compactMonthStart(month)
-        guard let range = moscowCalendar.range(of: .day, in: .month, for: start) else {
-            return Array(repeating: nil, count: 42)
-        }
-
-        let weekday = moscowCalendar.component(.weekday, from: start)
-        let leading = (weekday + 5) % 7
-        var result = Array<Date?>(repeating: nil, count: leading)
-
-        for day in range {
-            if let date = moscowCalendar.date(byAdding: .day, value: day - 1, to: start) {
-                result.append(date)
-            }
-        }
-
-        while result.count < 42 {
-            result.append(nil)
-        }
-        return result
-    }
-
-    private func shiftCompactCalendarMonth(by months: Int) {
-        if let updated = moscowCalendar.date(
-            byAdding: .month,
-            value: months,
-            to: compactCalendarMonth
-        ) {
-            compactCalendarMonth = compactMonthStart(updated)
-        }
-    }
-
-    private func compactMonthTitle(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.timeZone = moscowTimeZone
-        formatter.dateFormat = "LLLL yyyy"
-        return formatter.string(from: date).capitalized
-    }
-
-    private func setTimeEditorDate(index: Int, point: DutyEditPoint, day: Date) {
-        let current = point.date(in: times(for: draft[index]))
-        var dateComponents = moscowCalendar.dateComponents([.year, .month, .day], from: day)
-        let timeComponents = moscowCalendar.dateComponents([.hour, .minute], from: current)
-        dateComponents.hour = timeComponents.hour
-        dateComponents.minute = timeComponents.minute
-
-        guard let updated = moscowCalendar.date(from: dateComponents) else { return }
-        timeBinding(index, point).wrappedValue = updated
-        compactCalendarMonth = compactMonthStart(updated)
-    }
-
-    private func timeEditorCenterX(
-        width: CGFloat,
-        point: DutyEditPoint
-    ) -> CGFloat {
-        let halfWidth: CGFloat = 115
-        let edgeInset: CGFloat = 18
-
-        switch timeEditorAlignment(for: point) {
-        case .topLeading:
-            return halfWidth + edgeInset
-        case .topTrailing:
-            return width - halfWidth - edgeInset
-        default:
-            return width / 2
-        }
-    }
-
-    private func timeEditorCenterY(
-        legFrame: CGRect,
-        legIndex: Int
-    ) -> CGFloat {
-        let editorHeight: CGFloat = showsCompactCalendar ? 236 : 132
-        let editorHalfHeight = editorHeight / 2
-        let gap: CGFloat = 12
-
-        if legIndex == 0 {
-            let headerHeight: CGFloat = 72
-            return legFrame.minY + headerHeight + gap + editorHalfHeight
-        }
-
-        return legFrame.minY - gap - editorHalfHeight
     }
 
     private func legValueCard(
@@ -4724,17 +4583,5 @@ struct SimplePage: View {
                 title
             )
         }
-    }
-}
-
-
-private struct LegBoundsPreferenceKey: PreferenceKey {
-    static var defaultValue: [Int: Anchor<CGRect>] = [:]
-
-    static func reduce(
-        value: inout [Int: Anchor<CGRect>],
-        nextValue: () -> [Int: Anchor<CGRect>]
-    ) {
-        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
