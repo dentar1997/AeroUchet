@@ -330,8 +330,10 @@ private struct DutyAssignmentOverlay: View {
     @GestureState private var gestureDragOffset: CGFloat = 0
     @State private var editorIsActive = false
     @State private var editModeIsActive = false
-    @State private var scrollOffset: CGFloat = 0
+    @State private var scrollIsAtTop = true
     @State private var scrollContentIsScrollable = false
+    @State private var dragSessionActive = false
+    @State private var dragSessionEligible = false
     @State private var dismissEditorSignal = 0
 
     private var dragOffset: CGFloat {
@@ -387,10 +389,10 @@ private struct DutyAssignmentOverlay: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.basedOnSize)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    max(0, geometry.contentOffset.y + geometry.contentInsets.top)
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top <= 0.5
                 } action: { _, newValue in
-                    scrollOffset = newValue
+                    scrollIsAtTop = newValue
                 }
                 .onScrollGeometryChange(for: Bool.self) { geometry in
                     geometry.contentSize.height > geometry.containerSize.height + 1
@@ -408,9 +410,9 @@ private struct DutyAssignmentOverlay: View {
                 .simultaneousGesture(
                     dismissDrag(
                         in: geometry.size.height,
-                        enabled: !editorIsActive
+                        canStart: !editorIsActive
                             && !editModeIsActive
-                            && scrollOffset <= 0.5,
+                            && scrollIsAtTop,
                         allowUpwardRubberBand: !scrollContentIsScrollable
                     )
                 )
@@ -428,26 +430,34 @@ private struct DutyAssignmentOverlay: View {
 
     private func dismissDrag(
         in height: CGFloat,
-        enabled: Bool,
+        canStart: Bool,
         allowUpwardRubberBand: Bool
     ) -> some Gesture {
         DragGesture(minimumDistance: 1)
             .updating($gestureDragOffset) { value, state, transaction in
-                guard enabled else {
+                guard dragSessionEligible else {
                     state = 0
                     return
                 }
 
-                // GestureState обновляется синхронно с жестом и не заставляет
-                // обычный @State пересчитываться на каждом кадре ProMotion.
                 transaction.animation = nil
                 state = interactiveOffset(
                     for: value.translation.height,
                     allowUpwardRubberBand: allowUpwardRubberBand
                 )
             }
+            .onChanged { value in
+                guard !dragSessionActive else { return }
+                dragSessionActive = true
+                dragSessionEligible = canStart
+                    && (allowUpwardRubberBand || value.translation.height > 0)
+            }
             .onEnded { value in
-                guard enabled else {
+                let eligible = dragSessionEligible
+                dragSessionActive = false
+                dragSessionEligible = false
+
+                guard eligible else {
                     settledDragOffset = 0
                     return
                 }
@@ -955,17 +965,27 @@ struct DutyDetailView: View {
     }
 
 
-    private func editableLegNumber(_ leg: FlightLeg) -> String {
+    private func editableLegNumber(_ leg: FlightLeg, index: Int? = nil) -> String {
         if let legNumber = leg.legNumber {
-            return legNumber
+            return legNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return leg.displayedLegNumber
+
+        let parts = leg.flightNumber
+            .split(separator: "/", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let index, parts.indices.contains(index), !parts[index].isEmpty {
+            return parts[index]
+        }
+        if parts.count == 1, let only = parts.first {
+            return only
+        }
+        return leg.displayedLegNumber.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func legNumberBinding(_ index: Int) -> Binding<String> {
         Binding(
-            get: { editableLegNumber(draft[index]) },
-            set: { draft[index].legNumber = $0 }
+            get: { editableLegNumber(draft[index], index: index) },
+            set: { draft[index].legNumber = String($0.prefix(7)) }
         )
     }
 
@@ -985,6 +1005,39 @@ struct DutyDetailView: View {
                 draft[index].registration = "RA-" + digits
             }
         )
+    }
+
+    private func registrationTextBinding(_ index: Int) -> Binding<String> {
+        Binding(
+            get: { formattedRegistration(draft[index].registration) },
+            set: { rawValue in
+                let normalized = String(
+                    rawValue
+                        .uppercased()
+                        .filter { character in
+                            character.isASCII
+                                && (character.isLetter || character.isNumber || character == "-")
+                        }
+                        .prefix(8)
+                )
+                draft[index].registration = normalized
+            }
+        )
+    }
+
+    private func registrationComparisonKey(_ rawValue: String) -> String {
+        let formatted = formattedRegistration(rawValue)
+        if formatted.hasPrefix("RA-") {
+            return String(formatted.dropFirst(3))
+        }
+        return formatted
+    }
+
+    private func isNumericRegistration(_ rawValue: String) -> Bool {
+        let formatted = formattedRegistration(rawValue)
+        guard formatted.hasPrefix("RA-") else { return false }
+        let suffix = formatted.dropFirst(3)
+        return !suffix.isEmpty && suffix.allSatisfy(\.isNumber)
     }
 
     private func toggleScheduleType(_ index: Int) {
@@ -1368,7 +1421,7 @@ struct DutyDetailView: View {
     private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
         let textBinding: Binding<String> = isEditing
             ? legNumberBinding(index)
-            : .constant(leg.displayedLegNumber)
+            : .constant(editableLegNumber(leg, index: index))
         let activeBinding: Binding<Bool> = isEditing
             ? focusBinding(.legNumber(index))
             : .constant(false)
@@ -1380,12 +1433,12 @@ struct DutyDetailView: View {
                 field: .legNumber(index),
                 keyboardType: .numbersAndPunctuation,
                 capitalization: .allCharacters,
-                maxLength: 10,
+                maxLength: 7,
                 expands: false,
                 allowsEditing: isEditing,
                 restoreValue: original.indices.contains(index)
-                    ? editableLegNumber(original[index])
-                    : leg.displayedLegNumber,
+                    ? editableLegNumber(original[index], index: index)
+                    : editableLegNumber(leg, index: index),
                 clearOnFirstDelete: true
             )
         }
@@ -1429,32 +1482,50 @@ struct DutyDetailView: View {
     }
 
     private func registrationField(_ leg: FlightLeg, index: Int) -> some View {
-        let staticDigits = formattedRegistration(leg.registration)
-            .replacingOccurrences(of: "RA-", with: "")
-        let textBinding: Binding<String> = isEditing
-            ? registrationDigitsBinding(index)
-            : .constant(staticDigits)
+        let formatted = formattedRegistration(leg.registration)
+        let numericRegistration = isNumericRegistration(formatted)
         let activeBinding: Binding<Bool> = isEditing
             ? focusBinding(.registration(index))
             : .constant(false)
 
         return identityField("Бортовой номер", field: .registration(index)) {
-            stableInlineEditor(
-                text: textBinding,
-                isActive: activeBinding,
-                field: .registration(index),
-                prefix: "RA-",
-                keyboardType: .numberPad,
-                capitalization: .none,
-                maxLength: 5,
-                expands: false,
-                allowsEditing: isEditing,
-                restoreValue: original.indices.contains(index)
-                    ? formattedRegistration(original[index].registration)
-                        .replacingOccurrences(of: "RA-", with: "")
-                    : staticDigits,
-                highlightHorizontalPadding: 0
-            )
+            if numericRegistration {
+                let staticDigits = formatted.replacingOccurrences(of: "RA-", with: "")
+                stableInlineEditor(
+                    text: isEditing
+                        ? registrationDigitsBinding(index)
+                        : .constant(staticDigits),
+                    isActive: activeBinding,
+                    field: .registration(index),
+                    prefix: "RA-",
+                    keyboardType: .numberPad,
+                    capitalization: .none,
+                    maxLength: 5,
+                    expands: false,
+                    allowsEditing: isEditing,
+                    restoreValue: original.indices.contains(index)
+                        ? registrationComparisonKey(original[index].registration)
+                        : staticDigits,
+                    highlightHorizontalPadding: 0
+                )
+            } else {
+                stableInlineEditor(
+                    text: isEditing
+                        ? registrationTextBinding(index)
+                        : .constant(formatted),
+                    isActive: activeBinding,
+                    field: .registration(index),
+                    keyboardType: .asciiCapable,
+                    capitalization: .allCharacters,
+                    maxLength: 8,
+                    expands: false,
+                    allowsEditing: isEditing,
+                    restoreValue: original.indices.contains(index)
+                        ? formattedRegistration(original[index].registration)
+                        : formatted,
+                    highlightHorizontalPadding: 0
+                )
+            }
         }
     }
 
@@ -1556,7 +1627,8 @@ struct DutyDetailView: View {
             guard draft.indices.contains(index), original.indices.contains(index) else {
                 return false
             }
-            return editableLegNumber(original[index]) != editableLegNumber(draft[index])
+            return editableLegNumber(original[index], index: index)
+                != editableLegNumber(draft[index], index: index)
 
         case .aircraft(let index):
             guard draft.indices.contains(index), original.indices.contains(index) else {
@@ -1568,9 +1640,8 @@ struct DutyDetailView: View {
             guard draft.indices.contains(index), original.indices.contains(index) else {
                 return false
             }
-            let before = String(original[index].registration.filter(\.isNumber).prefix(5))
-            let after = String(draft[index].registration.filter(\.isNumber).prefix(5))
-            return before != after
+            return registrationComparisonKey(draft[index].registration)
+                != registrationComparisonKey(original[index].registration)
 
         case .route(let index):
             guard draft.indices.contains(index), original.indices.contains(index) else {
@@ -1713,8 +1784,9 @@ struct DutyDetailView: View {
             + Text(cleanCode)
                 .foregroundColor(
                     isEditing
-                        ? editorValueColor(
-                            for: .route(index),
+                        ? routeValueColor(
+                            index: index,
+                            side: side,
                             isActive: isActive.wrappedValue
                         )
                         : Color.primary
@@ -1751,6 +1823,33 @@ struct DutyDetailView: View {
                 focusedField = .route(index)
             }
     }
+    private func routeValueColor(
+        index: Int,
+        side: RouteEditSide,
+        isActive: Bool
+    ) -> Color {
+        if isActive {
+            return Color.accentColor.opacity(0.58)
+        }
+        return routeSideHasChanges(index: index, side: side)
+            ? Color.indigo
+            : Color.accentColor
+    }
+
+    private func routeSideHasChanges(index: Int, side: RouteEditSide) -> Bool {
+        guard draft.indices.contains(index), original.indices.contains(index) else {
+            return false
+        }
+        let before = side == .departure
+            ? original[index].departure
+            : original[index].arrival
+        let after = side == .departure
+            ? draft[index].departure
+            : draft[index].arrival
+        return before.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            != after.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
     private func routeCodeBinding(index: Int, side: RouteEditSide) -> Binding<String> {
         Binding(
             get: {
@@ -1969,7 +2068,7 @@ struct DutyDetailView: View {
 
     private func calculatedTime(_ leg: FlightLeg, index: Int) -> some View {
         identityField("Расчётное время", field: .calculatedTime(index)) {
-            Text(leg.calculatedMinutes.map(timeText) ?? "Отсутствует")
+            Text(leg.calculatedMinutes.map(timeText) ?? "Нет данных")
         }
         .overlay(alignment: .topTrailing) {
             if isEditing, focusedField == .calculatedTime(index) {
@@ -1996,7 +2095,7 @@ struct DutyDetailView: View {
                                 } else {
                                     Text(
                                         draft[index].calculatedMinutes.map(timeText)
-                                        ?? "Отсутствует"
+                                        ?? "Нет данных"
                                     )
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.secondary)
