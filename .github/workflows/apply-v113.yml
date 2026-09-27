@@ -1,0 +1,236 @@
+name: Apply version 113 patch
+
+on:
+  push:
+    branches:
+      - feature/duty-editor-v113
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/duty-editor-v113
+
+      - name: Patch version 113
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('AppViews.swift')
+          s = p.read_text()
+
+          def once(old, new):
+              global s
+              if old not in s:
+                  raise SystemExit('Required block not found:\n' + old[:200])
+              s = s.replace(old, new, 1)
+
+          once(
+          '''        .alert("Удалить задание на полёт?", isPresented: $showDeleteConfirmation) {
+              Button("Отмена", role: .cancel) {}
+              Button("Удалить задание", role: .destructive) {
+                  store.deleteDutyLegs(ids: Set(current.legs.map(\\.id)))
+                  close()
+              }
+          } message: {
+              Text("Задание и \\(legCountText(current.legs.count)) будут удалены.")
+          }
+          ''',
+          ''''''
+          )
+
+          once(
+          '''                    Button(role: .destructive) {
+                          showDeleteConfirmation = true
+                      } label: {
+                          Image(systemName: "trash")
+                              .frame(width: 18, height: 18)
+                      }
+                      .accessibilityLabel("Удалить задание на полёт")
+          ''',
+          '''                    Button(role: .destructive) {
+                          showDeleteConfirmation = true
+                      } label: {
+                          Image(systemName: "trash")
+                              .frame(width: 18, height: 18)
+                      }
+                      .accessibilityLabel("Удалить задание на полёт")
+                      .popover(isPresented: $showDeleteConfirmation, arrowEdge: .top) {
+                          VStack(spacing: 12) {
+                              Image(systemName: "trash.fill")
+                                  .font(.title2)
+                                  .foregroundStyle(.red)
+                              Text("Удалить задание на полёт?")
+                                  .font(.headline)
+                              Text("Задание и \\(legCountText(duty.legs.count)) будут удалены.")
+                                  .font(.caption)
+                                  .foregroundStyle(.secondary)
+                                  .multilineTextAlignment(.center)
+
+                              HStack(spacing: 10) {
+                                  Button("Отмена") {
+                                      showDeleteConfirmation = false
+                                  }
+                                  .buttonStyle(.bordered)
+
+                                  Button("Удалить") {
+                                      showDeleteConfirmation = false
+                                      store.deleteDutyLegs(ids: Set(duty.legs.map(\\.id)))
+                                      close()
+                                  }
+                                  .buttonStyle(.borderedProminent)
+                                  .tint(.red)
+                              }
+                          }
+                          .padding(16)
+                          .frame(width: 260)
+                          .font(.subheadline)
+                          .presentationCompactAdaptation(.popover)
+                      }
+          ''')
+
+          once(
+          '''            hasChanges: calculatedEditorHasChanges(index),
+              onActivate: { focusedField = .calculatedTime(index) },
+          ''',
+          '''            hasChanges: calculatedEditorHasChanges(index),
+              sourceHasChanges: calculatedSourceHasChanges(index),
+              onActivate: { focusedField = .calculatedTime(index) },
+          ''')
+
+          anchor = '''    private func calculatedEditorHasChanges(_ index: Int) -> Bool {
+          guard draft.indices.contains(index), original.indices.contains(index) else {
+              return false
+          }
+
+          if draft[index].calculatedMinutesOverride != original[index].calculatedMinutesOverride {
+              return true
+          }
+
+          let originalType = original[index].scheduleType ?? .planned
+          let currentType = draft[index].scheduleType ?? .planned
+          return originalType == .planned && currentType != .planned
+      }
+
+          '''
+          once(anchor, anchor + '''    private func calculatedSourceHasChanges(_ index: Int) -> Bool {
+          guard draft.indices.contains(index), original.indices.contains(index) else {
+              return false
+          }
+
+          let originalUsesTable = original[index].calculatedMinutesOverride == nil
+          let currentUsesTable = draft[index].calculatedMinutesOverride == nil
+          return originalUsesTable != currentUsesTable
+      }
+
+          ''')
+
+          once(
+          '''    let usesTable: Bool
+      let hasChanges: Bool
+      let onActivate: () -> Void
+          ''',
+          '''    let usesTable: Bool
+      let hasChanges: Bool
+      let sourceHasChanges: Bool
+      let onActivate: () -> Void
+          ''')
+
+          once(
+          '''    private var sourceColor: Color {
+          hasChanges ? DutyEditPalette.changed : Color.accentColor
+      }
+          ''',
+          '''    private var sourceColor: Color {
+          sourceHasChanges ? DutyEditPalette.changed : Color.accentColor
+      }
+
+      private var displayedClockParts: (hour: String, minute: String)? {
+          let parts = displayed.split(separator: ":", omittingEmptySubsequences: false)
+          guard parts.count == 2 else { return nil }
+          return (String(parts[0]), String(parts[1]))
+      }
+          ''')
+
+          once(
+          '''            if !isEditing {
+                  Text(displayed)
+                      .font(
+                          displayed == "Нет данных"
+                              ? .subheadline.weight(.semibold)
+                              : .caption.bold()
+                      )
+                      .monospacedDigit()
+                      .foregroundStyle(.primary)
+                      .lineLimit(1)
+                      .frame(height: 18)
+              } else if usesTable {
+          ''',
+          '''            if !isEditing {
+                  if let parts = displayedClockParts {
+                      HStack(spacing: -1) {
+                          Text(parts.hour)
+                              .frame(width: 17, height: 18)
+                          Text(":")
+                              .font(.caption.bold())
+                              .frame(width: 5)
+                          Text(parts.minute)
+                              .frame(width: 17, height: 18)
+                      }
+                      .font(.caption.bold())
+                      .monospacedDigit()
+                      .foregroundStyle(.primary)
+                      .frame(width: 37, height: 18)
+                  } else {
+                      Text(displayed)
+                          .font(.subheadline.weight(.semibold))
+                          .foregroundStyle(.primary)
+                          .lineLimit(1)
+                          .frame(height: 18)
+                  }
+              } else if usesTable {
+          ''')
+
+          once(
+          '''                width: 19, hitWidth: 33, hitOffset: 0, hitHeight: 48,
+          ''',
+          '''                width: 17, hitWidth: 33, hitOffset: 0, hitHeight: 48,
+          ''')
+
+          once(
+          '''        .frame(width: 41, height: 18)
+          ''',
+          '''        .frame(width: 37, height: 18)
+          ''')
+
+          p.write_text(s)
+          Path('AppVersion.swift').write_text(
+              'enum AppVersion {\n'
+              '    static let number = 113\n'
+              '    static let label = "Версия 113"\n'
+              '}\n'
+          )
+
+      - name: Validate patch
+        run: |
+          git diff --check
+          grep -q 'static let number = 113' AppVersion.swift
+          grep -q 'sourceHasChanges: calculatedSourceHasChanges(index)' AppViews.swift
+          grep -q 'private func calculatedSourceHasChanges' AppViews.swift
+          grep -q '.frame(width: 37, height: 18)' AppViews.swift
+          ! grep -q '.alert("Удалить задание на полёт?"' AppViews.swift
+
+      - name: Commit patch and remove temporary workflow
+        run: |
+          git rm .github/workflows/apply-v113.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add AppViews.swift AppVersion.swift
+          git commit -m 'Версия 113: расчётное время и подтверждение удаления'
+          git push origin HEAD:feature/duty-editor-v113
