@@ -1109,18 +1109,6 @@ struct DutyDetailView: View {
         .frame(height: 24)
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
-        .background {
-            if isEditing {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.accentColor.opacity(0.08))
-            }
-        }
-        .overlay {
-            if isEditing {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-            }
-        }
         .frame(maxWidth: .infinity)
     }
 
@@ -1422,14 +1410,14 @@ struct DutyDetailView: View {
                 Text(prefix)
                     .font(textFont)
                     .foregroundStyle(
-                        isActive.wrappedValue ? Color.accentColor : Color.primary
+                        isEditing ? Color.accentColor : Color.primary
                     )
             }
 
             Text(text.wrappedValue)
                 .font(textFont)
                 .foregroundStyle(
-                    isActive.wrappedValue ? Color.accentColor : Color.primary
+                    isEditing ? Color.accentColor : Color.primary
                 )
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -1469,7 +1457,7 @@ struct DutyDetailView: View {
 
             content()
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .frame(height: 18, alignment: .center)
@@ -1478,18 +1466,6 @@ struct DutyDetailView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .fixedSize(horizontal: true, vertical: false)
-        .background {
-            if isEditing {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.accentColor.opacity(0.08))
-            }
-        }
-        .overlay {
-            if isEditing {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-            }
-        }
         .contentShape(Rectangle())
         .onTapGesture {
             guard isEditing else { return }
@@ -1518,18 +1494,6 @@ struct DutyDetailView: View {
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 6)
-        .background {
-            if isEditing {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.accentColor.opacity(0.08))
-            }
-        }
-        .overlay {
-            if isEditing {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-            }
-        }
     }
 
     private func routeIdentity(_ leg: FlightLeg, index: Int) -> some View {
@@ -1567,7 +1531,7 @@ struct DutyDetailView: View {
         let endpointText =
             Text("\(airportNameOnly(cleanCode)) (")
             + Text(cleanCode)
-                .foregroundColor(isActive.wrappedValue ? .accentColor : .primary)
+                .foregroundColor(isEditing ? .accentColor : .primary)
             + Text(")")
 
         return endpointText
@@ -1822,11 +1786,8 @@ struct DutyDetailView: View {
                             title: "Расчётное время",
                             value: leg.calculatedMinutes.map(timeText) ?? "Отсутствует",
                             centered: true,
-                            compact: true
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                            compact: true,
+                            valueColor: .accentColor
                         )
                     }
                     .buttonStyle(.plain)
@@ -1957,12 +1918,10 @@ struct DutyDetailView: View {
                 Button {
                     focusedField = .time(index, point)
                 } label: {
-                    legValueCard(title: title, value: formatDateTime(
-                        point.date(in: times(for: draft[index]))
-                    ))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+                    legValueCard(
+                        title: title,
+                        value: formatDateTime(point.date(in: times(for: draft[index]))),
+                        valueColor: .accentColor
                     )
                 }
                 .buttonStyle(.plain)
@@ -2054,7 +2013,8 @@ struct DutyDetailView: View {
         title: String,
         value: String,
         centered: Bool = false,
-        compact: Bool = false
+        compact: Bool = false,
+        valueColor: Color = .primary
     ) -> some View {
         VStack(alignment: centered ? .center : .leading, spacing: 3) {
             Text(title)
@@ -2065,7 +2025,7 @@ struct DutyDetailView: View {
 
             Text(value)
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(valueColor)
                 .minimumScaleFactor(0.85)
                 .frame(
                     height: 18,
