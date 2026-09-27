@@ -1332,13 +1332,13 @@ struct DutyDetailView: View {
                 field: .legNumber(index),
                 keyboardType: .numbersAndPunctuation,
                 capitalization: .allCharacters,
-                clearOnFirstDelete: true,
                 maxLength: 10,
                 expands: false,
                 allowsEditing: isEditing,
                 restoreValue: original.indices.contains(index)
                     ? (original[index].legNumber ?? original[index].flightNumber)
-                    : leg.displayedLegNumber
+                    : leg.displayedLegNumber,
+                clearOnFirstDelete: true
             )
         }
     }
