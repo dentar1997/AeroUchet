@@ -361,19 +361,23 @@ private struct DutyAssignmentOverlay: View {
                     .padding(.vertical, 20)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: geometry.size.height, alignment: .center)
+                    .background {
+                        // This belongs to the scroll content, so blank margins
+                        // receive taps instead of the ScrollView swallowing them.
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if editorIsActive {
+                                    dismissEditorSignal += 1
+                                } else {
+                                    onClose()
+                                }
+                            }
+                    }
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.basedOnSize)
                 .scrollDisabled(editorIsActive)
-                .background {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if editorIsActive {
-                                dismissEditorSignal += 1
-                            }
-                        }
-                }
                 .frame(
                     maxWidth: .infinity,
                     maxHeight: .infinity,
@@ -642,6 +646,13 @@ struct DutyDetailView: View {
             onEditorFocusChange?(false)
         }
         .environment(\.timeZone, moscowTimeZone)
+        .background {
+            // Behind the controls: blank card/header space dismisses the
+            // editor, while visible buttons and picker controls get the tap.
+            Color.clear
+                .contentShape(RoundedRectangle(cornerRadius: 20))
+                .onTapGesture { focusedField = nil }
+        }
         .background(
             Color(uiColor: .secondarySystemGroupedBackground),
             in: RoundedRectangle(cornerRadius: 20)
