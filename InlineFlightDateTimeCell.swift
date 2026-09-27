@@ -47,11 +47,11 @@ struct InlineFlightDateTimeCell: View {
                     valueColor: color(for: .date),
                     isEditing: isEditing,
                     isActive: isActive && activePart == .date && !showsCalendar,
-                    canSpin: showsCalendarButton,
+                    canSpin: false,
                     onTap: {
                         guard isEditing else { return }
                         if showsCalendarButton {
-                            activate(.date)
+                            openCalendar()
                         } else if dateCanToggle {
                             activate(.date)
                             onToggleDate()
@@ -70,8 +70,8 @@ struct InlineFlightDateTimeCell: View {
                         previous: twoDigits(wrap(hour - 1, count: 24)),
                         next: twoDigits(wrap(hour + 1, count: 24)),
                         width: 17,
-                        hitWidth: 24,
-                        hitOffset: -1,
+                        hitWidth: 22,
+                        hitOffset: 1,
                         isEditing: isEditing,
                         isActive: isActive && activePart == .hour,
                         valueColor: color(for: .hour),
@@ -128,9 +128,7 @@ struct InlineFlightDateTimeCell: View {
                 VStack(spacing: 3) {
                     if showsCalendarButton {
                         Button {
-                            onActivate()
-                            activePart = nil
-                            showsCalendar = true
+                            openCalendar()
                         } label: {
                             Image(systemName: "calendar")
                                 .font(.system(size: 9, weight: .semibold))
@@ -186,7 +184,7 @@ struct InlineFlightDateTimeCell: View {
     private func color(for part: Part) -> Color {
         guard isEditing else { return .primary }
         if part == .date && showsCalendar {
-            return Color.accentColor.opacity(0.82)
+            return Color(red: 0.0, green: 0.36, blue: 0.39)
         }
         if isActive && activePart == part {
             return Color.accentColor.opacity(0.58)
@@ -214,8 +212,16 @@ struct InlineFlightDateTimeCell: View {
 
     private func activate(_ part: Part) {
         guard isEditing else { return }
+        if part != .date { showsCalendar = false }
         onActivate()
         activePart = part
+    }
+
+    private func openCalendar() {
+        guard isEditing else { return }
+        onActivate()
+        activePart = .date
+        showsCalendar = true
     }
 
     private func setClock(hour: Int, minute: Int) {
@@ -339,6 +345,7 @@ struct InlineFlightWheelSegment: View {
     let valueColor: Color
     let onActivate: () -> Void
     let onStep: (Int) -> Void
+    var canStepPrevious = true
 
     @State private var translation: CGFloat = 0
     @State private var appliedSteps = 0
@@ -352,10 +359,12 @@ struct InlineFlightWheelSegment: View {
                 .opacity(isActive ? 0 : 1)
 
             if isActive {
-                Text(previous)
-                    .foregroundStyle(Color.primary.opacity(0.76))
-                    .offset(y: -rowHeight + residualOffset)
-                    .allowsHitTesting(false)
+                if canStepPrevious {
+                    Text(previous)
+                        .foregroundStyle(Color.primary.opacity(0.76))
+                        .offset(y: -rowHeight + residualOffset)
+                        .allowsHitTesting(false)
+                }
                 Text(value)
                     .foregroundStyle(valueColor)
                     .offset(y: residualOffset)
@@ -389,6 +398,10 @@ struct InlineFlightWheelSegment: View {
                             }
                             translation = gesture.translation.height
                             let steps = Int((-translation / rowHeight).rounded())
+                            if !canStepPrevious && steps < appliedSteps {
+                                translation = -CGFloat(appliedSteps) * rowHeight
+                                return
+                            }
                             if steps != appliedSteps {
                                 onStep(steps - appliedSteps)
                                 appliedSteps = steps
