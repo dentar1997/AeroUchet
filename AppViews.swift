@@ -1350,7 +1350,6 @@ struct DutyDetailView: View {
         }
     }
 
-
     private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
         let textBinding: Binding<String> = isEditing
             ? legNumberBinding(index)
