@@ -31,7 +31,7 @@ struct InlineWheelTestView: View {
                         title: "Без изменения геометрии",
                         subtitle: "Центральные дата и время остаются точно на месте; соседние значения только дорисовываются сверху и снизу."
                     ) {
-                        FixedGeometryAssignmentCard(isEditing: isEditing)
+                        FullEditorTest3View(isEditing: isEditing)
                     }
                 }
                 .padding(24)
