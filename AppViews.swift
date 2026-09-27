@@ -2380,7 +2380,7 @@ private struct InlineCalculatedTimeValue: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
 
-            HStack(spacing: 3) {
+            Group {
                 if isEditing && !usesTable {
                     HStack(spacing: -1) {
                         InlineFlightWheelSegment(
@@ -2392,7 +2392,8 @@ private struct InlineCalculatedTimeValue: View {
                             isActive: isActive && activePart == .hour,
                             valueColor: color(for: .hour),
                             onActivate: { onActivate(); activePart = .hour },
-                            onStep: { minutes = max(0, hour + $0) * 60 + minute }
+                            onStep: { minutes = max(0, hour + $0) * 60 + minute },
+                            canStepPrevious: hour > 0
                         )
                         Text(":")
                             .font(.caption.bold())
@@ -2427,39 +2428,45 @@ private struct InlineCalculatedTimeValue: View {
                             activePart = .hour
                         }
                 }
-
-                if isEditing && !isUnscheduled {
-                    Button {
-                        onActivate()
-                        activePart = nil
-                        onToggleSource()
-                    } label: {
-                        HStack(spacing: 2) {
-                            Image(systemName: usesTable ? "checkmark.square.fill" : "square")
-                                .font(.system(size: 11))
-                            Text("Из таблицы")
-                                .font(.system(size: 9))
-                                .lineLimit(1)
-                        }
-                        .foregroundStyle(Color.accentColor)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Из таблицы")
-                    .accessibilityValue(usesTable ? "Выбрано" : "Не выбрано")
-                }
             }
             .frame(height: 18)
+
+            if isEditing && !isUnscheduled {
+                Button {
+                    onActivate()
+                    activePart = nil
+                    onToggleSource()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: usesTable ? "checkmark.square.fill" : "square")
+                            .font(.system(size: 11))
+                        Text("Из таблицы")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                .frame(height: 14)
+                .accessibilityLabel("Из таблицы")
+                .accessibilityValue(usesTable ? "Выбрано" : "Не выбрано")
+            } else {
+                Color.clear.frame(height: 14)
+            }
         }
         .frame(width: 130, alignment: .center)
         .padding(.vertical, 6)
-        .overlay(alignment: .topTrailing) {
-            if isEditing && hasChanges {
+        .overlay(alignment: .trailing) {
+            if isEditing && isActive {
                 Button(action: onRestore) {
                     Image(systemName: "arrow.uturn.backward")
                         .font(.system(size: 9, weight: .semibold))
+                        .frame(width: 17, height: 17)
+                        .background(.ultraThinMaterial, in: Circle())
                 }
                 .buttonStyle(.plain)
-                .offset(x: 5, y: -4)
+                .foregroundStyle(Color.accentColor)
+                .disabled(!hasChanges)
+                .offset(y: -6)
                 .accessibilityLabel("Вернуть исходное расчётное время")
             }
         }
