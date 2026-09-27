@@ -435,7 +435,7 @@ struct FullEditorTest3View: View {
             return
         }
 
-        let minimum = previousEventDate(id) ?? workStart
+        let minimum = minimumAllowedEventDate(id)
         let maximum = maximumAllowedEventDate
         let clamped = min(max(candidate, minimum), maximum)
         setEventDate(id, clamped)
@@ -454,23 +454,37 @@ struct FullEditorTest3View: View {
     }
 
     private func normalizeFollowingEvents(after id: FullTest3EventID) {
-        var previous = eventDate(id)
-
         for next in id.following {
             var candidate = eventDate(next)
             candidate = min(candidate, maximumAllowedEventDate)
-            if candidate < previous {
-                candidate = previous
+            let minimum = minimumAllowedEventDate(next)
+            if candidate < minimum {
+                candidate = minimum
             }
             setEventDate(next, candidate)
-            previous = candidate
+        }
+    }
+
+    private func minimumAllowedEventDate(_ id: FullTest3EventID) -> Date {
+        switch id {
+        case .workStart:
+            return workStart
+        case .engineStart:
+            return workStart
+        case .takeoff:
+            return engineStart
+        case .landing:
+            return takeoff
+        case .engineStop:
+            return landing
+        case .workEnd:
+            let offset = isLastLeg ? 30 : 0
+            return fullTest3Calendar.date(byAdding: .minute, value: offset, to: engineStop) ?? engineStop
         }
     }
 
     private var maximumAllowedEventDate: Date {
-        let startOfDay = fullTest3Calendar.startOfDay(for: workStart)
-        let dayAfterNext = fullTest3Calendar.date(byAdding: .day, value: 2, to: startOfDay) ?? workStart
-        return dayAfterNext.addingTimeInterval(-60)
+        fullTest3Calendar.date(byAdding: .minute, value: 15 * 60, to: workStart) ?? workStart
     }
 
     private func dateIsEditable(_ id: FullTest3EventID) -> Bool {
@@ -499,12 +513,12 @@ struct FullEditorTest3View: View {
 
         guard let candidate = fullTest3Calendar.date(from: targetComponents) else { return }
 
-        if let previous = previousEventDate(id), candidate < previous {
+        if candidate < minimumAllowedEventDate(id) || candidate > maximumAllowedEventDate {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             return
         }
 
-        setEventDate(id, min(candidate, maximumAllowedEventDate))
+        setEventDate(id, candidate)
 
         if targetOffset == 1 {
             forceFollowingEventsToNextDay(after: id)
@@ -532,8 +546,9 @@ struct FullEditorTest3View: View {
 
             var candidate = fullTest3Calendar.date(from: components) ?? previous
             candidate = min(candidate, maximumAllowedEventDate)
-            if candidate < previous {
-                candidate = previous
+            let minimum = minimumAllowedEventDate(next)
+            if candidate < minimum {
+                candidate = minimum
             }
             setEventDate(next, candidate)
             previous = candidate
