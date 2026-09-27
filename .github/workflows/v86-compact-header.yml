@@ -1,0 +1,15 @@
+name: v86 compact header
+
+on:
+  push:
+    branches:
+      - ui/v86-compact-leg-header
+    paths:
+      - .github/workflows/v86-compact-header.yml
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ready
+        run: echo ready
