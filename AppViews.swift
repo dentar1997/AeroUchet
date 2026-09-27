@@ -1310,48 +1310,47 @@ struct DutyDetailView: View {
     }
 
     private func legHeader(_ leg: FlightLeg, index: Int) -> some View {
-        LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
-            Group {
-                if sizeClass == .compact {
-                    VStack(spacing: 4) {
-                        flightNumber(leg, index: index)
-                        aircraftField(leg, index: index)
-                        registrationField(leg, index: index)
-                    }
-                } else {
-                    HStack(alignment: .top, spacing: 4) {
-                        flightNumber(leg, index: index)
-                            .frame(width: 62)
-                        aircraftField(leg, index: index)
-                            .frame(width: 72)
-                        registrationField(leg, index: index)
-                            .frame(maxWidth: .infinity)
-                    }
+    LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
+        Group {
+            if sizeClass == .compact {
+                VStack(spacing: 4) {
+                    flightNumber(leg, index: index)
+                    aircraftField(leg, index: index)
+                    registrationField(leg, index: index)
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-
-            routeField(leg, index: index)
-                .frame(maxWidth: .infinity, alignment: .top)
-
-            Group {
-                if sizeClass == .compact {
-                    VStack(spacing: 4) {
-                        flightKindField(leg, index: index)
-                        calculatedTime(leg, index: index)
-                    }
-                } else {
-                    HStack(alignment: .top, spacing: 8) {
-                        flightKindField(leg, index: index)
-                        calculatedTime(leg, index: index)
-                    }
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    flightNumber(leg, index: index)
+                    aircraftField(leg, index: index)
+                    registrationField(leg, index: index)
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
             }
-            .frame(maxWidth: .infinity, alignment: .topTrailing)
         }
-    }
+        .frame(maxWidth: .infinity, alignment: .top)
 
-    private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
+        routeField(leg, index: index)
+            .frame(maxWidth: .infinity, alignment: .top)
+
+        Group {
+            if sizeClass == .compact {
+                VStack(spacing: 4) {
+                    flightKindField(leg, index: index)
+                    calculatedTime(leg, index: index)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 8) {
+                    flightKindField(leg, index: index)
+                    calculatedTime(leg, index: index)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+}
+
+private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
         let textBinding: Binding<String> = isEditing
             ? legNumberBinding(index)
             : .constant(leg.displayedLegNumber)
@@ -1366,6 +1365,7 @@ struct DutyDetailView: View {
                 keyboardType: .numbersAndPunctuation,
                 capitalization: .allCharacters,
                 maxLength: 10,
+                expands: false,
                 allowsEditing: isEditing
             )
         }
@@ -1392,6 +1392,7 @@ struct DutyDetailView: View {
                 keyboardType: .default,
                 capitalization: .allCharacters,
                 maxLength: 10,
+                expands: false,
                 allowsEditing: isEditing
             )
         }
@@ -1415,6 +1416,7 @@ struct DutyDetailView: View {
                 keyboardType: .numberPad,
                 capitalization: .none,
                 maxLength: 5,
+                expands: false,
                 allowsEditing: isEditing,
                 highlightHorizontalPadding: 0
             )
@@ -1493,7 +1495,11 @@ struct DutyDetailView: View {
                 .frame(height: 18, alignment: .center)
         }
         .multilineTextAlignment(.center)
-        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 10)
+        .frame(
+            maxWidth: sizeClass == .compact ? .infinity : nil,
+            alignment: .center
+        )
         .padding(.vertical, 6)
         .background {
             if isEditing {
@@ -1507,6 +1513,7 @@ struct DutyDetailView: View {
                     .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
             }
         }
+        .fixedSize(horizontal: sizeClass != .compact, vertical: false)
         .contentShape(Rectangle())
         .onTapGesture {
             guard isEditing else { return }
@@ -1605,10 +1612,6 @@ struct DutyDetailView: View {
                 }
             }
             .fixedSize(horizontal: true, vertical: false)
-            .frame(
-                maxWidth: .infinity,
-                alignment: side == .departure ? .trailing : .leading
-            )
             .contentShape(Rectangle())
             .onTapGesture {
                 guard isEditing else { return }
@@ -1842,7 +1845,8 @@ struct DutyDetailView: View {
                         legValueCard(
                             title: "Расчётное время",
                             value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
-                            centered: true
+                            centered: true,
+                            compact: sizeClass != .compact
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
@@ -1924,7 +1928,8 @@ struct DutyDetailView: View {
                 legValueCard(
                     title: "Расчётное время",
                     value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
-                    centered: true
+                    centered: true,
+                    compact: sizeClass != .compact
                 )
             }
         }
@@ -2072,7 +2077,8 @@ struct DutyDetailView: View {
     private func legValueCard(
         title: String,
         value: String,
-        centered: Bool = false
+        centered: Bool = false,
+        compact: Bool = false
     ) -> some View {
         VStack(alignment: centered ? .center : .leading, spacing: 3) {
             Text(title)
@@ -2089,7 +2095,7 @@ struct DutyDetailView: View {
                 )
         }
         .frame(
-            maxWidth: .infinity,
+            maxWidth: compact ? nil : .infinity,
             alignment: centered ? .center : .leading
         )
         .padding(.horizontal, 10)
@@ -2098,6 +2104,7 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 10)
                 .fill(valueTileColor)
         )
+        .fixedSize(horizontal: compact, vertical: false)
         .accessibilityElement(children: .combine)
     }
 
