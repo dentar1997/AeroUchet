@@ -28,3 +28,5 @@ jobs:
           git add AppViews.swift AppVersion.swift Package.swift
           git commit -m "v93: show editable values with accent color"
           git push origin ui/v93-editable-values-accent
+
+# rerun 2
