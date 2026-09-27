@@ -1,0 +1,59 @@
+name: v104 final build validation
+
+on:
+  push:
+    branches:
+      - ui/v104-full-test3-editor
+    paths:
+      - .github/workflows/v104_build_validate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ui/v104-full-test3-editor
+
+      - name: SwiftLint
+        run: |
+          if ! command -v swiftlint >/dev/null 2>&1; then brew install swiftlint; fi
+          swiftlint lint --config .swiftlint.yml
+
+      - name: Regression checks
+        run: |
+          bash Scripts/run-test-event-cleanup-tests.sh
+          bash Scripts/run-core-time-tests.sh
+
+      - name: Build iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -scheme "АэроУчёт" \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Static analyze
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -scheme "АэроУчёт" \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            analyze
+
+      - name: Remove temporary workflow
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/v104_build_validate.yml
+          git commit -m "Убрать временную сборку v104"
+          git push
