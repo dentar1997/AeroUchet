@@ -68,6 +68,16 @@ struct ContentView: View {
             }
             
             
+            InlineWheelTestView()
+                .tabItem {
+                    Label(
+                        "Тест",
+                        systemImage:
+                            "dial.medium"
+                    )
+                }
+            
+            
             AccountingView(
                 store:
                     store,
