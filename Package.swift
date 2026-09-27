@@ -16,8 +16,8 @@ let package = Package(
         .iOSApplication(
             name: "АэроУчёт",
             targets: ["AppModule"],
-            displayVersion: "76",
-            bundleVersion: "76",
+            displayVersion: "77",
+            bundleVersion: "77",
             appIcon: .placeholder(icon: .plane),
             accentColor: .presetColor(.teal),
             supportedDeviceFamilies: [

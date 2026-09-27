@@ -343,10 +343,7 @@ private struct DutyAssignmentOverlay: View {
 
             ZStack {
                 Color.black
-                    // Keep the dim layer static during the interactive drag.
-                    // Updating its opacity every frame made downward swipes
-                    // increasingly expensive as the number of legs grew.
-                    .opacity(0.65)
+                    .opacity(backgroundOpacity(for: geometry.size.height))
                     .ignoresSafeArea()
                     .onTapGesture {
                         if editorIsActive {
@@ -403,6 +400,12 @@ private struct DutyAssignmentOverlay: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    private func backgroundOpacity(for height: CGFloat) -> Double {
+        guard height > 0 else { return 0.65 }
+        let progress = min(max(dragOffset / height, 0), 1)
+        return 0.65 * Double(1 - progress * 0.75)
     }
 
     private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {
@@ -1455,19 +1458,20 @@ struct DutyDetailView: View {
             .fixedSize(horizontal: true, vertical: false)
             .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
 
-            InlineSelectAllTextField(
-                text: text,
-                isActive: isActive,
-                keyboardType: keyboardType,
-                capitalization: capitalization,
-                textAlignment: .center,
-                font: inputFont,
-                maxLength: maxLength,
-                isEnabled: allowsEditing
-            )
-            .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
-            .fixedSize(horizontal: !expands, vertical: false)
-            .allowsHitTesting(allowsEditing)
+            if allowsEditing {
+                InlineSelectAllTextField(
+                    text: text,
+                    isActive: isActive,
+                    keyboardType: keyboardType,
+                    capitalization: capitalization,
+                    textAlignment: .center,
+                    font: inputFont,
+                    maxLength: maxLength,
+                    isEnabled: true
+                )
+                .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
+                .fixedSize(horizontal: !expands, vertical: false)
+            }
         }
         .frame(height: lineHeight)
     }
