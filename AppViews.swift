@@ -733,15 +733,7 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 20)
                 .stroke(Color.primary.opacity(0.10), lineWidth: 1)
         )
-        .alert("Удалить задание на полёт?", isPresented: $showDeleteConfirmation) {
-            Button("Отмена", role: .cancel) {}
-            Button("Удалить задание", role: .destructive) {
-                store.deleteDutyLegs(ids: Set(current.legs.map(\.id)))
-                close()
-            }
-        } message: {
-            Text("Задание и \(legCountText(current.legs.count)) будут удалены.")
-        }
+
     }
 
     private func assignmentHeader(_ duty: FlightDuty) -> some View {
@@ -861,6 +853,38 @@ struct DutyDetailView: View {
                             .frame(width: 18, height: 18)
                     }
                     .accessibilityLabel("Удалить задание на полёт")
+                    .popover(isPresented: $showDeleteConfirmation, arrowEdge: .top) {
+                        VStack(spacing: 12) {
+                            Image(systemName: "trash.fill")
+                                .font(.title2)
+                                .foregroundStyle(.red)
+                            Text("Удалить задание на полёт?")
+                                .font(.headline)
+                            Text("Задание и \(legCountText(duty.legs.count)) будут удалены.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+
+                            HStack(spacing: 10) {
+                                Button("Отмена") {
+                                    showDeleteConfirmation = false
+                                }
+                                .buttonStyle(.bordered)
+
+                                Button("Удалить") {
+                                    showDeleteConfirmation = false
+                                    store.deleteDutyLegs(ids: Set(duty.legs.map(\.id)))
+                                    close()
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.red)
+                            }
+                        }
+                        .padding(16)
+                        .frame(width: 260)
+                        .font(.subheadline)
+                        .presentationCompactAdaptation(.popover)
+                    }
                 }
             }
             .font(.system(size: 11, weight: .semibold))
@@ -2226,6 +2250,7 @@ struct DutyDetailView: View {
             isUnscheduled: isUnscheduled,
             usesTable: usesTable,
             hasChanges: calculatedEditorHasChanges(index),
+            sourceHasChanges: calculatedSourceHasChanges(index),
             onActivate: { focusedField = .calculatedTime(index) },
             onToggleSource: {
                 focusedField = nil
@@ -2248,6 +2273,16 @@ struct DutyDetailView: View {
         let originalType = original[index].scheduleType ?? .planned
         let currentType = draft[index].scheduleType ?? .planned
         return originalType == .planned && currentType != .planned
+    }
+
+    private func calculatedSourceHasChanges(_ index: Int) -> Bool {
+        guard draft.indices.contains(index), original.indices.contains(index) else {
+            return false
+        }
+
+        let originalUsesTable = original[index].calculatedMinutesOverride == nil
+        let currentUsesTable = draft[index].calculatedMinutesOverride == nil
+        return originalUsesTable != currentUsesTable
     }
 
     private func restoreOriginalCalculatedTime(_ index: Int) {
@@ -2367,6 +2402,7 @@ private struct InlineCalculatedTimeValue: View {
     let isUnscheduled: Bool
     let usesTable: Bool
     let hasChanges: Bool
+    let sourceHasChanges: Bool
     let onActivate: () -> Void
     let onToggleSource: () -> Void
     let onRestore: () -> Void
@@ -2378,7 +2414,13 @@ private struct InlineCalculatedTimeValue: View {
     private var minute: Int { minutes % 60 }
 
     private var sourceColor: Color {
-        hasChanges ? DutyEditPalette.changed : Color.accentColor
+        sourceHasChanges ? DutyEditPalette.changed : Color.accentColor
+    }
+
+    private var displayedClockParts: (hour: String, minute: String)? {
+        let parts = displayed.split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return nil }
+        return (String(parts[0]), String(parts[1]))
     }
 
     var body: some View {
@@ -2390,16 +2432,27 @@ private struct InlineCalculatedTimeValue: View {
                 .minimumScaleFactor(0.75)
 
             if !isEditing {
-                Text(displayed)
-                    .font(
-                        displayed == "Нет данных"
-                            ? .subheadline.weight(.semibold)
-                            : .caption.bold()
-                    )
+                if let parts = displayedClockParts {
+                    HStack(spacing: -1) {
+                        Text(parts.hour)
+                            .frame(width: 17, height: 18)
+                        Text(":")
+                            .font(.caption.bold())
+                            .frame(width: 5)
+                        Text(parts.minute)
+                            .frame(width: 17, height: 18)
+                    }
+                    .font(.caption.bold())
                     .monospacedDigit()
                     .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .frame(height: 18)
+                    .frame(width: 37, height: 18)
+                } else {
+                    Text(displayed)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .frame(height: 18)
+                }
             } else if usesTable {
                 Button {
                     activePart = nil
@@ -2486,7 +2539,7 @@ private struct InlineCalculatedTimeValue: View {
                 value: String(format: "%02d", hour),
                 previous: String(format: "%02d", max(0, hour - 1)),
                 next: String(format: "%02d", hour + 1),
-                width: 19, hitWidth: 33, hitOffset: 0, hitHeight: 48,
+                width: 17, hitWidth: 33, hitOffset: 0, hitHeight: 48,
                 isEditing: true,
                 isActive: isActive && activePart == .hour,
                 valueColor: color(for: .hour),
@@ -2510,7 +2563,7 @@ private struct InlineCalculatedTimeValue: View {
                 onStep: { minutes = hour * 60 + (minute + $0 % 60 + 60) % 60 }
             )
         }
-        .frame(width: 41, height: 18)
+        .frame(width: 37, height: 18)
     }
 
     private func color(for part: Part) -> Color {
