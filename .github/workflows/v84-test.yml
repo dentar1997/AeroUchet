@@ -1,0 +1,15 @@
+name: v84 test
+
+on:
+  push:
+    branches:
+      - ui/v84-fill-header-columns
+    paths:
+      - .github/workflows/v84-test.yml
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test runner
+        run: echo ok
