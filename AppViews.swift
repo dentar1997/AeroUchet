@@ -359,6 +359,8 @@ private struct DutyAssignmentOverlay: View {
                     .frame(width: width)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.vertical, 20)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: geometry.size.height, alignment: .center)
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.basedOnSize)
@@ -615,7 +617,6 @@ struct DutyDetailView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .zIndex(editorCoversHeader ? 0 : 1)
-                .allowsHitTesting(!editorCoversHeader)
 
             if scrollsAsPage {
                 assignmentContents(current)
