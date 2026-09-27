@@ -1,0 +1,39 @@
+name: Apply version 114 patch
+
+on:
+  push:
+    branches:
+      - feature/duty-editor-v114
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/duty-editor-v114
+
+      - name: Apply patch
+        run: python3 _patch_v114.py
+
+      - name: Validate patch
+        run: |
+          git diff --check
+          grep -q 'static let number = 114' AppVersion.swift
+          grep -q 'DutySearchField' AppViews.swift
+          grep -q 'appendManualLeg' AppViews.swift
+          grep -q 'addDutyLegs' AeroCore.swift
+          ! grep -q 'struct AddFlightView' AppViews.swift
+
+      - name: Commit result and remove temporary files
+        run: |
+          git rm _patch_v114.py .github/workflows/apply-v114.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add AppViews.swift AeroCore.swift InlineFlightDateTimeCell.swift AppVersion.swift
+          git commit -m 'Версия 114: создание задания, поиск и список полётов'
+          git push origin HEAD:feature/duty-editor-v114
