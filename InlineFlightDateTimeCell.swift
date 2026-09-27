@@ -1,6 +1,19 @@
 import SwiftUI
 import UIKit
 
+enum DutyEditPalette {
+    static let changed = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 1.0, green: 0.78, blue: 0.22, alpha: 1)
+            : UIColor(red: 0.55, green: 0.38, blue: 0.0, alpha: 1)
+    })
+    static let calendarSelection = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.10, green: 0.72, blue: 0.72, alpha: 1)
+            : UIColor(red: 0.0, green: 0.46, blue: 0.48, alpha: 1)
+    })
+}
+
 // The date and clock stay in the assignment cell while their adjacent values
 // appear above and below the selected part, as in the third wheel prototype.
 struct InlineFlightDateTimeCell: View {
@@ -47,11 +60,11 @@ struct InlineFlightDateTimeCell: View {
                     valueColor: color(for: .date),
                     isEditing: isEditing,
                     isActive: isActive && activePart == .date && !showsCalendar,
-                    canSpin: false,
+                    canSpin: showsCalendarButton,
                     onTap: {
                         guard isEditing else { return }
                         if showsCalendarButton {
-                            openCalendar()
+                            activate(.date)
                         } else if dateCanToggle {
                             activate(.date)
                             onToggleDate()
@@ -70,8 +83,9 @@ struct InlineFlightDateTimeCell: View {
                         previous: twoDigits(wrap(hour - 1, count: 24)),
                         next: twoDigits(wrap(hour + 1, count: 24)),
                         width: 17,
-                        hitWidth: 22,
-                        hitOffset: 1,
+                        hitWidth: 28,
+                        hitOffset: 3,
+                        hitHeight: 48,
                         isEditing: isEditing,
                         isActive: isActive && activePart == .hour,
                         valueColor: color(for: .hour),
@@ -94,8 +108,9 @@ struct InlineFlightDateTimeCell: View {
                         previous: twoDigits(wrap(minute - 1, count: 60)),
                         next: twoDigits(wrap(minute + 1, count: 60)),
                         width: 17,
-                        hitWidth: 30,
-                        hitOffset: 7,
+                        hitWidth: 40,
+                        hitOffset: 18,
+                        hitHeight: 48,
                         isEditing: isEditing,
                         isActive: isActive && activePart == .minute,
                         valueColor: color(for: .minute),
@@ -126,7 +141,7 @@ struct InlineFlightDateTimeCell: View {
         .overlay(alignment: .bottomTrailing) {
             if isEditing && isActive {
                 VStack(spacing: 3) {
-                    if showsCalendarButton {
+                    if showsCalendarButton && activePart == .date {
                         Button {
                             openCalendar()
                         } label: {
@@ -184,13 +199,13 @@ struct InlineFlightDateTimeCell: View {
     private func color(for part: Part) -> Color {
         guard isEditing else { return .primary }
         if part == .date && showsCalendar {
-            return Color(red: 0.0, green: 0.36, blue: 0.39)
+            return DutyEditPalette.calendarSelection
         }
         if isActive && activePart == part {
             return Color.accentColor.opacity(0.58)
         }
         if hasChanged(part) {
-            return .indigo
+            return DutyEditPalette.changed
         }
         return .accentColor
     }
@@ -340,6 +355,7 @@ struct InlineFlightWheelSegment: View {
     let width: CGFloat
     let hitWidth: CGFloat
     let hitOffset: CGFloat
+    var hitHeight: CGFloat = 48
     let isEditing: Bool
     let isActive: Bool
     let valueColor: Color
@@ -382,7 +398,7 @@ struct InlineFlightWheelSegment: View {
         .overlay {
             Color.clear
                 .contentShape(Rectangle())
-                .frame(width: hitWidth, height: 38)
+                .frame(width: hitWidth, height: hitHeight)
                 .offset(x: hitOffset)
                 .onTapGesture {
                     guard isEditing else { return }
