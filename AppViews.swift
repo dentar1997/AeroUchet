@@ -1432,7 +1432,7 @@ struct DutyDetailView: View {
             ? editorValueColor(for: field, isActive: isActive.wrappedValue)
             : Color.primary
 
-        ZStack(alignment: .leading) {
+        return ZStack(alignment: .leading) {
             if let reserveText {
                 Text(reserveText)
                     .font(textFont)
