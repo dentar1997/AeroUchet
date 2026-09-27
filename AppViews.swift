@@ -1415,7 +1415,8 @@ struct DutyDetailView: View {
                 keyboardType: .numberPad,
                 capitalization: .none,
                 maxLength: 5,
-                allowsEditing: isEditing
+                allowsEditing: isEditing,
+                highlightHorizontalPadding: 0
             )
         }
     }
@@ -2228,53 +2229,28 @@ private struct CompactFlightValue: View {
 
 // MARK: - Ввод с физической клавиатуры
 
-// Оставляем UITextField обычным системным responder'ом, чтобы iPadOS сам
-// управлял экранной/физической клавиатурой и своей нижней панелью ввода.
-// pressesBegan служит прямым каналом для аппаратных клавиш и не зависит от
-// показа программной клавиатуры.
+// UITextField уже реализует UIKeyInput. Перехватываем именно текстовый канал
+// insertText/deleteBackward: его использует система и для программной, и для
+// физической клавиатуры, когда поле является first responder.
 private final class AssignmentInputTextField: UITextField {
     var hardwareInputHandler: ((String?, Bool) -> Void)?
 
-    override func pressesBegan(
-        _ presses: Set<UIPress>,
-        with event: UIPressesEvent?
-    ) {
-        var handled = false
-
-        for press in presses {
-            guard let key = press.key else { continue }
-
-            if key.keyCode == .keyboardDeleteOrBackspace {
-                hardwareInputHandler?(nil, true)
-                handled = true
-                continue
-            }
-
-            let commandModifiers: UIKeyModifierFlags = [
-                .command,
-                .control,
-                .alternate
-            ]
-            guard key.modifierFlags.intersection(commandModifiers).isEmpty else {
-                continue
-            }
-
-            let characters = key.characters
-            let printable = !characters.isEmpty
-                && characters.unicodeScalars.allSatisfy { scalar in
-                    scalar.value >= 0x20
-                        && !(0xE000...0xF8FF).contains(scalar.value)
-                }
-
-            if printable {
-                hardwareInputHandler?(characters, false)
-                handled = true
-            }
+    override func insertText(_ text: String) {
+        guard let hardwareInputHandler else {
+            super.insertText(text)
+            return
         }
 
-        if !handled {
-            super.pressesBegan(presses, with: event)
+        hardwareInputHandler(text, false)
+    }
+
+    override func deleteBackward() {
+        guard let hardwareInputHandler else {
+            super.deleteBackward()
+            return
         }
+
+        hardwareInputHandler(nil, true)
     }
 }
 
