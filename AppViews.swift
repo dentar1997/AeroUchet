@@ -404,52 +404,62 @@ private struct DutyAssignmentOverlay: View {
     }
 
     private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {
-        DragGesture(minimumDistance: 10)
-            .onChanged { value in
-                guard enabled else {
-                    dragOffset = 0
-                    return
+    DragGesture(minimumDistance: 3)
+        .onChanged { value in
+            guard enabled else {
+                dragOffset = 0
+                return
+            }
+
+            // Вниз карточка идёт за пальцем без задержки.
+            // Вверх используется плавная нелинейная резинка без жёсткого упора.
+            if value.translation.height >= 0 {
+                dragOffset = value.translation.height
+            } else {
+                dragOffset = upwardRubberBand(value.translation.height)
+            }
+        }
+        .onEnded { value in
+            guard enabled else {
+                dragOffset = 0
+                return
+            }
+
+            let predicted = max(
+                value.translation.height,
+                value.predictedEndTranslation.height
+            )
+            let shouldClose =
+                value.translation.height > 110
+                || predicted > 220
+
+            if shouldClose {
+                withAnimation(
+                    .spring(response: 0.34, dampingFraction: 0.92)
+                ) {
+                    dragOffset = max(height + 80, 580)
                 }
 
-                // Вниз карточка следует за пальцем полностью.
-                // Вверх даём небольшой упругий ход, как у обычного sheet.
-                if value.translation.height >= 0 {
-                    dragOffset = value.translation.height
-                } else {
-                    dragOffset = max(value.translation.height * 0.18, -32)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+                    onClose()
+                }
+            } else {
+                withAnimation(
+                    .spring(response: 0.42, dampingFraction: 0.88)
+                ) {
+                    dragOffset = 0
                 }
             }
-            .onEnded { value in
-                guard enabled else {
-                    dragOffset = 0
-                    return
-                }
+        }
+}
 
-                let predicted = max(
-                    value.translation.height,
-                    value.predictedEndTranslation.height
-                )
-                let shouldClose =
-                    value.translation.height > 110
-                    || predicted > 220
+private func upwardRubberBand(_ translation: CGFloat) -> CGFloat {
+    let distance = abs(min(translation, 0))
+    let maxLift: CGFloat = 36
+    let softness: CGFloat = 90
+    return -maxLift * distance / (distance + softness)
+}
 
-                if shouldClose {
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        dragOffset = max(height, 500)
-                    }
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                        onClose()
-                    }
-                } else {
-                    withAnimation(
-                        .spring(response: 0.28, dampingFraction: 0.82)
-                    ) {
-                        dragOffset = 0
-                    }
-                }
-            }
-    }
 }
 
 
@@ -1539,8 +1549,9 @@ struct DutyDetailView: View {
                 side: .departure
             )
 
-            Text(" → ")
+            Text("→")
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 5)
 
             routeEndpoint(
                 code: isEditing
@@ -1571,6 +1582,7 @@ struct DutyDetailView: View {
                 allowsEditing: isEditing,
                 highlightHorizontalPadding: 0
             )
+            .frame(width: routeCodeWidth(code.wrappedValue))
 
             Text(")")
         }
@@ -1586,6 +1598,12 @@ struct DutyDetailView: View {
             focusedField = .route(index)
         }
     }
+
+    private func routeCodeWidth(_ code: String) -> CGFloat {
+    let font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+    let width = (code as NSString).size(withAttributes: [.font: font]).width
+    return max(1, ceil(width))
+}
 
     private func routeCodeBinding(index: Int, side: RouteEditSide) -> Binding<String> {
         Binding(
