@@ -1,0 +1,33 @@
+name: Apply v98 patch
+
+on:
+  push:
+    branches:
+      - ui/v98-swipe-route-registration
+    paths:
+      - .github/scripts/v98_patch.py
+      - .github/workflows/v98-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/v98-swipe-route-registration
+      - name: Apply patch
+        run: python3 .github/scripts/v98_patch.py
+      - name: Commit app changes
+        run: |
+          git config user.name dentar1997
+          git config user.email dentar1997@gmail.com
+          git add AppViews.swift
+          if git diff --cached --quiet; then
+            echo "No app changes"
+            exit 0
+          fi
+          git commit -m "v98: smooth long-card scrolling and edit details"
+          git push
