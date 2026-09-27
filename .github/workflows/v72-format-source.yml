@@ -1,0 +1,115 @@
+name: Format v72 source patch
+
+on:
+  push:
+    branches:
+      - ui/v72-route-spacing-smooth-swipe
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Normalize v72 source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("AppViews.swift")
+          text = path.read_text()
+
+          start = text.index("    private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {")
+          end_marker = "\n}\n\n\n// MARK: - Строка смены"
+          end = text.index(end_marker, start)
+
+          drag_lines = [
+              "    private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {",
+              "        DragGesture(minimumDistance: 3)",
+              "            .onChanged { value in",
+              "                guard enabled else {",
+              "                    dragOffset = 0",
+              "                    return",
+              "                }",
+              "",
+              "                // Вниз карточка идёт за пальцем без задержки.",
+              "                // Вверх используется плавная нелинейная резинка без жёсткого упора.",
+              "                if value.translation.height >= 0 {",
+              "                    dragOffset = value.translation.height",
+              "                } else {",
+              "                    dragOffset = upwardRubberBand(value.translation.height)",
+              "                }",
+              "            }",
+              "            .onEnded { value in",
+              "                guard enabled else {",
+              "                    dragOffset = 0",
+              "                    return",
+              "                }",
+              "",
+              "                let predicted = max(",
+              "                    value.translation.height,",
+              "                    value.predictedEndTranslation.height",
+              "                )",
+              "                let shouldClose =",
+              "                    value.translation.height > 110",
+              "                    || predicted > 220",
+              "",
+              "                if shouldClose {",
+              "                    withAnimation(",
+              "                        .spring(response: 0.34, dampingFraction: 0.92)",
+              "                    ) {",
+              "                        dragOffset = max(height + 80, 580)",
+              "                    }",
+              "",
+              "                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {",
+              "                        onClose()",
+              "                    }",
+              "                } else {",
+              "                    withAnimation(",
+              "                        .spring(response: 0.42, dampingFraction: 0.88)",
+              "                    ) {",
+              "                        dragOffset = 0",
+              "                    }",
+              "                }",
+              "            }",
+              "    }",
+              "",
+              "    private func upwardRubberBand(_ translation: CGFloat) -> CGFloat {",
+              "        let distance = abs(min(translation, 0))",
+              "        let maxLift: CGFloat = 36",
+              "        let softness: CGFloat = 90",
+              "        return -maxLift * distance / (distance + softness)",
+              "    }",
+          ]
+          text = text[:start] + "\n".join(drag_lines) + text[end:]
+
+          helper_start = text.index("    private func routeCodeWidth(_ code: String) -> CGFloat {")
+          binding_marker = "    private func routeCodeBinding(index: Int, side: RouteEditSide) -> Binding<String> {"
+          helper_end = text.index(binding_marker, helper_start)
+          helper_lines = [
+              "    private func routeCodeWidth(_ code: String) -> CGFloat {",
+              "        let font = UIFont.systemFont(ofSize: 15, weight: .semibold)",
+              "        let width = (code as NSString).size(withAttributes: [.font: font]).width",
+              "        return max(1, ceil(width))",
+              "    }",
+              "",
+          ]
+          text = text[:helper_start] + "\n".join(helper_lines) + text[helper_end:]
+          path.write_text(text)
+
+          Path(".github/workflows/v72-format-source.yml").unlink()
+          PY
+
+      - name: Commit cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "v72: normalize source formatting"
+          git push
