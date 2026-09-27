@@ -1145,7 +1145,7 @@ struct DutyDetailView: View {
     // Итоги задания без отдельного заголовка.
     // Общее время и ночь снова находятся в одной ячейке.
     private func dutyTotals(_ duty: FlightDuty) -> some View {
-        HStack(spacing: 8) {
+        LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 6) {
             dutyTotalCell(
                 title: "Рабочее время",
                 total: duty.workMinutes,
