@@ -1,7 +1,6 @@
 import SwiftUI
 import Foundation
 import UIKit
-import GameController
 import UniformTypeIdentifiers
 
 
@@ -400,6 +399,7 @@ private struct DutyAssignmentOverlay: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     private func backgroundOpacity(for height: CGFloat) -> Double {
@@ -2226,9 +2226,13 @@ private struct CompactFlightValue: View {
 // MARK: - Добавление / редактирование рейса
 
 
-// MARK: - Тест физической клавиатуры
+// MARK: - Ввод с физической клавиатуры
 
-private final class HardwareFriendlyTextField: UITextField {
+// Оставляем UITextField обычным системным responder'ом, чтобы iPadOS сам
+// управлял экранной/физической клавиатурой и своей нижней панелью ввода.
+// pressesBegan служит прямым каналом для аппаратных клавиш и не зависит от
+// показа программной клавиатуры.
+private final class AssignmentInputTextField: UITextField {
     var hardwareInputHandler: ((String?, Bool) -> Void)?
 
     override func pressesBegan(
@@ -2274,47 +2278,6 @@ private final class HardwareFriendlyTextField: UITextField {
     }
 }
 
-// Preserve standard UIKit text input while a physical keyboard is connected.
-private final class AssignmentInputTextField: UITextField {
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(keyboardConnectionChanged),
-            name: .GCKeyboardDidConnect, object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(keyboardConnectionChanged),
-            name: .GCKeyboardDidDisconnect, object: nil
-        )
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    override func becomeFirstResponder() -> Bool {
-        updateKeyboardPresentation()
-        return super.becomeFirstResponder()
-    }
-
-    @objc private func keyboardConnectionChanged() {
-        updateKeyboardPresentation()
-    }
-
-    private func updateKeyboardPresentation() {
-        let useHardware = GCKeyboard.coalesced != nil
-        guard useHardware != (inputView != nil) else { return }
-        inputView = useHardware ? UIView(frame: .zero) : nil
-        if isFirstResponder {
-            reloadInputViews()
-        }
-    }
-}
-
 private struct InlineSelectAllTextField: UIViewRepresentable {
     @Binding var text: String
     @Binding var isActive: Bool
@@ -2353,6 +2316,14 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         field.isEnabled = isEnabled
         field.isUserInteractionEnabled = isEnabled
         field.delegate = context.coordinator
+        field.hardwareInputHandler = { [weak field] characters, deleting in
+            guard let field else { return }
+            context.coordinator.handleHardwareInput(
+                characters,
+                deleting: deleting,
+                in: field
+            )
+        }
         field.addTarget(
             context.coordinator,
             action: #selector(Coordinator.textChanged(_:)),
