@@ -3,6 +3,7 @@ from pathlib import Path
 p = Path("AppViews.swift")
 s = p.read_text()
 
+# Номер задания: убрать бирюзовый фон и рамку режима редактирования.
 old = '''        .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .background {
@@ -21,18 +22,15 @@ old = '''        .padding(.horizontal, 12)
 new = '''        .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .frame(maxWidth: .infinity)'''
-assert old in s
+assert old in s, "dutyTitle decoration not found"
 s = s.replace(old, new, 1)
 
-old = '''                    .foregroundStyle(
-                        isActive.wrappedValue ? Color.accentColor : Color.primary
-                    )'''
-new = '''                    .foregroundStyle(
-                        isEditing ? Color.accentColor : Color.primary
-                    )'''
-assert s.count(old) >= 2
-s = s.replace(old, new, 2)
+# Рейс / тип ВС / борт / номер задания: значение акцентное сразу после входа в edit mode.
+needle = "isActive.wrappedValue ? Color.accentColor : Color.primary"
+assert needle in s, "stableInlineEditor accent expression not found"
+s = s.replace(needle, "isEditing ? Color.accentColor : Color.primary")
 
+# Верхние поля leg: убрать фон и рамку, красить само значение.
 old = '''            content()
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
@@ -69,9 +67,10 @@ new = '''            content()
         .padding(.vertical, 6)
         .fixedSize(horizontal: true, vertical: false)
         .contentShape(Rectangle())'''
-assert old in s
+assert old in s, "identityField decoration not found"
 s = s.replace(old, new, 1)
 
+# Маршрут: убрать фон/рамку; окрашивать только коды аэропортов.
 old = '''        .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 6)
@@ -96,7 +95,7 @@ new = '''        .multilineTextAlignment(.center)
     }
 
     private func routeIdentity'''
-assert old in s
+assert old in s, "routeField decoration not found"
 s = s.replace(old, new, 1)
 
 old = '''            + Text(cleanCode)
@@ -105,9 +104,10 @@ old = '''            + Text(cleanCode)
 new = '''            + Text(cleanCode)
                 .foregroundColor(isEditing ? .accentColor : .primary)
             + Text(")")'''
-assert old in s
+assert old in s, "route code color not found"
 s = s.replace(old, new, 1)
 
+# Карточка значения: возможность окрасить только значение, не заголовок и не фон.
 old = '''    private func legValueCard(
         title: String,
         value: String,
@@ -121,7 +121,7 @@ new = '''    private func legValueCard(
         compact: Bool = false,
         valueColor: Color = .primary
     ) -> some View {'''
-assert old in s
+assert old in s, "legValueCard signature not found"
 s = s.replace(old, new, 1)
 
 old = '''            Text(value)
@@ -130,9 +130,10 @@ old = '''            Text(value)
 new = '''            Text(value)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(valueColor)'''
-assert old in s
+assert old in s, "legValueCard value color not found"
 s = s.replace(old, new, 1)
 
+# Расчётное время: без бирюзовой рамки, акцентное только значение.
 old = '''                        legValueCard(
                             title: "Расчётное время",
                             value: leg.calculatedMinutes.map(timeText) ?? "Отсутствует",
@@ -150,9 +151,10 @@ new = '''                        legValueCard(
                             compact: true,
                             valueColor: .accentColor
                         )'''
-assert old in s
+assert old in s, "calculatedTime edit card not found"
 s = s.replace(old, new, 1)
 
+# Редактируемые даты/время: без бирюзовой рамки, акцентное только значение.
 old = '''                    legValueCard(title: title, value: formatDateTime(
                         point.date(in: times(for: draft[index]))
                     ))
@@ -165,7 +167,7 @@ new = '''                    legValueCard(
                         value: formatDateTime(point.date(in: times(for: draft[index]))),
                         valueColor: .accentColor
                     )'''
-assert old in s
+assert old in s, "timeCell edit card not found"
 s = s.replace(old, new, 1)
 
 p.write_text(s)
