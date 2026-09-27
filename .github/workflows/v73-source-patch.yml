@@ -1,0 +1,175 @@
+name: Apply v73 source patch
+
+on:
+  push:
+    branches:
+      - ui/v73-smoother-downward-swipe
+    paths:
+      - .github/workflows/v73-source-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/v73-smoother-downward-swipe
+
+      - name: Patch version 73
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("AppViews.swift")
+          text = path.read_text()
+
+          old = '''    @State private var dragOffset: CGFloat = 0
+    @State private var editorIsActive = false
+    @State private var dismissEditorSignal = 0
+'''
+          new = '''    @State private var settledDragOffset: CGFloat = 0
+    @GestureState private var gestureDragOffset: CGFloat = 0
+    @State private var editorIsActive = false
+    @State private var dismissEditorSignal = 0
+
+    private var dragOffset: CGFloat {
+        settledDragOffset + gestureDragOffset
+    }
+'''
+          if old not in text:
+              raise SystemExit("drag state block not found")
+          text = text.replace(old, new, 1)
+
+          old = '''    private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 3)
+            .onChanged { value in
+                guard enabled else {
+                    dragOffset = 0
+                    return
+                }
+
+                // Вниз карточка идёт за пальцем без задержки.
+                // Вверх используется плавная нелинейная резинка без жёсткого упора.
+                if value.translation.height >= 0 {
+                    dragOffset = value.translation.height
+                } else {
+                    dragOffset = upwardRubberBand(value.translation.height)
+                }
+            }
+            .onEnded { value in
+                guard enabled else {
+                    dragOffset = 0
+                    return
+                }
+
+                let predicted = max(
+                    value.translation.height,
+                    value.predictedEndTranslation.height
+                )
+                let shouldClose =
+                    value.translation.height > 110
+                    || predicted > 220
+
+                if shouldClose {
+                    withAnimation(
+                        .spring(response: 0.34, dampingFraction: 0.92)
+                    ) {
+                        dragOffset = max(height + 80, 580)
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+                        onClose()
+                    }
+                } else {
+                    withAnimation(
+                        .spring(response: 0.42, dampingFraction: 0.88)
+                    ) {
+                        dragOffset = 0
+                    }
+                }
+            }
+    }
+'''
+          new = '''    private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 1)
+            .updating($gestureDragOffset) { value, state, transaction in
+                guard enabled else {
+                    state = 0
+                    return
+                }
+
+                // GestureState обновляется синхронно с жестом и не заставляет
+                // обычный @State пересчитываться на каждом кадре ProMotion.
+                transaction.animation = nil
+                state = interactiveOffset(for: value.translation.height)
+            }
+            .onEnded { value in
+                guard enabled else {
+                    settledDragOffset = 0
+                    return
+                }
+
+                let releasedOffset = interactiveOffset(for: value.translation.height)
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    settledDragOffset = releasedOffset
+                }
+
+                let predicted = max(
+                    value.translation.height,
+                    value.predictedEndTranslation.height
+                )
+                let shouldClose =
+                    value.translation.height > 110
+                    || predicted > 220
+
+                if shouldClose {
+                    withAnimation(
+                        .spring(response: 0.34, dampingFraction: 0.92)
+                    ) {
+                        settledDragOffset = max(height + 80, 580)
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
+                        onClose()
+                    }
+                } else {
+                    withAnimation(
+                        .spring(response: 0.42, dampingFraction: 0.88)
+                    ) {
+                        settledDragOffset = 0
+                    }
+                }
+            }
+    }
+
+    private func interactiveOffset(for translation: CGFloat) -> CGFloat {
+        translation >= 0 ? translation : upwardRubberBand(translation)
+    }
+'''
+          if old not in text:
+              raise SystemExit("dismissDrag block not found")
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          version = Path("AppVersion.swift")
+          value = version.read_text().replace("static let number = 72", "static let number = 73").replace('static let label = "Версия 72"', 'static let label = "Версия 73"')
+          version.write_text(value)
+
+          package = Path("Package.swift")
+          value = package.read_text().replace('displayVersion: "72"', 'displayVersion: "73"').replace('bundleVersion: "72"', 'bundleVersion: "73"')
+          package.write_text(value)
+
+          Path(".github/workflows/v73-source-patch.yml").unlink()
+
+      - name: Commit v73
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "v73: smooth downward duty swipe on ProMotion"
+          git push
