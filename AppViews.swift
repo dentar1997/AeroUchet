@@ -1582,45 +1582,40 @@ struct DutyDetailView: View {
     ) -> some View {
         let cleanCode = code.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let isActive = routeFocusBinding(index: index, side: side)
-
-        return HStack(spacing: 0) {
+        let endpointText =
             Text("\(airportNameOnly(cleanCode)) (")
-            Text(cleanCode)
-                .background {
-                    if isActive.wrappedValue {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.accentColor.opacity(0.22))
-                    }
+            + Text(cleanCode)
+                .foregroundColor(isActive.wrappedValue ? .accentColor : .primary)
+            + Text(")")
+
+        return endpointText
+            .overlay {
+                if isEditing {
+                    InlineSelectAllTextField(
+                        text: code,
+                        isActive: isActive,
+                        keyboardType: .asciiCapable,
+                        capitalization: .allCharacters,
+                        textAlignment: .center,
+                        font: .systemFont(ofSize: 15, weight: .semibold),
+                        maxLength: 5,
+                        isEnabled: true
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
+                    .allowsHitTesting(false)
                 }
-            Text(")")
-        }
-        .overlay {
-            if isEditing {
-                InlineSelectAllTextField(
-                    text: code,
-                    isActive: isActive,
-                    keyboardType: .asciiCapable,
-                    capitalization: .allCharacters,
-                    textAlignment: .center,
-                    font: .systemFont(ofSize: 15, weight: .semibold),
-                    maxLength: 5,
-                    isEnabled: true
-                )
-                .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
-                .allowsHitTesting(false)
             }
-        }
-        .fixedSize(horizontal: true, vertical: false)
-        .frame(
-            maxWidth: .infinity,
-            alignment: side == .departure ? .trailing : .leading
-        )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard isEditing else { return }
-            routeEditSide = side
-            focusedField = .route(index)
-        }
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(
+                maxWidth: .infinity,
+                alignment: side == .departure ? .trailing : .leading
+            )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard isEditing else { return }
+                routeEditSide = side
+                focusedField = .route(index)
+            }
     }
     private func routeCodeBinding(index: Int, side: RouteEditSide) -> Binding<String> {
         Binding(
