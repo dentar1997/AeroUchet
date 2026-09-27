@@ -2282,7 +2282,7 @@ func timeText(
     
     return String(
         format:
-            "%d:%02d",
+            "%02d:%02d",
         hours,
         mins
     )

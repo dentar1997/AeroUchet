@@ -954,7 +954,7 @@ func minutesFromNormTime(_ value: String) -> Int? {
 
 func normTimeText(_ minutes: Int) -> String {
     String(
-        format: "%d:%02d",
+        format: "%02d:%02d",
         minutes / 60,
         minutes % 60
     )
@@ -2327,4 +2327,3 @@ private func flightNormBestRouteName(
         $0.count < $1.count
     } ?? ""
 }
-

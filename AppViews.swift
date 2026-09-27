@@ -733,43 +733,6 @@ struct DutyDetailView: View {
             RoundedRectangle(cornerRadius: 20)
                 .stroke(Color.primary.opacity(0.10), lineWidth: 1)
         )
-        .sheet(isPresented: $showReview) {
-            NavigationStack {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Заменить исходные данные на изменения?")
-                            .font(.headline)
-
-                        ForEach(differences, id: \.self) { item in
-                            Text(item)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(10)
-                                .background(
-                                    Color(uiColor: .secondarySystemGroupedBackground),
-                                    in: RoundedRectangle(cornerRadius: 10)
-                                )
-                        }
-                    }
-                    .padding()
-                }
-                .navigationTitle("Проверка изменений")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Отмена") { showReview = false }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Заменить") {
-                            store.updateDutyLegs(updatedLegs)
-                            isEditing = false
-                            draft = []
-                            original = []
-                            showReview = false
-                        }
-                    }
-                }
-            }
-        }
         .alert("Удалить задание на полёт?", isPresented: $showDeleteConfirmation) {
             Button("Отмена", role: .cancel) {}
             Button("Удалить задание", role: .destructive) {
@@ -806,6 +769,38 @@ struct DutyDetailView: View {
                     }
                     .disabled(!isValid || differences.isEmpty)
                     .accessibilityLabel("Применить изменения")
+                    .popover(isPresented: $showReview, arrowEdge: .top) {
+                        VStack(spacing: 12) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(Color.accentColor)
+                            Text("Сохранить изменения?")
+                                .font(.headline)
+                            Text("Данные задания на полёт будут обновлены.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+
+                            HStack(spacing: 10) {
+                                Button("Отмена") { showReview = false }
+                                    .buttonStyle(.bordered)
+                                Button("Сохранить") {
+                                    store.updateDutyLegs(updatedLegs)
+                                    showReview = false
+                                    focusedField = nil
+                                    isEditing = false
+                                    draft = []
+                                    original = []
+                                    editHistory = []
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        }
+                        .padding(16)
+                        .frame(width: 260)
+                        .font(.subheadline)
+                        .presentationCompactAdaptation(.popover)
+                    }
                 } else {
                     Button {
                         original = duty.legs
@@ -1318,7 +1313,7 @@ struct DutyDetailView: View {
         let hours = seconds / 3_600
         let remainingMinutes = (seconds % 3_600) / 60
         let remainingSeconds = seconds % 60
-        let hoursAndMinutes = String(format: "%d:%02d", hours, remainingMinutes)
+        let hoursAndMinutes = String(format: "%02d:%02d", hours, remainingMinutes)
         return remainingSeconds == 0
             ? hoursAndMinutes
             : hoursAndMinutes + String(format: ":%02d", remainingSeconds)
@@ -1745,7 +1740,9 @@ struct DutyDetailView: View {
         isActive: Bool
     ) -> Color {
         if isActive {
-            return Color.accentColor.opacity(0.58)
+            return field.map(fieldHasChanges) == true
+                ? DutyEditPalette.selectedChanged
+                : Color.accentColor.opacity(0.58)
         }
 
         if let field, fieldHasChanges(field) {
@@ -1972,7 +1969,9 @@ struct DutyDetailView: View {
         isActive: Bool
     ) -> Color {
         if isActive {
-            return Color.accentColor.opacity(0.58)
+            return routeSideHasChanges(index: index, side: side)
+                ? DutyEditPalette.selectedChanged
+                : Color.accentColor.opacity(0.58)
         }
         return routeSideHasChanges(index: index, side: side)
             ? DutyEditPalette.changed
@@ -2392,14 +2391,23 @@ private struct InlineCalculatedTimeValue: View {
                     activePart = nil
                     onToggleSource()
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 0) {
                         Image(systemName: "checkmark.square.fill")
-                            .font(.system(size: 15))
+                            .font(.system(size: 16))
+                            .frame(width: 20)
+                        Color.clear.frame(width: 9)
                         Text("Из таблицы")
-                            .font(.caption2)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                        Spacer(minLength: 0)
                     }
-                    .foregroundStyle(hasChanges ? DutyEditPalette.changed : Color.accentColor)
-                    .frame(maxWidth: .infinity)
+                    .foregroundStyle(
+                        hasChanges
+                            ? (isActive ? DutyEditPalette.selectedChanged : DutyEditPalette.changed)
+                            : Color.accentColor
+                    )
+                    .frame(width: 130, alignment: .leading)
                     .frame(height: 18)
                     .contentShape(Rectangle())
                 }
@@ -2416,18 +2424,22 @@ private struct InlineCalculatedTimeValue: View {
                         onToggleSource()
                     } label: {
                         Image(systemName: "square")
-                            .font(.system(size: 17))
-                            .frame(width: 22, height: 28)
+                            .font(.system(size: 16))
+                            .frame(width: 20, height: 28)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Выбрать расчётное время из таблицы")
 
-                    Spacer(minLength: 16)
+                    Color.clear.frame(width: 9)
                     timeWheel
-                    Spacer(minLength: 30)
+                    Spacer(minLength: 0)
                 }
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(
+                    hasChanges
+                        ? (isActive ? DutyEditPalette.selectedChanged : DutyEditPalette.changed)
+                        : Color.accentColor
+                )
                 .frame(height: 18)
             }
         }
@@ -2462,9 +2474,9 @@ private struct InlineCalculatedTimeValue: View {
     private var timeWheel: some View {
         HStack(spacing: -1) {
             InlineFlightWheelSegment(
-                value: String(hour),
-                previous: String(max(0, hour - 1)),
-                next: String(hour + 1),
+                value: String(format: "%02d", hour),
+                previous: String(format: "%02d", max(0, hour - 1)),
+                next: String(format: "%02d", hour + 1),
                 width: 19, hitWidth: 33, hitOffset: 0, hitHeight: 48,
                 isEditing: true,
                 isActive: isActive && activePart == .hour,
@@ -2493,11 +2505,15 @@ private struct InlineCalculatedTimeValue: View {
     }
 
     private func color(for part: Part) -> Color {
-        if isActive && activePart == part { return Color.accentColor.opacity(0.58) }
         let changed: Bool
         switch part {
         case .hour: changed = hour != originalMinutes / 60
         case .minute: changed = minute != originalMinutes % 60
+        }
+        if isActive && activePart == part {
+            return changed
+                ? DutyEditPalette.selectedChanged
+                : Color.accentColor.opacity(0.58)
         }
         return changed ? DutyEditPalette.changed : .accentColor
     }
