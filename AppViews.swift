@@ -793,6 +793,7 @@ struct DutyDetailView: View {
                         editHistory = []
                     } label: {
                         Image(systemName: "xmark")
+                            .frame(width: 18, height: 18)
                     }
                     .accessibilityLabel("Отменить все изменения")
 
@@ -801,6 +802,7 @@ struct DutyDetailView: View {
                         showReview = true
                     } label: {
                         Image(systemName: "checkmark")
+                            .frame(width: 18, height: 18)
                     }
                     .disabled(!isValid || differences.isEmpty)
                     .accessibilityLabel("Применить изменения")
@@ -819,6 +821,7 @@ struct DutyDetailView: View {
                         isEditing = true
                     } label: {
                         Image(systemName: "wrench")
+                            .frame(width: 18, height: 18)
                     }
                     .accessibilityLabel("Редактировать задание на полёт")
                 }
@@ -842,6 +845,7 @@ struct DutyDetailView: View {
                         restoreEdit(at: historyIndex - 1)
                     } label: {
                         Image(systemName: "arrow.uturn.backward")
+                            .frame(width: 18, height: 18)
                     }
                     .disabled(historyIndex == 0)
                     .accessibilityLabel("Отменить последнее изменение")
@@ -850,6 +854,7 @@ struct DutyDetailView: View {
                         restoreEdit(at: historyIndex + 1)
                     } label: {
                         Image(systemName: "arrow.uturn.forward")
+                            .frame(width: 18, height: 18)
                     }
                     .disabled(historyIndex + 1 >= editHistory.count)
                     .accessibilityLabel("Повторить изменение")
@@ -858,6 +863,7 @@ struct DutyDetailView: View {
                         showDeleteConfirmation = true
                     } label: {
                         Image(systemName: "trash")
+                            .frame(width: 18, height: 18)
                     }
                     .accessibilityLabel("Удалить задание на полёт")
                 }
@@ -2351,7 +2357,13 @@ struct DutyDetailView: View {
             showsCalendarButton: index == 0 && point == .workStart,
             dateCanToggle: isEditing && canToggleDutyDate(index: index, point: point),
             onToggleDate: { toggleDutyDate(index: index, point: point) },
-            backgroundColor: valueTileColor
+            backgroundColor: valueTileColor,
+            valueColor: isEditing
+                ? editorValueColor(
+                    for: .time(index, point),
+                    isActive: focusedField == .time(index, point)
+                )
+                : .primary
         )
         .zIndex(focusedField == .time(index, point) ? 100 : 0)
     }

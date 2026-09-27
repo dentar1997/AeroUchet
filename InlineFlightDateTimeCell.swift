@@ -14,11 +14,12 @@ struct InlineFlightDateTimeCell: View {
     let dateCanToggle: Bool
     let onToggleDate: () -> Void
     let backgroundColor: Color
+    let valueColor: Color
 
     @State private var activePart: Part?
     @State private var showsCalendar = false
 
-    private enum Part { case hour, minute }
+    private enum Part { case date, hour, minute }
 
     private var calendar: Calendar {
         var value = Calendar(identifier: .gregorian)
@@ -35,25 +36,29 @@ struct InlineFlightDateTimeCell: View {
                 .minimumScaleFactor(0.78)
 
             HStack(spacing: 3) {
-                Text(dateText(selection))
-                    .font(.caption.bold())
-                    .monospacedDigit()
-                    .foregroundStyle(
-                        isEditing && (showsCalendarButton || dateCanToggle)
-                            ? Color.accentColor : Color.primary
-                    )
-                    .frame(width: 67, height: 18, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                InlineFlightDateSegment(
+                    value: dateText(selection),
+                    previous: dateText(neighborDate(-1)),
+                    next: dateText(neighborDate(1)),
+                    valueColor: valueColor,
+                    isEditing: isEditing,
+                    isActive: isActive && activePart == .date,
+                    canSpin: showsCalendarButton,
+                    onTap: {
                         guard isEditing else { return }
                         if showsCalendarButton {
-                            onActivate()
-                            showsCalendar = true
+                            activate(.date)
                         } else if dateCanToggle {
-                            onActivate()
+                            activate(.date)
                             onToggleDate()
                         }
+                    },
+                    onStep: { delta in
+                        if let updated = calendar.date(byAdding: .day, value: delta, to: selection) {
+                            selection = updated
+                        }
                     }
+                )
 
                 HStack(spacing: 0) {
                     InlineFlightWheelSegment(
@@ -63,6 +68,7 @@ struct InlineFlightDateTimeCell: View {
                         width: 17,
                         isEditing: isEditing,
                         isActive: isActive && activePart == .hour,
+                        valueColor: valueColor,
                         onActivate: { activate(.hour) },
                         onStep: { delta in
                             setClock(
@@ -74,7 +80,7 @@ struct InlineFlightDateTimeCell: View {
 
                     Text(":")
                         .font(.caption.bold())
-                        .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
+                        .foregroundStyle(valueColor)
                         .frame(width: 5)
 
                     InlineFlightWheelSegment(
@@ -84,6 +90,7 @@ struct InlineFlightDateTimeCell: View {
                         width: 17,
                         isEditing: isEditing,
                         isActive: isActive && activePart == .minute,
+                        valueColor: valueColor,
                         onActivate: { activate(.minute) },
                         onStep: { delta in
                             setClock(
@@ -106,10 +113,10 @@ struct InlineFlightDateTimeCell: View {
         )
         .overlay(alignment: .bottomTrailing) {
             if isEditing && isActive {
-                HStack(spacing: 3) {
+                VStack(spacing: 3) {
                     if showsCalendarButton {
                         Button {
-                            onActivate()
+                            activate(.date)
                             showsCalendar = true
                         } label: {
                             Image(systemName: "calendar")
@@ -163,6 +170,10 @@ struct InlineFlightDateTimeCell: View {
     private var hour: Int { calendar.component(.hour, from: selection) }
     private var minute: Int { calendar.component(.minute, from: selection) }
 
+    private func neighborDate(_ days: Int) -> Date {
+        calendar.date(byAdding: .day, value: days, to: selection) ?? selection
+    }
+
     private func activate(_ part: Part) {
         guard isEditing else { return }
         onActivate()
@@ -203,6 +214,80 @@ struct InlineFlightDateTimeCell: View {
     }
 }
 
+private struct InlineFlightDateSegment: View {
+    let value: String
+    let previous: String
+    let next: String
+    let valueColor: Color
+    let isEditing: Bool
+    let isActive: Bool
+    let canSpin: Bool
+    let onTap: () -> Void
+    let onStep: (Int) -> Void
+
+    @State private var translation: CGFloat = 0
+    @State private var appliedSteps = 0
+    @State private var dragging = false
+
+    private let rowHeight: CGFloat = 20
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Text(value)
+                .foregroundStyle(valueColor)
+                .opacity(isActive && canSpin ? 0 : 1)
+
+            if isActive && canSpin {
+                Text(previous)
+                    .foregroundStyle(Color.primary.opacity(0.76))
+                    .offset(y: -rowHeight + residualOffset)
+                    .allowsHitTesting(false)
+                Text(value)
+                    .foregroundStyle(valueColor)
+                    .offset(y: residualOffset)
+                    .allowsHitTesting(false)
+                Text(next)
+                    .foregroundStyle(Color.primary.opacity(0.76))
+                    .offset(y: rowHeight + residualOffset)
+                    .allowsHitTesting(false)
+            }
+        }
+        .font(.caption.bold())
+        .monospacedDigit()
+        .frame(width: 67, height: 18, alignment: .leading)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
+        .gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { gesture in
+                    guard isEditing && isActive && canSpin else { return }
+                    if !dragging {
+                        dragging = true
+                        appliedSteps = 0
+                    }
+                    translation = gesture.translation.height
+                    let steps = Int((-translation / rowHeight).rounded())
+                    if steps != appliedSteps {
+                        onStep(steps - appliedSteps)
+                        appliedSteps = steps
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    }
+                }
+                .onEnded { _ in
+                    dragging = false
+                    appliedSteps = 0
+                    withAnimation(.easeOut(duration: 0.12)) { translation = 0 }
+                }
+        )
+    }
+
+    private var residualOffset: CGFloat {
+        guard dragging else { return 0 }
+        let steps = Int((-translation / rowHeight).rounded())
+        return translation + CGFloat(steps) * rowHeight
+    }
+}
+
 private struct InlineFlightWheelSegment: View {
     let value: String
     let previous: String
@@ -210,6 +295,7 @@ private struct InlineFlightWheelSegment: View {
     let width: CGFloat
     let isEditing: Bool
     let isActive: Bool
+    let valueColor: Color
     let onActivate: () -> Void
     let onStep: (Int) -> Void
 
@@ -226,22 +312,22 @@ private struct InlineFlightWheelSegment: View {
 
             if isActive {
                 Text(previous)
-                    .foregroundStyle(Color.secondary.opacity(0.52))
+                    .foregroundStyle(Color.primary.opacity(0.76))
                     .offset(y: -rowHeight + residualOffset)
                     .allowsHitTesting(false)
                 Text(value)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(valueColor)
                     .offset(y: residualOffset)
                     .allowsHitTesting(false)
                 Text(next)
-                    .foregroundStyle(Color.secondary.opacity(0.52))
+                    .foregroundStyle(Color.primary.opacity(0.76))
                     .offset(y: rowHeight + residualOffset)
                     .allowsHitTesting(false)
             }
         }
         .font(.caption.bold())
         .monospacedDigit()
-        .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
+        .foregroundStyle(valueColor)
         .frame(width: width, height: 18)
         .contentShape(Rectangle())
         .onTapGesture {
