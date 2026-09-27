@@ -1164,7 +1164,8 @@ struct DutyDetailView: View {
                 night: duty.airNightMinutes
             )
         }
-        .padding(.horizontal, 12)
+        .frame(width: 496, alignment: .center)
+        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.top, 2)
     }
 
@@ -1474,7 +1475,7 @@ struct DutyDetailView: View {
                 .frame(height: 18, alignment: .center)
         }
         .multilineTextAlignment(.center)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .fixedSize(horizontal: true, vertical: false)
         .background {
@@ -2075,7 +2076,7 @@ struct DutyDetailView: View {
             maxWidth: compact ? nil : .infinity,
             alignment: centered ? .center : .leading
         )
-        .padding(.horizontal, compact ? 12 : 10)
+        .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 10)
