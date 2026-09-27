@@ -22,29 +22,21 @@ jobs:
           from pathlib import Path
           path = Path('AppViews.swift')
           text = path.read_text()
-          old = '''                field: .legNumber(index),
-                keyboardType: .numbersAndPunctuation,
-                capitalization: .allCharacters,
-                clearOnFirstDelete: true,
-                maxLength: 10,
-                expands: false,
-                allowsEditing: isEditing,
-                restoreValue: original.indices.contains(index)
-                    ? (original[index].legNumber ?? original[index].flightNumber)
-                    : leg.displayedLegNumber'''
-          new = '''                field: .legNumber(index),
-                keyboardType: .numbersAndPunctuation,
-                capitalization: .allCharacters,
-                maxLength: 10,
-                expands: false,
-                allowsEditing: isEditing,
-                restoreValue: original.indices.contains(index)
-                    ? (original[index].legNumber ?? original[index].flightNumber)
+          old1 = '                clearOnFirstDelete: true,\n                maxLength: 10,\n'
+          if old1 not in text:
+              raise SystemExit('clearOnFirstDelete position not found')
+          text = text.replace(old1, '                maxLength: 10,\n', 1)
+
+          old2 = '''                    ? (original[index].legNumber ?? original[index].flightNumber)
+                    : leg.displayedLegNumber
+            )'''
+          new2 = '''                    ? (original[index].legNumber ?? original[index].flightNumber)
                     : leg.displayedLegNumber,
-                clearOnFirstDelete: true'''
-          if text.count(old) != 1:
-              raise SystemExit('flight editor snippet not found exactly once')
-          path.write_text(text.replace(old, new, 1))
+                clearOnFirstDelete: true
+            )'''
+          if old2 not in text:
+              raise SystemExit('restoreValue tail not found')
+          path.write_text(text.replace(old2, new2, 1))
           PY
 
       - name: Commit fix
