@@ -736,6 +736,11 @@ final class AppStore: ObservableObject {
             at: 0
         )
     }
+
+    func addDutyLegs(_ legs: [FlightLeg]) {
+        guard !legs.isEmpty else { return }
+        flights = legs + flights
+    }
     
     
     func updateFlight(

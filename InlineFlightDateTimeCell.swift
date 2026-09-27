@@ -140,9 +140,9 @@ struct InlineFlightDateTimeCell: View {
                 }
         )
         .overlay(alignment: .bottomTrailing) {
-            if isEditing && isActive {
+            if isEditing && (isActive || hasAnyChange) {
                 VStack(spacing: 3) {
-                    if showsCalendarButton && activePart == .date {
+                    if isActive && showsCalendarButton && activePart == .date {
                         Button {
                             openCalendar()
                         } label: {
@@ -163,8 +163,12 @@ struct InlineFlightDateTimeCell: View {
                         .accessibilityLabel("Открыть календарь")
                     }
 
+                    if hasAnyChange {
                     Button {
                         selection = original
+                        activePart = nil
+                        showsCalendar = false
+                        onDismiss()
                     } label: {
                         Image(systemName: "arrow.uturn.backward")
                             .font(.system(size: 9, weight: .semibold))
@@ -172,8 +176,8 @@ struct InlineFlightDateTimeCell: View {
                             .background(.ultraThinMaterial, in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(selection == original)
                     .accessibilityLabel("Вернуть исходные дату и время")
+                    }
                 }
                 .foregroundStyle(Color.accentColor)
                 .padding(.trailing, 4)
@@ -198,6 +202,10 @@ struct InlineFlightDateTimeCell: View {
                 onDismiss()
             }
         }
+    }
+
+    private var hasAnyChange: Bool {
+        selection != original
     }
 
     private var hour: Int { calendar.component(.hour, from: selection) }
