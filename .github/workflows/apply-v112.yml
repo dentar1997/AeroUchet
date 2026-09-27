@@ -1,0 +1,38 @@
+name: Apply version 112 patch
+
+on:
+  push:
+    branches:
+      - feature/duty-editor-v112
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply source patch
+        run: python3 Scripts/apply-v112.py
+
+      - name: Validate patch
+        run: |
+          git diff --check
+          grep -q 'static let number = 112' AppVersion.swift
+          grep -q 'private var sourceColor: Color' AppViews.swift
+          grep -q 'focusedField = nil' AppViews.swift
+
+      - name: Commit source changes and remove temporary patch machinery
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AppViews.swift AppVersion.swift
+          git rm .github/workflows/apply-v112.yml Scripts/apply-v112.py
+          git commit -m "Версия 112: расчётное время и единый цифровой шрифт"
+          git push origin HEAD:feature/duty-editor-v112
