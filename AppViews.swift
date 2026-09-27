@@ -337,8 +337,9 @@ private struct DutyAssignmentOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let widthRatio = geometry.size.width >= 800 ? 0.74 : 0.92
-            let width = min(geometry.size.width * widthRatio, 940)
+            // Компактная ширина задания рассчитана от трёх временных
+            // колонок по 192 pt плюс внутренние отступы карточек.
+            let width = min(geometry.size.width * 0.92, 648)
 
             ZStack {
                 Color.black
@@ -607,7 +608,7 @@ struct DutyDetailView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private let timeColumns = Array(
-        repeating: GridItem(.flexible(minimum: 0), spacing: 8),
+        repeating: GridItem(.fixed(192), spacing: 8),
         count: 3
     )
 
