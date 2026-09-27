@@ -389,10 +389,6 @@ private struct DutyAssignmentOverlay: View {
                     maxHeight: .infinity,
                     alignment: .center
                 )
-                // Flatten the complete duty card into one render surface before
-                // applying the interactive transform. This keeps 2–3 leg cards
-                // from repainting every row on each ProMotion gesture update.
-                .drawingGroup(opaque: false, colorMode: .nonLinear)
                 .offset(y: dragOffset)
                 .contentShape(Rectangle())
                 .simultaneousGesture(
