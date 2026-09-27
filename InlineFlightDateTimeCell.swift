@@ -13,8 +13,8 @@ struct InlineFlightDateTimeCell: View {
     let showsCalendarButton: Bool
     let dateCanToggle: Bool
     let onToggleDate: () -> Void
+    let onDismiss: () -> Void
     let backgroundColor: Color
-    let valueColor: Color
 
     @State private var activePart: Part?
     @State private var showsCalendar = false
@@ -34,15 +34,19 @@ struct InlineFlightDateTimeCell: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if isEditing { onDismiss() }
+                }
 
             HStack(spacing: 3) {
                 InlineFlightDateSegment(
                     value: dateText(selection),
                     previous: dateText(neighborDate(-1)),
                     next: dateText(neighborDate(1)),
-                    valueColor: valueColor,
+                    valueColor: color(for: .date),
                     isEditing: isEditing,
-                    isActive: isActive && activePart == .date,
+                    isActive: isActive && activePart == .date && !showsCalendar,
                     canSpin: showsCalendarButton,
                     onTap: {
                         guard isEditing else { return }
@@ -60,7 +64,7 @@ struct InlineFlightDateTimeCell: View {
                     }
                 )
 
-                HStack(spacing: 0) {
+                HStack(spacing: -1) {
                     InlineFlightWheelSegment(
                         value: twoDigits(hour),
                         previous: twoDigits(wrap(hour - 1, count: 24)),
@@ -68,7 +72,7 @@ struct InlineFlightDateTimeCell: View {
                         width: 17,
                         isEditing: isEditing,
                         isActive: isActive && activePart == .hour,
-                        valueColor: valueColor,
+                        valueColor: color(for: .hour),
                         onActivate: { activate(.hour) },
                         onStep: { delta in
                             setClock(
@@ -80,7 +84,7 @@ struct InlineFlightDateTimeCell: View {
 
                     Text(":")
                         .font(.caption.bold())
-                        .foregroundStyle(valueColor)
+                        .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
                         .frame(width: 5)
 
                     InlineFlightWheelSegment(
@@ -90,7 +94,7 @@ struct InlineFlightDateTimeCell: View {
                         width: 17,
                         isEditing: isEditing,
                         isActive: isActive && activePart == .minute,
-                        valueColor: valueColor,
+                        valueColor: color(for: .minute),
                         onActivate: { activate(.minute) },
                         onStep: { delta in
                             setClock(
@@ -100,7 +104,7 @@ struct InlineFlightDateTimeCell: View {
                         }
                     )
                 }
-                .frame(width: 39, height: 18, alignment: .leading)
+                .frame(width: 37, height: 18, alignment: .leading)
             }
             .frame(height: 18, alignment: .leading)
         }
@@ -110,14 +114,18 @@ struct InlineFlightDateTimeCell: View {
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(backgroundColor)
+                .contentShape(RoundedRectangle(cornerRadius: 10))
+                .onTapGesture {
+                    if isEditing { onDismiss() }
+                }
         )
         .overlay(alignment: .bottomTrailing) {
             if isEditing && isActive {
                 VStack(spacing: 3) {
                     if showsCalendarButton {
                         Button {
-                            activate(.date)
                             showsCalendar = true
+                            activate(.date)
                         } label: {
                             Image(systemName: "calendar")
                                 .font(.system(size: 9, weight: .semibold))
@@ -165,10 +173,37 @@ struct InlineFlightDateTimeCell: View {
                 showsCalendar = false
             }
         }
+        .onChange(of: showsCalendar) { _, visible in
+            if !visible && activePart == .date {
+                activePart = nil
+            }
+        }
     }
 
     private var hour: Int { calendar.component(.hour, from: selection) }
     private var minute: Int { calendar.component(.minute, from: selection) }
+
+    private func color(for part: Part) -> Color {
+        guard isEditing else { return .primary }
+        if isActive && activePart == part {
+            return Color.accentColor.opacity(0.58)
+        }
+        if hasChanged(part) {
+            return .indigo
+        }
+        return .accentColor
+    }
+
+    private func hasChanged(_ part: Part) -> Bool {
+        switch part {
+        case .date:
+            return !calendar.isDate(selection, inSameDayAs: original)
+        case .hour:
+            return hour != calendar.component(.hour, from: original)
+        case .minute:
+            return minute != calendar.component(.minute, from: original)
+        }
+    }
 
     private func neighborDate(_ days: Int) -> Date {
         calendar.date(byAdding: .day, value: days, to: selection) ?? selection
@@ -198,6 +233,7 @@ struct InlineFlightDateTimeCell: View {
                 parts.second = 0
                 if let updated = calendar.date(from: parts) { selection = updated }
                 showsCalendar = false
+                activePart = nil
             }
         )
     }
