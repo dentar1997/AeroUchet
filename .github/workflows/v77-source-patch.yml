@@ -1,0 +1,109 @@
+name: Apply v77 read-only UIKit optimization
+
+on:
+  push:
+    branches:
+      - ui/v77-remove-readonly-uikit-fields
+    paths:
+      - .github/workflows/v77-source-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/v77-remove-readonly-uikit-fields
+
+      - name: Patch version 77
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('AppViews.swift')
+          text = path.read_text()
+
+          old = '''                Color.black
+                    // Keep the dim layer static during the interactive drag.
+                    // Updating its opacity every frame made downward swipes
+                    // increasingly expensive as the number of legs grew.
+                    .opacity(0.65)
+                    .ignoresSafeArea()
+'''
+          new = '''                Color.black
+                    .opacity(backgroundOpacity(for: geometry.size.height))
+                    .ignoresSafeArea()
+'''
+          if old not in text:
+              raise SystemExit('v76 dim block not found')
+          text = text.replace(old, new, 1)
+
+          marker = '''    private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {
+'''
+          helper = '''    private func backgroundOpacity(for height: CGFloat) -> Double {
+        guard height > 0 else { return 0.65 }
+        let progress = min(max(dragOffset / height, 0), 1)
+        return 0.65 * Double(1 - progress * 0.75)
+    }
+
+'''
+          if marker not in text:
+              raise SystemExit('dismissDrag marker not found')
+          text = text.replace(marker, helper + marker, 1)
+
+          old = '''            InlineSelectAllTextField(
+                text: text,
+                isActive: isActive,
+                keyboardType: keyboardType,
+                capitalization: capitalization,
+                textAlignment: .center,
+                font: inputFont,
+                maxLength: maxLength,
+                isEnabled: allowsEditing
+            )
+            .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
+            .fixedSize(horizontal: !expands, vertical: false)
+            .allowsHitTesting(allowsEditing)
+'''
+          new = '''            if allowsEditing {
+                InlineSelectAllTextField(
+                    text: text,
+                    isActive: isActive,
+                    keyboardType: keyboardType,
+                    capitalization: capitalization,
+                    textAlignment: .center,
+                    font: inputFont,
+                    maxLength: maxLength,
+                    isEnabled: true
+                )
+                .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
+                .fixedSize(horizontal: !expands, vertical: false)
+            }
+'''
+          if old not in text:
+              raise SystemExit('stableInlineEditor UIKit block not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          version = Path('AppVersion.swift')
+          value = version.read_text().replace('static let number = 76', 'static let number = 77').replace('static let label = "Версия 76"', 'static let label = "Версия 77"')
+          version.write_text(value)
+
+          package = Path('Package.swift')
+          value = package.read_text().replace('displayVersion: "76"', 'displayVersion: "77"').replace('bundleVersion: "76"', 'bundleVersion: "77"')
+          package.write_text(value)
+
+          Path('.github/workflows/v77-source-patch.yml').unlink()
+          PY
+
+      - name: Commit v77
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "v77: remove read-only UIKit fields from duty card"
+          git push
