@@ -1582,22 +1582,29 @@ struct DutyDetailView: View {
         index: Int,
         side: RouteEditSide
     ) -> some View {
-        HStack(spacing: 0) {
-            Text("\(airportNameOnly(code.wrappedValue)) (")
+        Group {
+            if isEditing {
+                HStack(spacing: 0) {
+                    Text("\(airportNameOnly(code.wrappedValue)) (")
 
-            stableInlineEditor(
-                text: code,
-                isActive: routeFocusBinding(index: index, side: side),
-                keyboardType: .asciiCapable,
-                capitalization: .allCharacters,
-                maxLength: 5,
-                expands: false,
-                allowsEditing: isEditing,
-                highlightHorizontalPadding: 0
-            )
-            .frame(width: routeCodeWidth(code.wrappedValue))
+                    stableInlineEditor(
+                        text: code,
+                        isActive: routeFocusBinding(index: index, side: side),
+                        keyboardType: .asciiCapable,
+                        capitalization: .allCharacters,
+                        maxLength: 5,
+                        expands: false,
+                        allowsEditing: true,
+                        highlightHorizontalPadding: 0
+                    )
+                    .frame(width: routeCodeWidth(code.wrappedValue))
 
-            Text(")")
+                    Text(")")
+                }
+            } else {
+                let cleanCode = code.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                Text("\(airportNameOnly(cleanCode)) (\(cleanCode))")
+            }
         }
         .fixedSize(horizontal: true, vertical: false)
         .frame(
