@@ -330,6 +330,8 @@ private struct DutyAssignmentOverlay: View {
     @GestureState private var gestureDragOffset: CGFloat = 0
     @State private var editorIsActive = false
     @State private var editModeIsActive = false
+    @State private var scrollOffset: CGFloat = 0
+    @State private var scrollContentIsScrollable = false
     @State private var dismissEditorSignal = 0
 
     private var dragOffset: CGFloat {
@@ -385,6 +387,16 @@ private struct DutyAssignmentOverlay: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.basedOnSize)
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    max(0, geometry.contentOffset.y + geometry.contentInsets.top)
+                } action: { _, newValue in
+                    scrollOffset = newValue
+                }
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    geometry.contentSize.height > geometry.containerSize.height + 1
+                } action: { _, newValue in
+                    scrollContentIsScrollable = newValue
+                }
                 .scrollDisabled(editorIsActive)
                 .frame(
                     maxWidth: .infinity,
@@ -396,7 +408,10 @@ private struct DutyAssignmentOverlay: View {
                 .simultaneousGesture(
                     dismissDrag(
                         in: geometry.size.height,
-                        enabled: !editorIsActive && !editModeIsActive
+                        enabled: !editorIsActive
+                            && !editModeIsActive
+                            && scrollOffset <= 0.5,
+                        allowUpwardRubberBand: !scrollContentIsScrollable
                     )
                 )
             }
@@ -411,7 +426,11 @@ private struct DutyAssignmentOverlay: View {
         return 0.65 * Double(1 - progress * 0.75)
     }
 
-    private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {
+    private func dismissDrag(
+        in height: CGFloat,
+        enabled: Bool,
+        allowUpwardRubberBand: Bool
+    ) -> some Gesture {
         DragGesture(minimumDistance: 1)
             .updating($gestureDragOffset) { value, state, transaction in
                 guard enabled else {
@@ -422,7 +441,10 @@ private struct DutyAssignmentOverlay: View {
                 // GestureState обновляется синхронно с жестом и не заставляет
                 // обычный @State пересчитываться на каждом кадре ProMotion.
                 transaction.animation = nil
-                state = interactiveOffset(for: value.translation.height)
+                state = interactiveOffset(
+                    for: value.translation.height,
+                    allowUpwardRubberBand: allowUpwardRubberBand
+                )
             }
             .onEnded { value in
                 guard enabled else {
@@ -430,7 +452,10 @@ private struct DutyAssignmentOverlay: View {
                     return
                 }
 
-                let releasedOffset = interactiveOffset(for: value.translation.height)
+                let releasedOffset = interactiveOffset(
+                    for: value.translation.height,
+                    allowUpwardRubberBand: allowUpwardRubberBand
+                )
                 var transaction = Transaction(animation: nil)
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
@@ -465,8 +490,12 @@ private struct DutyAssignmentOverlay: View {
             }
     }
 
-    private func interactiveOffset(for translation: CGFloat) -> CGFloat {
-        translation >= 0 ? translation : upwardRubberBand(translation)
+    private func interactiveOffset(
+        for translation: CGFloat,
+        allowUpwardRubberBand: Bool
+    ) -> CGFloat {
+        guard translation < 0 else { return translation }
+        return allowUpwardRubberBand ? upwardRubberBand(translation) : 0
     }
 
     private func upwardRubberBand(_ translation: CGFloat) -> CGFloat {
@@ -901,7 +930,7 @@ struct DutyDetailView: View {
 
             add("Номер задания", old.assignmentNumber ?? "—", new.assignmentNumber ?? "—")
             add("Номер рейса", old.flightNumber, new.flightNumber)
-            add("Номер лега", old.legNumber ?? "—", new.legNumber ?? "—")
+            add("Номер лега", editableLegNumber(old), editableLegNumber(new))
             add("Вылет", old.departure, new.departure)
             add("Прилёт", old.arrival, new.arrival)
             add("Тип ВС", old.aircraft, new.aircraft)
@@ -926,10 +955,17 @@ struct DutyDetailView: View {
     }
 
 
+    private func editableLegNumber(_ leg: FlightLeg) -> String {
+        if let legNumber = leg.legNumber {
+            return legNumber
+        }
+        return leg.displayedLegNumber
+    }
+
     private func legNumberBinding(_ index: Int) -> Binding<String> {
         Binding(
-            get: { draft[index].legNumber ?? draft[index].flightNumber },
-            set: { draft[index].legNumber = $0.isEmpty ? nil : $0 }
+            get: { editableLegNumber(draft[index]) },
+            set: { draft[index].legNumber = $0 }
         )
     }
 
@@ -1348,7 +1384,7 @@ struct DutyDetailView: View {
                 expands: false,
                 allowsEditing: isEditing,
                 restoreValue: original.indices.contains(index)
-                    ? (original[index].legNumber ?? original[index].flightNumber)
+                    ? editableLegNumber(original[index])
                     : leg.displayedLegNumber,
                 clearOnFirstDelete: true
             )
@@ -1520,9 +1556,7 @@ struct DutyDetailView: View {
             guard draft.indices.contains(index), original.indices.contains(index) else {
                 return false
             }
-            let before = original[index].legNumber ?? original[index].flightNumber
-            let after = draft[index].legNumber ?? draft[index].flightNumber
-            return before != after
+            return editableLegNumber(original[index]) != editableLegNumber(draft[index])
 
         case .aircraft(let index):
             guard draft.indices.contains(index), original.indices.contains(index) else {
@@ -1534,12 +1568,8 @@ struct DutyDetailView: View {
             guard draft.indices.contains(index), original.indices.contains(index) else {
                 return false
             }
-            let before = original[index].registration
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .uppercased()
-            let after = draft[index].registration
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .uppercased()
+            let before = String(original[index].registration.filter(\.isNumber).prefix(5))
+            let after = String(draft[index].registration.filter(\.isNumber).prefix(5))
             return before != after
 
         case .route(let index):
