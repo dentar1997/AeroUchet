@@ -1438,21 +1438,19 @@ struct DutyDetailView: View {
             if !prefix.isEmpty {
                 Text(prefix)
                     .font(textFont)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(
+                        isActive.wrappedValue ? Color.accentColor : Color.primary
+                    )
             }
 
             Text(text.wrappedValue)
                 .font(textFont)
-                .foregroundStyle(.primary)
+                .foregroundStyle(
+                    isActive.wrappedValue ? Color.accentColor : Color.primary
+                )
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .padding(.horizontal, highlightHorizontalPadding)
-                .background {
-                    if isActive.wrappedValue {
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.accentColor.opacity(0.22))
-                    }
-                }
         }
         .fixedSize(horizontal: true, vertical: false)
         .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
