@@ -1093,6 +1093,7 @@ struct DutyDetailView: View {
             stableInlineEditor(
                 text: isEditing ? $assignmentNumber : .constant(duty.firstLeg.assignmentNumber ?? ""),
                 isActive: isEditing ? focusBinding(.assignment) : .constant(false),
+                field: .assignment,
                 keyboardType: .numberPad,
                 capitalization: .none,
                 expands: false,
@@ -1100,6 +1101,7 @@ struct DutyDetailView: View {
                 restoreValue: original.first?.assignmentNumber
                     ?? duty.firstLeg.assignmentNumber
                     ?? "",
+                reserveText: "8888888",
                 highlightHorizontalPadding: 0,
                 textFont: .title3.bold(),
                 inputFont: .systemFont(ofSize: 20, weight: .bold),
@@ -1327,8 +1329,10 @@ struct DutyDetailView: View {
             stableInlineEditor(
                 text: textBinding,
                 isActive: activeBinding,
+                field: .legNumber(index),
                 keyboardType: .numbersAndPunctuation,
                 capitalization: .allCharacters,
+                clearOnFirstDelete: true,
                 maxLength: 10,
                 expands: false,
                 allowsEditing: isEditing,
@@ -1363,6 +1367,7 @@ struct DutyDetailView: View {
             stableInlineEditor(
                 text: textBinding,
                 isActive: activeBinding,
+                field: .aircraft(index),
                 keyboardType: .default,
                 capitalization: .allCharacters,
                 maxLength: 10,
@@ -1389,6 +1394,7 @@ struct DutyDetailView: View {
             stableInlineEditor(
                 text: textBinding,
                 isActive: activeBinding,
+                field: .registration(index),
                 prefix: "RA-",
                 keyboardType: .numberPad,
                 capitalization: .none,
@@ -1407,6 +1413,7 @@ struct DutyDetailView: View {
     private func stableInlineEditor(
         text: Binding<String>,
         isActive: Binding<Bool>,
+        field: DutyFocusedField? = nil,
         prefix: String = "",
         keyboardType: UIKeyboardType,
         capitalization: UITextAutocapitalizationType,
@@ -1414,36 +1421,38 @@ struct DutyDetailView: View {
         expands: Bool = true,
         allowsEditing: Bool = true,
         restoreValue: String? = nil,
+        clearOnFirstDelete: Bool = false,
+        reserveText: String? = nil,
         highlightHorizontalPadding: CGFloat = 2,
         textFont: Font = .subheadline.weight(.semibold),
         inputFont: UIFont = .systemFont(ofSize: 15, weight: .semibold),
         lineHeight: CGFloat = 18
     ) -> some View {
-        HStack(spacing: 0) {
-            if !prefix.isEmpty {
-                Text(prefix)
+        let valueColor = isEditing
+            ? editorValueColor(for: field, isActive: isActive.wrappedValue)
+            : Color.primary
+
+        ZStack(alignment: .leading) {
+            if let reserveText {
+                Text(reserveText)
                     .font(textFont)
-                    .foregroundStyle(
-                        isEditing
-                            ? (isActive.wrappedValue
-                                ? Color.accentColor.opacity(0.58)
-                                : Color.accentColor)
-                            : Color.primary
-                    )
+                    .hidden()
             }
 
-            Text(text.wrappedValue)
-                .font(textFont)
-                .foregroundStyle(
-                    isEditing
-                            ? (isActive.wrappedValue
-                                ? Color.accentColor.opacity(0.58)
-                                : Color.accentColor)
-                            : Color.primary
-                )
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.horizontal, highlightHorizontalPadding)
+            HStack(spacing: 0) {
+                if !prefix.isEmpty {
+                    Text(prefix)
+                        .font(textFont)
+                        .foregroundStyle(valueColor)
+                }
+
+                Text(text.wrappedValue)
+                    .font(textFont)
+                    .foregroundStyle(valueColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, highlightHorizontalPadding)
+            }
         }
         .fixedSize(horizontal: true, vertical: false)
         .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
@@ -1458,12 +1467,109 @@ struct DutyDetailView: View {
                     font: inputFont,
                     maxLength: maxLength,
                     isEnabled: true,
-                    restoreValue: restoreValue
+                    restoreValue: restoreValue,
+                    clearOnFirstDelete: clearOnFirstDelete
                 )
                 .frame(maxWidth: .infinity, minHeight: lineHeight, maxHeight: lineHeight)
             }
         }
         .frame(height: lineHeight)
+    }
+
+    private func editorValueColor(
+        for field: DutyFocusedField?,
+        isActive: Bool
+    ) -> Color {
+        if isActive {
+            return Color.accentColor.opacity(0.58)
+        }
+
+        if let field, fieldHasChanges(field) {
+            return Color.accentColor.opacity(0.72)
+        }
+
+        return Color.accentColor
+    }
+
+    private func fieldHasChanges(_ field: DutyFocusedField) -> Bool {
+        guard isEditing else { return false }
+
+        switch field {
+        case .assignment:
+            let before = (original.first?.assignmentNumber ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let after = assignmentNumber
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return before != after
+
+        case .legNumber(let index):
+            guard draft.indices.contains(index), original.indices.contains(index) else {
+                return false
+            }
+            let before = original[index].legNumber ?? original[index].flightNumber
+            let after = draft[index].legNumber ?? draft[index].flightNumber
+            return before != after
+
+        case .aircraft(let index):
+            guard draft.indices.contains(index), original.indices.contains(index) else {
+                return false
+            }
+            return draft[index].aircraft != original[index].aircraft
+
+        case .registration(let index):
+            guard draft.indices.contains(index), original.indices.contains(index) else {
+                return false
+            }
+            let before = original[index].registration
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased()
+            let after = draft[index].registration
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased()
+            return before != after
+
+        case .route(let index):
+            guard draft.indices.contains(index), original.indices.contains(index) else {
+                return false
+            }
+            let beforeDeparture = original[index].departure
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased()
+            let afterDeparture = draft[index].departure
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased()
+            let beforeArrival = original[index].arrival
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased()
+            let afterArrival = draft[index].arrival
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased()
+            return beforeDeparture != afterDeparture || beforeArrival != afterArrival
+
+        case .flightKind(let index):
+            guard draft.indices.contains(index), original.indices.contains(index) else {
+                return false
+            }
+            return (draft[index].scheduleType ?? .planned)
+                != (original[index].scheduleType ?? .planned)
+
+        case .calculatedTime(let index):
+            guard draft.indices.contains(index), original.indices.contains(index) else {
+                return false
+            }
+            return draft[index].calculatedMinutesOverride
+                != original[index].calculatedMinutesOverride
+
+        case .time(let index, let point):
+            guard draft.indices.contains(index), original.indices.contains(index) else {
+                return false
+            }
+            return point.date(in: times(for: draft[index]))
+                != point.date(in: times(for: original[index]))
+
+        default:
+            return false
+        }
     }
 
     private func identityField<Content: View>(
@@ -1482,9 +1588,10 @@ struct DutyDetailView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(
                     isEditing
-                        ? (focusedField == field
-                            ? Color.accentColor.opacity(0.58)
-                            : Color.accentColor)
+                        ? editorValueColor(
+                            for: field,
+                            isActive: focusedField == field
+                        )
                         : Color.primary
                 )
                 .lineLimit(1)
@@ -1562,9 +1669,10 @@ struct DutyDetailView: View {
             + Text(cleanCode)
                 .foregroundColor(
                     isEditing
-                        ? (isActive.wrappedValue
-                            ? Color.accentColor.opacity(0.58)
-                            : Color.accentColor)
+                        ? editorValueColor(
+                            for: .route(index),
+                            isActive: isActive.wrappedValue
+                        )
                         : Color.primary
                 )
             + Text(")")
@@ -1816,102 +1924,78 @@ struct DutyDetailView: View {
     }
 
     private func calculatedTime(_ leg: FlightLeg, index: Int) -> some View {
-        Group {
-            if isEditing {
-                ZStack {
-                    Button {
-                        focusedField = .calculatedTime(index)
-                    } label: {
-                        legValueCard(
-                            title: "Расчётное время",
-                            value: leg.calculatedMinutes.map(timeText) ?? "Отсутствует",
-                            centered: true,
-                            compact: true,
-                            valueColor: focusedField == .calculatedTime(index)
-                                ? Color.accentColor.opacity(0.58)
-                                : Color.accentColor
+        identityField("Расчётное время", field: .calculatedTime(index)) {
+            Text(leg.calculatedMinutes.map(timeText) ?? "Отсутствует")
+        }
+        .overlay(alignment: .topTrailing) {
+            if isEditing, focusedField == .calculatedTime(index) {
+                floatingEditor(width: 204) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        editPopoverHeader(
+                            "Расчётное время",
+                            extraHorizontalInset: 0
                         )
-                    }
-                    .buttonStyle(.plain)
-                }
-                .overlay(alignment: .topTrailing) {
-                    if focusedField == .calculatedTime(index) {
-                        floatingEditor(width: 204) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                editPopoverHeader(
-                                    "Расчётное время",
-                                    extraHorizontalInset: 0
-                                )
-                                .zIndex(200)
+                        .zIndex(200)
 
-                                ZStack(alignment: .topLeading) {
-                                    Group {
-                                        if draft[index].calculatedMinutesOverride != nil {
-                                            DatePicker(
-                                                "",
-                                                selection: calculatedTimeBinding(index),
-                                                displayedComponents: [.hourAndMinute]
-                                            )
-                                            .labelsHidden()
-                                            .datePickerStyle(.wheel)
-                                            .frame(width: 166, height: 116)
-                                            .clipped()
-                                        } else {
-                                            Text(
-                                                draft[index].calculatedMinutes.map(timeText)
-                                                ?? "Отсутствует"
-                                            )
-                                            .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(.secondary)
-                                            .frame(width: 166, height: 40, alignment: .leading)
-                                        }
-                                    }
-                                    .padding(.top, 42)
-                                    .zIndex(0)
-
-                                    Button {
-                                        toggleCalculatedTimeSource(index)
-                                    } label: {
-                                        HStack(spacing: 8) {
-                                            ZStack {
-                                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                    .stroke(Color.secondary, lineWidth: 1.2)
-                                                    .frame(width: 20, height: 20)
-
-                                                if draft[index].calculatedMinutesOverride == nil {
-                                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                                        .fill(Color.accentColor)
-                                                        .frame(width: 20, height: 20)
-
-                                                    Image(systemName: "checkmark")
-                                                        .font(.caption2.weight(.bold))
-                                                        .foregroundStyle(.white)
-                                                }
-                                            }
-
-                                            Text("Из таблицы")
-                                        }
-                                        .frame(width: 166, height: 38, alignment: .leading)
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .zIndex(100)
+                        ZStack(alignment: .topLeading) {
+                            Group {
+                                if draft[index].calculatedMinutesOverride != nil {
+                                    DatePicker(
+                                        "",
+                                        selection: calculatedTimeBinding(index),
+                                        displayedComponents: [.hourAndMinute]
+                                    )
+                                    .labelsHidden()
+                                    .datePickerStyle(.wheel)
+                                    .frame(width: 166, height: 116)
+                                    .clipped()
+                                } else {
+                                    Text(
+                                        draft[index].calculatedMinutes.map(timeText)
+                                        ?? "Отсутствует"
+                                    )
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 166, height: 40, alignment: .leading)
                                 }
                             }
+                            .padding(.top, 42)
+                            .zIndex(0)
+
+                            Button {
+                                toggleCalculatedTimeSource(index)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    ZStack {
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .stroke(Color.secondary, lineWidth: 1.2)
+                                            .frame(width: 20, height: 20)
+
+                                        if draft[index].calculatedMinutesOverride == nil {
+                                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                                .fill(Color.accentColor)
+                                                .frame(width: 20, height: 20)
+
+                                            Image(systemName: "checkmark")
+                                                .font(.caption2.weight(.bold))
+                                                .foregroundStyle(.white)
+                                        }
+                                    }
+
+                                    Text("Из таблицы")
+                                }
+                                .frame(width: 166, height: 38, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .zIndex(100)
                         }
-                        .offset(y: 46)
                     }
                 }
-                .zIndex(focusedField == .calculatedTime(index) ? 1000 : 0)
-            } else {
-                legValueCard(
-                    title: "Расчётное время",
-                    value: leg.calculatedMinutes.map(timeText) ?? "Отсутствует",
-                    centered: true,
-                    compact: true
-                )
+                .offset(y: 46)
             }
         }
+        .zIndex(focusedField == .calculatedTime(index) ? 1000 : 0)
     }
 
     private func toggleCalculatedTimeSource(_ index: Int) {
@@ -1963,9 +2047,10 @@ struct DutyDetailView: View {
                     legValueCard(
                         title: title,
                         value: formatDateTime(point.date(in: times(for: draft[index]))),
-                        valueColor: focusedField == .time(index, point)
-                            ? Color.accentColor.opacity(0.58)
-                            : Color.accentColor
+                        valueColor: editorValueColor(
+                            for: .time(index, point),
+                            isActive: focusedField == .time(index, point)
+                        )
                     )
                 }
                 .buttonStyle(.plain)
@@ -2253,13 +2338,15 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
     var maxLength: Int? = nil
     var isEnabled: Bool = true
     var restoreValue: String? = nil
+    var clearOnFirstDelete = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             text: $text,
             isActive: $isActive,
             maxLength: maxLength,
-            restoreValue: restoreValue
+            restoreValue: restoreValue,
+            clearOnFirstDelete: clearOnFirstDelete
         )
     }
 
@@ -2304,6 +2391,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         context.coordinator.isActive = $isActive
         context.coordinator.maxLength = maxLength
         context.coordinator.restoreValue = restoreValue
+        context.coordinator.clearOnFirstDelete = clearOnFirstDelete
         field.font = font
         field.keyboardType = keyboardType
         field.autocapitalizationType = capitalization
@@ -2336,18 +2424,21 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         var isActive: Binding<Bool>
         var maxLength: Int?
         var restoreValue: String?
+        var clearOnFirstDelete: Bool
         private var replaceOnNextInput = false
 
         init(
             text: Binding<String>,
             isActive: Binding<Bool>,
             maxLength: Int?,
-            restoreValue: String?
+            restoreValue: String?,
+            clearOnFirstDelete: Bool
         ) {
             self.text = text
             self.isActive = isActive
             self.maxLength = maxLength
             self.restoreValue = restoreValue
+            self.clearOnFirstDelete = clearOnFirstDelete
         }
 
         func prepareToReplaceCurrentValue(in textField: UITextField) {
@@ -2414,14 +2505,19 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
             var value = field.text ?? ""
 
             if deleting {
-                replaceOnNextInput = false
-                if value.isEmpty,
-                   let restoreValue,
-                   !restoreValue.isEmpty {
-                    value = limited(restoreValue)
-                    replaceOnNextInput = true
-                } else if !value.isEmpty {
-                    value.removeLast()
+                if replaceOnNextInput, clearOnFirstDelete, !value.isEmpty {
+                    value = ""
+                    replaceOnNextInput = false
+                } else {
+                    replaceOnNextInput = false
+                    if value.isEmpty,
+                       let restoreValue,
+                       !restoreValue.isEmpty {
+                        value = limited(restoreValue)
+                        replaceOnNextInput = true
+                    } else if !value.isEmpty {
+                        value.removeLast()
+                    }
                 }
             } else if let characters {
                 if replaceOnNextInput {
