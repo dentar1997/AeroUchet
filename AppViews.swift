@@ -906,11 +906,7 @@ struct DutyDetailView: View {
             .background {
                 Color.clear
                     .contentShape(Rectangle())
-                    .onTapGesture {
-                        if case .time = focusedField {
-                            focusedField = nil
-                        }
-                    }
+                    .onTapGesture { focusedField = nil }
             }
     }
 
@@ -1287,29 +1283,47 @@ struct DutyDetailView: View {
     }
 
     private func restCard(start: Date, end: Date) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                Text("Перерыв без работы")
-                    .font(.subheadline.weight(.semibold))
+        let restMinutes = minutesBetween(start, end)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Разделённая полётная смена")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 6) {
+                Text("\(formatDateTime(start)) → \(formatDateTime(end))")
+                    .font(.caption.bold())
                 Image(systemName: "moon.zzz")
                     .foregroundStyle(.secondary)
-                Text(timeText(minutesBetween(start, end)))
-                    .font(.subheadline.weight(.semibold))
             }
 
-            Text("\(formatDateTime(start)) → \(formatDateTime(end))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 6) {
+                legValueCard(
+                    title: "Рабочее время",
+                    value: "\(timeText(restMinutes)) → \(quarterRestText(restMinutes))"
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.leading, 22)
-        .padding(.trailing, 12)
-        .padding(.vertical, 12)
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+                .contentShape(RoundedRectangle(cornerRadius: 16))
+                .onTapGesture { focusedField = nil }
         )
         .accessibilityElement(children: .combine)
+    }
+
+    private func quarterRestText(_ minutes: Int) -> String {
+        let seconds = max(0, minutes) * 15
+        let hours = seconds / 3_600
+        let remainingMinutes = (seconds % 3_600) / 60
+        let remainingSeconds = seconds % 60
+        let hoursAndMinutes = String(format: "%d:%02d", hours, remainingMinutes)
+        return remainingSeconds == 0
+            ? hoursAndMinutes
+            : hoursAndMinutes + String(format: ":%02d", remainingSeconds)
     }
 
     private func dutyTitle(_ duty: FlightDuty) -> some View {
@@ -1367,7 +1381,7 @@ struct DutyDetailView: View {
     private func dutyTotals(_ duty: FlightDuty) -> some View {
         LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 6) {
             dutyTotalCell(
-                title: "Рабочее время",
+                title: "Полётная смена",
                 total: duty.workMinutes,
                 night: duty.workNightMinutes
             )
@@ -1406,6 +1420,7 @@ struct DutyDetailView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
+        .onTapGesture { focusedField = nil }
     }
 
     private func timeAndNight(total: Int, night: Int) -> some View {
@@ -1492,6 +1507,8 @@ struct DutyDetailView: View {
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(Color(uiColor: .tertiarySystemGroupedBackground))
+                .contentShape(RoundedRectangle(cornerRadius: 16))
+                .onTapGesture { focusedField = nil }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
@@ -2357,13 +2374,8 @@ struct DutyDetailView: View {
             showsCalendarButton: index == 0 && point == .workStart,
             dateCanToggle: isEditing && canToggleDutyDate(index: index, point: point),
             onToggleDate: { toggleDutyDate(index: index, point: point) },
-            backgroundColor: valueTileColor,
-            valueColor: isEditing
-                ? editorValueColor(
-                    for: .time(index, point),
-                    isActive: focusedField == .time(index, point)
-                )
-                : .primary
+            onDismiss: { focusedField = nil },
+            backgroundColor: valueTileColor
         )
         .zIndex(focusedField == .time(index, point) ? 100 : 0)
     }
@@ -2417,6 +2429,7 @@ struct DutyDetailView: View {
         )
         .fixedSize(horizontal: compact, vertical: false)
         .accessibilityElement(children: .combine)
+        .onTapGesture { focusedField = nil }
     }
 
     private func legValueCard(
@@ -2440,6 +2453,7 @@ struct DutyDetailView: View {
                 .fill(valueTileColor)
         )
         .accessibilityElement(children: .combine)
+        .onTapGesture { focusedField = nil }
     }
 
 }
