@@ -21,52 +21,36 @@ jobs:
       - name: Patch version 76
         shell: bash
         run: |
-          python3 - <<'PY'
+          python3 <<'PY'
           from pathlib import Path
 
-          path = Path("AppViews.swift")
+          path = Path('AppViews.swift')
           text = path.read_text()
 
-          old = '''                Color.black
-                    .opacity(backgroundOpacity(for: geometry.size.height))
-                    .ignoresSafeArea()
-'''
-          new = '''                Color.black
-                    // Keep the dim layer static during the interactive drag.
-                    // Updating its opacity every frame made downward swipes
-                    // increasingly expensive as the number of legs grew.
-                    .opacity(0.65)
-                    .ignoresSafeArea()
-'''
+          old = '''                Color.black\n                    .opacity(backgroundOpacity(for: geometry.size.height))\n                    .ignoresSafeArea()\n'''
+          new = '''                Color.black\n                    // Keep the dim layer static during the interactive drag.\n                    // Updating its opacity every frame made downward swipes\n                    // increasingly expensive as the number of legs grew.\n                    .opacity(0.65)\n                    .ignoresSafeArea()\n'''
           if old not in text:
-              raise SystemExit("background opacity block not found")
+              raise SystemExit('background opacity block not found')
           text = text.replace(old, new, 1)
 
-          old = '''    private func backgroundOpacity(for height: CGFloat) -> Double {
-        guard height > 0 else { return 0.65 }
-        let progress = min(max(dragOffset / height, 0), 1)
-        return 0.65 * Double(1 - progress * 0.75)
-    }
-
-'''
+          old = '''    private func backgroundOpacity(for height: CGFloat) -> Double {\n        guard height > 0 else { return 0.65 }\n        let progress = min(max(dragOffset / height, 0), 1)\n        return 0.65 * Double(1 - progress * 0.75)\n    }\n\n'''
           if old not in text:
-              raise SystemExit("backgroundOpacity helper not found")
-          text = text.replace(old, "", 1)
+              raise SystemExit('backgroundOpacity helper not found')
+          text = text.replace(old, '', 1)
           path.write_text(text)
 
-          version = Path("AppVersion.swift")
-          value = version.read_text().replace("static let number = 75", "static let number = 76").replace('static let label = "Версия 75"', 'static let label = "Версия 76"')
+          version = Path('AppVersion.swift')
+          value = version.read_text().replace('static let number = 75', 'static let number = 76').replace('static let label = "Версия 75"', 'static let label = "Версия 76"')
           version.write_text(value)
 
-          package = Path("Package.swift")
+          package = Path('Package.swift')
           value = package.read_text().replace('displayVersion: "75"', 'displayVersion: "76"').replace('bundleVersion: "75"', 'bundleVersion: "76"')
           package.write_text(value)
 
-          Path(".github/workflows/v76-source-patch.yml").unlink()
+          Path('.github/workflows/v76-source-patch.yml').unlink()
           PY
 
       - name: Commit v76
-        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
