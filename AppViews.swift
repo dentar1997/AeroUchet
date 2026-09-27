@@ -337,9 +337,9 @@ private struct DutyAssignmentOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
-            // Три временные колонки по 176 pt + промежутки + внутренние
-            // отступы leg и задания дают компактную ширину около 600 pt.
-            let width = min(geometry.size.width * 0.92, 600)
+            // Ширина задания ориентирована на естественную ширину
+            // верхней строки из пяти компактных полей leg.
+            let width = min(geometry.size.width * 0.92, 556)
 
             ZStack {
                 Color.black
@@ -608,7 +608,7 @@ struct DutyDetailView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private let timeColumns = Array(
-        repeating: GridItem(.fixed(176), spacing: 8),
+        repeating: GridItem(.fixed(160), spacing: 8),
         count: 3
     )
 
@@ -734,22 +734,8 @@ struct DutyDetailView: View {
     }
 
     private func assignmentHeader(_ duty: FlightDuty) -> some View {
-        ZStack {
-            dutyTitle(
-                isEditing && isValid
-                ? FlightDuty(id: duty.id, legs: updatedLegs)
-                : duty
-            )
-            .padding(.horizontal, 180)
-
+        HStack(spacing: 8) {
             HStack(spacing: 8) {
-                Button(action: close) {
-                    Image(systemName: "xmark.circle")
-                }
-                .accessibilityLabel("Закрыть задание")
-
-                Spacer()
-
                 if isEditing {
                     Button {
                         restoreEdit(at: historyIndex - 1)
@@ -766,7 +752,21 @@ struct DutyDetailView: View {
                     }
                     .disabled(historyIndex + 1 >= editHistory.count)
                     .accessibilityLabel("Повторить изменение")
+                }
+            }
+            .frame(width: 104, alignment: .leading)
 
+            dutyTitle(
+                isEditing && isValid
+                ? FlightDuty(id: duty.id, legs: updatedLegs)
+                : duty
+            )
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .frame(maxWidth: .infinity)
+
+            HStack(spacing: 8) {
+                if isEditing {
                     Button {
                         focusedField = nil
                         showReview = true
@@ -812,6 +812,7 @@ struct DutyDetailView: View {
                     .accessibilityLabel("Удалить задание на полёт")
                 }
             }
+            .frame(width: 104, alignment: .trailing)
         }
         .frame(maxWidth: .infinity)
         .buttonStyle(.bordered)
@@ -2063,7 +2064,7 @@ struct DutyDetailView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .minimumScaleFactor(0.78)
 
             Text(value)
                 .font(.subheadline.weight(.semibold))
