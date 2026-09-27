@@ -1,0 +1,508 @@
+name: Apply v96 UI edits
+
+on:
+  push:
+    branches:
+      - ui/v96-edit-guard-layout
+    paths:
+      - .github/workflows/v96-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/v96-edit-guard-layout
+      - name: Patch AppViews
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('AppViews.swift')
+          text = path.read_text()
+
+          def replace_once(old, new, label):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 occurrence, found {count}')
+              text = text.replace(old, new, 1)
+
+          def replace_all(old, new, expected, label):
+              global text
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f'{label}: expected {expected} occurrences, found {count}')
+              text = text.replace(old, new)
+
+          replace_once(
+              '''    @State private var editorIsActive = false
+    @State private var dismissEditorSignal = 0
+''',
+              '''    @State private var editorIsActive = false
+    @State private var editModeIsActive = false
+    @State private var dismissEditorSignal = 0
+''',
+              'overlay edit mode state'
+          )
+
+          replace_all(
+              '''                        if editorIsActive {
+                            dismissEditorSignal += 1
+                        } else {
+                            onClose()
+                        }
+''',
+              '''                        if editorIsActive {
+                            dismissEditorSignal += 1
+                        } else if !editModeIsActive {
+                            onClose()
+                        }
+''',
+              2,
+              'outside tap guard'
+          )
+
+          replace_once(
+              '''                        onEditorFocusChange: { editorIsActive = $0 },
+                        externalEditorDismissSignal: dismissEditorSignal
+''',
+              '''                        onEditorFocusChange: { editorIsActive = $0 },
+                        onEditModeChange: { editModeIsActive = $0 },
+                        externalEditorDismissSignal: dismissEditorSignal
+''',
+              'edit mode callback'
+          )
+
+          replace_once(
+              '''                        enabled: !editorIsActive
+''',
+              '''                        enabled: !editorIsActive && !editModeIsActive
+''',
+              'disable swipe in edit mode'
+          )
+
+          replace_once(
+              '''    let scrollsAsPage: Bool
+    let onEditorFocusChange: ((Bool) -> Void)?
+    let externalEditorDismissSignal: Int
+''',
+              '''    let scrollsAsPage: Bool
+    let onEditorFocusChange: ((Bool) -> Void)?
+    let onEditModeChange: ((Bool) -> Void)?
+    let externalEditorDismissSignal: Int
+''',
+              'detail property'
+          )
+
+          replace_once(
+              '''        scrollsAsPage: Bool = false,
+        onEditorFocusChange: ((Bool) -> Void)? = nil,
+        externalEditorDismissSignal: Int = 0
+''',
+              '''        scrollsAsPage: Bool = false,
+        onEditorFocusChange: ((Bool) -> Void)? = nil,
+        onEditModeChange: ((Bool) -> Void)? = nil,
+        externalEditorDismissSignal: Int = 0
+''',
+              'detail init parameter'
+          )
+
+          replace_once(
+              '''        self.scrollsAsPage = scrollsAsPage
+        self.onEditorFocusChange = onEditorFocusChange
+        self.externalEditorDismissSignal = externalEditorDismissSignal
+''',
+              '''        self.scrollsAsPage = scrollsAsPage
+        self.onEditorFocusChange = onEditorFocusChange
+        self.onEditModeChange = onEditModeChange
+        self.externalEditorDismissSignal = externalEditorDismissSignal
+''',
+              'detail init assignment'
+          )
+
+          replace_once(
+              '''        .onChange(of: focusedField) { value in
+            onEditorFocusChange?(value != nil)
+        }
+        .onChange(of: externalEditorDismissSignal) { _ in
+            focusedField = nil
+        }
+        .onDisappear {
+            onEditorFocusChange?(false)
+        }
+''',
+              '''        .onChange(of: focusedField) { value in
+            onEditorFocusChange?(value != nil)
+        }
+        .onChange(of: isEditing) { value in
+            onEditModeChange?(value)
+        }
+        .onChange(of: externalEditorDismissSignal) { _ in
+            focusedField = nil
+        }
+        .onDisappear {
+            onEditorFocusChange?(false)
+            onEditModeChange?(false)
+        }
+''',
+              'edit mode lifecycle callback'
+          )
+
+          old_header = '''    private func assignmentHeader(_ duty: FlightDuty) -> some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                if isEditing {
+                    Button {
+                        restoreEdit(at: historyIndex - 1)
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(historyIndex == 0)
+                    .accessibilityLabel("Отменить последнее изменение")
+
+                    Button {
+                        restoreEdit(at: historyIndex + 1)
+                    } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                    }
+                    .disabled(historyIndex + 1 >= editHistory.count)
+                    .accessibilityLabel("Повторить изменение")
+                }
+            }
+            .frame(width: 104, alignment: .leading)
+
+            dutyTitle(
+                isEditing && isValid
+                ? FlightDuty(id: duty.id, legs: updatedLegs)
+                : duty
+            )
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .frame(maxWidth: .infinity)
+
+            HStack(spacing: 8) {
+                if isEditing {
+                    Button {
+                        focusedField = nil
+                        showReview = true
+                    } label: {
+                        Image(systemName: "checkmark")
+                    }
+                    .disabled(!isValid || differences.isEmpty)
+                    .accessibilityLabel("Применить изменения")
+
+                    Button {
+                        focusedField = nil
+                        isEditing = false
+                        draft = []
+                        original = []
+                        editHistory = []
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Отменить все изменения")
+                } else {
+                    Button {
+                        original = duty.legs
+                        draft = duty.legs
+                        assignmentNumber = duty.firstLeg.assignmentNumber ?? ""
+                        editHistory = [
+                            DutyEditSnapshot(
+                                legs: draft,
+                                assignment: assignmentNumber
+                            )
+                        ]
+                        historyIndex = 0
+                        isEditing = true
+                    } label: {
+                        Image(systemName: "wrench")
+                    }
+                    .accessibilityLabel("Редактировать задание на полёт")
+
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .accessibilityLabel("Удалить задание на полёт")
+                }
+            }
+            .frame(width: 104, alignment: .trailing)
+        }
+        .frame(maxWidth: .infinity)
+        .buttonStyle(.bordered)
+    }
+'''
+
+          new_header = '''    private func assignmentHeader(_ duty: FlightDuty) -> some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                if isEditing {
+                    Button {
+                        focusedField = nil
+                        showReview = true
+                    } label: {
+                        Image(systemName: "checkmark")
+                    }
+                    .disabled(!isValid || differences.isEmpty)
+                    .accessibilityLabel("Применить изменения")
+
+                    Button {
+                        focusedField = nil
+                        isEditing = false
+                        draft = []
+                        original = []
+                        editHistory = []
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Отменить все изменения")
+                } else {
+                    Button {
+                        original = duty.legs
+                        draft = duty.legs
+                        assignmentNumber = duty.firstLeg.assignmentNumber ?? ""
+                        editHistory = [
+                            DutyEditSnapshot(
+                                legs: draft,
+                                assignment: assignmentNumber
+                            )
+                        ]
+                        historyIndex = 0
+                        isEditing = true
+                    } label: {
+                        Image(systemName: "wrench")
+                    }
+                    .accessibilityLabel("Редактировать задание на полёт")
+                }
+            }
+            .frame(width: 104, alignment: .leading)
+
+            dutyTitle(
+                isEditing && isValid
+                ? FlightDuty(id: duty.id, legs: updatedLegs)
+                : duty
+            )
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .frame(maxWidth: .infinity)
+
+            HStack(spacing: 8) {
+                if isEditing {
+                    Button {
+                        restoreEdit(at: historyIndex - 1)
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(historyIndex == 0)
+                    .accessibilityLabel("Отменить последнее изменение")
+
+                    Button {
+                        restoreEdit(at: historyIndex + 1)
+                    } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                    }
+                    .disabled(historyIndex + 1 >= editHistory.count)
+                    .accessibilityLabel("Повторить изменение")
+                } else {
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .accessibilityLabel("Удалить задание на полёт")
+                }
+            }
+            .frame(width: 104, alignment: .trailing)
+        }
+        .frame(maxWidth: .infinity)
+        .buttonStyle(.bordered)
+    }
+'''
+          replace_once(old_header, new_header, 'header button layout')
+
+          replace_once(
+              '''            dutyTotals(duty)
+
+
+            ForEach(duty.legs.indices, id: \\.self) { index in
+''',
+              '''            if duty.legs.count > 1 {
+                dutyTotals(duty)
+            }
+
+            ForEach(duty.legs.indices, id: \\.self) { index in
+''',
+              'single leg totals'
+          )
+
+          replace_once(
+              '''                capitalization: .none,
+                expands: false,
+                allowsEditing: isEditing,
+                restoreValue: original.first?.assignmentNumber
+                    ?? duty.firstLeg.assignmentNumber
+                    ?? "",
+                reserveText: "8888888",
+''',
+              '''                capitalization: .none,
+                maxLength: 9,
+                expands: false,
+                allowsEditing: isEditing,
+                restoreValue: original.first?.assignmentNumber
+                    ?? duty.firstLeg.assignmentNumber
+                    ?? "",
+                numbersOnly: true,
+                reserveText: "888888888",
+''',
+              'assignment max length and fixed width'
+          )
+
+          replace_once(
+              '''        clearOnFirstDelete: Bool = false,
+        reserveText: String? = nil,
+''',
+              '''        clearOnFirstDelete: Bool = false,
+        numbersOnly: Bool = false,
+        reserveText: String? = nil,
+''',
+              'stable editor numbers only parameter'
+          )
+
+          replace_once(
+              '''                    isEnabled: true,
+                    restoreValue: restoreValue,
+                    clearOnFirstDelete: clearOnFirstDelete
+''',
+              '''                    isEnabled: true,
+                    restoreValue: restoreValue,
+                    clearOnFirstDelete: clearOnFirstDelete,
+                    numbersOnly: numbersOnly
+''',
+              'pass numbers only'
+          )
+
+          replace_once(
+              '''        if let field, fieldHasChanges(field) {
+            return Color.accentColor.opacity(0.72)
+        }
+''',
+              '''        if let field, fieldHasChanges(field) {
+            return Color.indigo
+        }
+''',
+              'changed value color'
+          )
+
+          replace_once(
+              '''    var restoreValue: String? = nil
+    var clearOnFirstDelete = false
+''',
+              '''    var restoreValue: String? = nil
+    var clearOnFirstDelete = false
+    var numbersOnly = false
+''',
+              'inline editor numbers only property'
+          )
+
+          replace_once(
+              '''            maxLength: maxLength,
+            restoreValue: restoreValue,
+            clearOnFirstDelete: clearOnFirstDelete
+''',
+              '''            maxLength: maxLength,
+            restoreValue: restoreValue,
+            clearOnFirstDelete: clearOnFirstDelete,
+            numbersOnly: numbersOnly
+''',
+              'coordinator creation numbers only'
+          )
+
+          replace_once(
+              '''        context.coordinator.restoreValue = restoreValue
+        context.coordinator.clearOnFirstDelete = clearOnFirstDelete
+''',
+              '''        context.coordinator.restoreValue = restoreValue
+        context.coordinator.clearOnFirstDelete = clearOnFirstDelete
+        context.coordinator.numbersOnly = numbersOnly
+''',
+              'coordinator update numbers only'
+          )
+
+          replace_once(
+              '''        var restoreValue: String?
+        var clearOnFirstDelete: Bool
+        private var replaceOnNextInput = false
+''',
+              '''        var restoreValue: String?
+        var clearOnFirstDelete: Bool
+        var numbersOnly: Bool
+        private var replaceOnNextInput = false
+''',
+              'coordinator numbers only property'
+          )
+
+          replace_once(
+              '''            maxLength: Int?,
+            restoreValue: String?,
+            clearOnFirstDelete: Bool
+        ) {
+''',
+              '''            maxLength: Int?,
+            restoreValue: String?,
+            clearOnFirstDelete: Bool,
+            numbersOnly: Bool
+        ) {
+''',
+              'coordinator init signature'
+          )
+
+          replace_once(
+              '''            self.maxLength = maxLength
+            self.restoreValue = restoreValue
+            self.clearOnFirstDelete = clearOnFirstDelete
+        }
+''',
+              '''            self.maxLength = maxLength
+            self.restoreValue = restoreValue
+            self.clearOnFirstDelete = clearOnFirstDelete
+            self.numbersOnly = numbersOnly
+        }
+''',
+              'coordinator init assignment'
+          )
+
+          replace_once(
+              '''        private func limited(_ value: String) -> String {
+            guard let maxLength else { return value }
+            return String(value.prefix(maxLength))
+        }
+''',
+              '''        private func limited(_ value: String) -> String {
+            let filtered = numbersOnly
+                ? String(value.filter(\\.isNumber))
+                : value
+            guard let maxLength else { return filtered }
+            return String(filtered.prefix(maxLength))
+        }
+''',
+              'numbers only filtering'
+          )
+
+          path.write_text(text)
+          PY
+      - name: Remove temporary workflow and commit
+        shell: bash
+        run: |
+          rm .github/workflows/v96-apply.yml
+          git config user.name "dentar1997"
+          git config user.email "dentar1997@gmail.com"
+          git add AppViews.swift .github/workflows/v96-apply.yml
+          git commit -m "v96: protect edit mode and refine assignment header"
+          git push origin ui/v96-edit-guard-layout
