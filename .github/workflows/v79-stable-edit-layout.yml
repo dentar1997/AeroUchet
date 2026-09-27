@@ -20,20 +20,8 @@ jobs:
 
       - name: Apply patch
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('AppViews.swift')
-          text = path.read_text()
-          old = '''                .frame(maxWidth: .infinity, minHeight: lineHeight, maxHeight: lineHeight)
-                .allowsHitTesting(false)
-'''
-          new = '''                .frame(maxWidth: .infinity, minHeight: lineHeight, maxHeight: lineHeight)
-'''
-          if old not in text:
-              raise SystemExit('stable editor hit testing block not found')
-          text = text.replace(old, new, 1)
-          path.write_text(text)
-          PY
+          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnBhdGggPSBQYXRoKCJBcHBWaWV3cy5zd2lmdCIpCnRleHQgPSBwYXRoLnJlYWRfdGV4dCgpCm9sZCA9ICcnJyAgICAgICAgICAgICAgICAuZnJhbWUobWF4V2lkdGg6IC5pbmZpbml0eSwgbWluSGVpZ2h0OiBsaW5lSGVpZ2h0LCBtYXhIZWlnaHQ6IGxpbmVIZWlnaHQpCiAgICAgICAgICAgICAgICAuYWxsb3dzSGl0VGVzdGluZyhmYWxzZSkKJycnCm5ldyA9ICcnJyAgICAgICAgICAgICAgICAuZnJhbWUobWF4V2lkdGg6IC5pbmZpbml0eSwgbWluSGVpZ2h0OiBsaW5lSGVpZ2h0LCBtYXhIZWlnaHQ6IGxpbmVIZWlnaHQpCicnJwppZiBvbGQgbm90IGluIHRleHQ6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJzdGFibGUgZWRpdG9yIGhpdCB0ZXN0aW5nIGJsb2NrIG5vdCBmb3VuZCIpCnRleHQgPSB0ZXh0LnJlcGxhY2Uob2xkLCBuZXcsIDEpCnBhdGgud3JpdGVfdGV4dCh0ZXh0KQo=' | base64 --decode > /tmp/v79_tap.py
+          python3 /tmp/v79_tap.py
 
       - name: Commit
         run: |
