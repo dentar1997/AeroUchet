@@ -327,9 +327,14 @@ private struct DutyAssignmentOverlay: View {
     @ObservedObject var store: AppStore
     let onClose: () -> Void
 
-    @State private var dragOffset: CGFloat = 0
+    @State private var settledDragOffset: CGFloat = 0
+    @GestureState private var gestureDragOffset: CGFloat = 0
     @State private var editorIsActive = false
     @State private var dismissEditorSignal = 0
+
+    private var dragOffset: CGFloat {
+        settledDragOffset + gestureDragOffset
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -404,25 +409,29 @@ private struct DutyAssignmentOverlay: View {
     }
 
     private func dismissDrag(in height: CGFloat, enabled: Bool) -> some Gesture {
-        DragGesture(minimumDistance: 3)
-            .onChanged { value in
+        DragGesture(minimumDistance: 1)
+            .updating($gestureDragOffset) { value, state, transaction in
                 guard enabled else {
-                    dragOffset = 0
+                    state = 0
                     return
                 }
 
-                // Вниз карточка идёт за пальцем без задержки.
-                // Вверх используется плавная нелинейная резинка без жёсткого упора.
-                if value.translation.height >= 0 {
-                    dragOffset = value.translation.height
-                } else {
-                    dragOffset = upwardRubberBand(value.translation.height)
-                }
+                // GestureState обновляется синхронно с жестом и не заставляет
+                // обычный @State пересчитываться на каждом кадре ProMotion.
+                transaction.animation = nil
+                state = interactiveOffset(for: value.translation.height)
             }
             .onEnded { value in
                 guard enabled else {
-                    dragOffset = 0
+                    settledDragOffset = 0
                     return
+                }
+
+                let releasedOffset = interactiveOffset(for: value.translation.height)
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    settledDragOffset = releasedOffset
                 }
 
                 let predicted = max(
@@ -437,7 +446,7 @@ private struct DutyAssignmentOverlay: View {
                     withAnimation(
                         .spring(response: 0.34, dampingFraction: 0.92)
                     ) {
-                        dragOffset = max(height + 80, 580)
+                        settledDragOffset = max(height + 80, 580)
                     }
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
@@ -447,10 +456,14 @@ private struct DutyAssignmentOverlay: View {
                     withAnimation(
                         .spring(response: 0.42, dampingFraction: 0.88)
                     ) {
-                        dragOffset = 0
+                        settledDragOffset = 0
                     }
                 }
             }
+    }
+
+    private func interactiveOffset(for translation: CGFloat) -> CGFloat {
+        translation >= 0 ? translation : upwardRubberBand(translation)
     }
 
     private func upwardRubberBand(_ translation: CGFloat) -> CGFloat {
