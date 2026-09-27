@@ -1097,6 +1097,9 @@ struct DutyDetailView: View {
                 capitalization: .none,
                 expands: false,
                 allowsEditing: isEditing,
+                restoreValue: original.first?.assignmentNumber
+                    ?? duty.firstLeg.assignmentNumber
+                    ?? "",
                 highlightHorizontalPadding: 0,
                 textFont: .title3.bold(),
                 inputFont: .systemFont(ofSize: 20, weight: .bold),
@@ -1328,7 +1331,10 @@ struct DutyDetailView: View {
                 capitalization: .allCharacters,
                 maxLength: 10,
                 expands: false,
-                allowsEditing: isEditing
+                allowsEditing: isEditing,
+                restoreValue: original.indices.contains(index)
+                    ? (original[index].legNumber ?? original[index].flightNumber)
+                    : leg.displayedLegNumber
             )
         }
     }
@@ -1361,7 +1367,10 @@ struct DutyDetailView: View {
                 capitalization: .allCharacters,
                 maxLength: 10,
                 expands: false,
-                allowsEditing: isEditing
+                allowsEditing: isEditing,
+                restoreValue: original.indices.contains(index)
+                    ? original[index].aircraft
+                    : leg.aircraft
             )
         }
     }
@@ -1386,6 +1395,10 @@ struct DutyDetailView: View {
                 maxLength: 5,
                 expands: false,
                 allowsEditing: isEditing,
+                restoreValue: original.indices.contains(index)
+                    ? formattedRegistration(original[index].registration)
+                        .replacingOccurrences(of: "RA-", with: "")
+                    : staticDigits,
                 highlightHorizontalPadding: 0
             )
         }
@@ -1400,6 +1413,7 @@ struct DutyDetailView: View {
         maxLength: Int? = nil,
         expands: Bool = true,
         allowsEditing: Bool = true,
+        restoreValue: String? = nil,
         highlightHorizontalPadding: CGFloat = 2,
         textFont: Font = .subheadline.weight(.semibold),
         inputFont: UIFont = .systemFont(ofSize: 15, weight: .semibold),
@@ -1410,14 +1424,22 @@ struct DutyDetailView: View {
                 Text(prefix)
                     .font(textFont)
                     .foregroundStyle(
-                        isEditing ? Color.accentColor : Color.primary
+                        isEditing
+                            ? (isActive.wrappedValue
+                                ? Color.accentColor.opacity(0.58)
+                                : Color.accentColor)
+                            : Color.primary
                     )
             }
 
             Text(text.wrappedValue)
                 .font(textFont)
                 .foregroundStyle(
-                    isEditing ? Color.accentColor : Color.primary
+                    isEditing
+                            ? (isActive.wrappedValue
+                                ? Color.accentColor.opacity(0.58)
+                                : Color.accentColor)
+                            : Color.primary
                 )
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -1435,7 +1457,8 @@ struct DutyDetailView: View {
                     textAlignment: .center,
                     font: inputFont,
                     maxLength: maxLength,
-                    isEnabled: true
+                    isEnabled: true,
+                    restoreValue: restoreValue
                 )
                 .frame(maxWidth: .infinity, minHeight: lineHeight, maxHeight: lineHeight)
             }
@@ -1457,7 +1480,13 @@ struct DutyDetailView: View {
 
             content()
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isEditing ? Color.accentColor : Color.primary)
+                .foregroundStyle(
+                    isEditing
+                        ? (focusedField == field
+                            ? Color.accentColor.opacity(0.58)
+                            : Color.accentColor)
+                        : Color.primary
+                )
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .frame(height: 18, alignment: .center)
@@ -1531,7 +1560,13 @@ struct DutyDetailView: View {
         let endpointText =
             Text("\(airportNameOnly(cleanCode)) (")
             + Text(cleanCode)
-                .foregroundColor(isEditing ? .accentColor : .primary)
+                .foregroundColor(
+                    isEditing
+                        ? (isActive.wrappedValue
+                            ? Color.accentColor.opacity(0.58)
+                            : Color.accentColor)
+                        : Color.primary
+                )
             + Text(")")
 
         return endpointText
@@ -1545,7 +1580,12 @@ struct DutyDetailView: View {
                         textAlignment: .center,
                         font: .systemFont(ofSize: 15, weight: .semibold),
                         maxLength: 5,
-                        isEnabled: true
+                        isEnabled: true,
+                        restoreValue: original.indices.contains(index)
+                            ? (side == .departure
+                                ? original[index].departure
+                                : original[index].arrival)
+                            : cleanCode
                     )
                     .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18)
                     .allowsHitTesting(false)
@@ -1787,7 +1827,9 @@ struct DutyDetailView: View {
                             value: leg.calculatedMinutes.map(timeText) ?? "Отсутствует",
                             centered: true,
                             compact: true,
-                            valueColor: .accentColor
+                            valueColor: focusedField == .calculatedTime(index)
+                                ? Color.accentColor.opacity(0.58)
+                                : Color.accentColor
                         )
                     }
                     .buttonStyle(.plain)
@@ -1921,7 +1963,9 @@ struct DutyDetailView: View {
                     legValueCard(
                         title: title,
                         value: formatDateTime(point.date(in: times(for: draft[index]))),
-                        valueColor: .accentColor
+                        valueColor: focusedField == .time(index, point)
+                            ? Color.accentColor.opacity(0.58)
+                            : Color.accentColor
                     )
                 }
                 .buttonStyle(.plain)
@@ -2208,12 +2252,14 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
     let font: UIFont
     var maxLength: Int? = nil
     var isEnabled: Bool = true
+    var restoreValue: String? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             text: $text,
             isActive: $isActive,
-            maxLength: maxLength
+            maxLength: maxLength,
+            restoreValue: restoreValue
         )
     }
 
@@ -2257,6 +2303,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         context.coordinator.text = $text
         context.coordinator.isActive = $isActive
         context.coordinator.maxLength = maxLength
+        context.coordinator.restoreValue = restoreValue
         field.font = font
         field.keyboardType = keyboardType
         field.autocapitalizationType = capitalization
@@ -2288,16 +2335,19 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         var text: Binding<String>
         var isActive: Binding<Bool>
         var maxLength: Int?
+        var restoreValue: String?
         private var replaceOnNextInput = false
 
         init(
             text: Binding<String>,
             isActive: Binding<Bool>,
-            maxLength: Int?
+            maxLength: Int?,
+            restoreValue: String?
         ) {
             self.text = text
             self.isActive = isActive
             self.maxLength = maxLength
+            self.restoreValue = restoreValue
         }
 
         func prepareToReplaceCurrentValue(in textField: UITextField) {
@@ -2363,16 +2413,21 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         ) {
             var value = field.text ?? ""
 
-            if replaceOnNextInput {
-                value = ""
-                replaceOnNextInput = false
-            }
-
             if deleting {
-                if !value.isEmpty {
+                replaceOnNextInput = false
+                if value.isEmpty,
+                   let restoreValue,
+                   !restoreValue.isEmpty {
+                    value = limited(restoreValue)
+                    replaceOnNextInput = true
+                } else if !value.isEmpty {
                     value.removeLast()
                 }
             } else if let characters {
+                if replaceOnNextInput {
+                    value = ""
+                    replaceOnNextInput = false
+                }
                 value.append(contentsOf: characters)
             }
 
