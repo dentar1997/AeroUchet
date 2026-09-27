@@ -329,6 +329,7 @@ private struct DutyAssignmentOverlay: View {
     @State private var settledDragOffset: CGFloat = 0
     @GestureState private var gestureDragOffset: CGFloat = 0
     @State private var editorIsActive = false
+    @State private var editModeIsActive = false
     @State private var dismissEditorSignal = 0
 
     private var dragOffset: CGFloat {
@@ -348,7 +349,7 @@ private struct DutyAssignmentOverlay: View {
                     .onTapGesture {
                         if editorIsActive {
                             dismissEditorSignal += 1
-                        } else {
+                        } else if !editModeIsActive {
                             onClose()
                         }
                     }
@@ -359,6 +360,7 @@ private struct DutyAssignmentOverlay: View {
                         onClose: onClose,
                         scrollsAsPage: true,
                         onEditorFocusChange: { editorIsActive = $0 },
+                        onEditModeChange: { editModeIsActive = $0 },
                         externalEditorDismissSignal: dismissEditorSignal
                     )
                     .environmentObject(store)
@@ -375,7 +377,7 @@ private struct DutyAssignmentOverlay: View {
                             .onTapGesture {
                                 if editorIsActive {
                                     dismissEditorSignal += 1
-                                } else {
+                                } else if !editModeIsActive {
                                     onClose()
                                 }
                             }
@@ -394,7 +396,7 @@ private struct DutyAssignmentOverlay: View {
                 .simultaneousGesture(
                     dismissDrag(
                         in: geometry.size.height,
-                        enabled: !editorIsActive
+                        enabled: !editorIsActive && !editModeIsActive
                     )
                 )
             }
@@ -571,6 +573,7 @@ struct DutyDetailView: View {
     let onClose: (() -> Void)?
     let scrollsAsPage: Bool
     let onEditorFocusChange: ((Bool) -> Void)?
+    let onEditModeChange: ((Bool) -> Void)?
     let externalEditorDismissSignal: Int
 
     init(
@@ -578,12 +581,14 @@ struct DutyDetailView: View {
         onClose: (() -> Void)? = nil,
         scrollsAsPage: Bool = false,
         onEditorFocusChange: ((Bool) -> Void)? = nil,
+        onEditModeChange: ((Bool) -> Void)? = nil,
         externalEditorDismissSignal: Int = 0
     ) {
         self.duty = duty
         self.onClose = onClose
         self.scrollsAsPage = scrollsAsPage
         self.onEditorFocusChange = onEditorFocusChange
+        self.onEditModeChange = onEditModeChange
         self.externalEditorDismissSignal = externalEditorDismissSignal
     }
 
@@ -663,11 +668,15 @@ struct DutyDetailView: View {
         .onChange(of: focusedField) { value in
             onEditorFocusChange?(value != nil)
         }
+        .onChange(of: isEditing) { value in
+            onEditModeChange?(value)
+        }
         .onChange(of: externalEditorDismissSignal) { _ in
             focusedField = nil
         }
         .onDisappear {
             onEditorFocusChange?(false)
+            onEditModeChange?(false)
         }
         .environment(\.timeZone, moscowTimeZone)
         .background {
@@ -738,36 +747,6 @@ struct DutyDetailView: View {
             HStack(spacing: 8) {
                 if isEditing {
                     Button {
-                        restoreEdit(at: historyIndex - 1)
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward")
-                    }
-                    .disabled(historyIndex == 0)
-                    .accessibilityLabel("Отменить последнее изменение")
-
-                    Button {
-                        restoreEdit(at: historyIndex + 1)
-                    } label: {
-                        Image(systemName: "arrow.uturn.forward")
-                    }
-                    .disabled(historyIndex + 1 >= editHistory.count)
-                    .accessibilityLabel("Повторить изменение")
-                }
-            }
-            .frame(width: 104, alignment: .leading)
-
-            dutyTitle(
-                isEditing && isValid
-                ? FlightDuty(id: duty.id, legs: updatedLegs)
-                : duty
-            )
-            .lineLimit(1)
-            .minimumScaleFactor(0.85)
-            .frame(maxWidth: .infinity)
-
-            HStack(spacing: 8) {
-                if isEditing {
-                    Button {
                         focusedField = nil
                         showReview = true
                     } label: {
@@ -803,7 +782,37 @@ struct DutyDetailView: View {
                         Image(systemName: "wrench")
                     }
                     .accessibilityLabel("Редактировать задание на полёт")
+                }
+            }
+            .frame(width: 104, alignment: .leading)
 
+            dutyTitle(
+                isEditing && isValid
+                ? FlightDuty(id: duty.id, legs: updatedLegs)
+                : duty
+            )
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .frame(maxWidth: .infinity)
+
+            HStack(spacing: 8) {
+                if isEditing {
+                    Button {
+                        restoreEdit(at: historyIndex - 1)
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
+                    }
+                    .disabled(historyIndex == 0)
+                    .accessibilityLabel("Отменить последнее изменение")
+
+                    Button {
+                        restoreEdit(at: historyIndex + 1)
+                    } label: {
+                        Image(systemName: "arrow.uturn.forward")
+                    }
+                    .disabled(historyIndex + 1 >= editHistory.count)
+                    .accessibilityLabel("Повторить изменение")
+                } else {
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
@@ -1001,8 +1010,9 @@ struct DutyDetailView: View {
     // Уровень 1: одна общая карточка полётного задания.
     private func dutyCard(_ duty: FlightDuty) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            dutyTotals(duty)
-
+            if duty.legs.count > 1 {
+                dutyTotals(duty)
+            }
 
             ForEach(duty.legs.indices, id: \.self) { index in
                 legCard(
@@ -1096,12 +1106,14 @@ struct DutyDetailView: View {
                 field: .assignment,
                 keyboardType: .numberPad,
                 capitalization: .none,
+                maxLength: 9,
                 expands: false,
                 allowsEditing: isEditing,
                 restoreValue: original.first?.assignmentNumber
                     ?? duty.firstLeg.assignmentNumber
                     ?? "",
-                reserveText: "8888888",
+                numbersOnly: true,
+                reserveText: "888888888",
                 highlightHorizontalPadding: 0,
                 textFont: .title3.bold(),
                 inputFont: .systemFont(ofSize: 20, weight: .bold),
@@ -1422,6 +1434,7 @@ struct DutyDetailView: View {
         allowsEditing: Bool = true,
         restoreValue: String? = nil,
         clearOnFirstDelete: Bool = false,
+        numbersOnly: Bool = false,
         reserveText: String? = nil,
         highlightHorizontalPadding: CGFloat = 2,
         textFont: Font = .subheadline.weight(.semibold),
@@ -1468,7 +1481,8 @@ struct DutyDetailView: View {
                     maxLength: maxLength,
                     isEnabled: true,
                     restoreValue: restoreValue,
-                    clearOnFirstDelete: clearOnFirstDelete
+                    clearOnFirstDelete: clearOnFirstDelete,
+                    numbersOnly: numbersOnly
                 )
                 .frame(maxWidth: .infinity, minHeight: lineHeight, maxHeight: lineHeight)
             }
@@ -1485,7 +1499,7 @@ struct DutyDetailView: View {
         }
 
         if let field, fieldHasChanges(field) {
-            return Color.accentColor.opacity(0.72)
+            return Color.indigo
         }
 
         return Color.accentColor
@@ -2339,6 +2353,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
     var isEnabled: Bool = true
     var restoreValue: String? = nil
     var clearOnFirstDelete = false
+    var numbersOnly = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -2346,7 +2361,8 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
             isActive: $isActive,
             maxLength: maxLength,
             restoreValue: restoreValue,
-            clearOnFirstDelete: clearOnFirstDelete
+            clearOnFirstDelete: clearOnFirstDelete,
+            numbersOnly: numbersOnly
         )
     }
 
@@ -2392,6 +2408,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         context.coordinator.maxLength = maxLength
         context.coordinator.restoreValue = restoreValue
         context.coordinator.clearOnFirstDelete = clearOnFirstDelete
+        context.coordinator.numbersOnly = numbersOnly
         field.font = font
         field.keyboardType = keyboardType
         field.autocapitalizationType = capitalization
@@ -2425,6 +2442,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         var maxLength: Int?
         var restoreValue: String?
         var clearOnFirstDelete: Bool
+        var numbersOnly: Bool
         private var replaceOnNextInput = false
 
         init(
@@ -2432,13 +2450,15 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
             isActive: Binding<Bool>,
             maxLength: Int?,
             restoreValue: String?,
-            clearOnFirstDelete: Bool
+            clearOnFirstDelete: Bool,
+            numbersOnly: Bool
         ) {
             self.text = text
             self.isActive = isActive
             self.maxLength = maxLength
             self.restoreValue = restoreValue
             self.clearOnFirstDelete = clearOnFirstDelete
+            self.numbersOnly = numbersOnly
         }
 
         func prepareToReplaceCurrentValue(in textField: UITextField) {
@@ -2534,8 +2554,11 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
         }
 
         private func limited(_ value: String) -> String {
-            guard let maxLength else { return value }
-            return String(value.prefix(maxLength))
+            let filtered = numbersOnly
+                ? String(value.filter(\.isNumber))
+                : value
+            guard let maxLength else { return filtered }
+            return String(filtered.prefix(maxLength))
         }
 
         private func moveCaretToEnd(in field: UITextField) {
