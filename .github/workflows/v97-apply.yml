@@ -1,0 +1,30 @@
+name: Apply v97 patch
+
+on:
+  push:
+    branches:
+      - ui/v97-scroll-and-leg-edit
+    paths:
+      - .github/workflows/v97-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/v97-scroll-and-leg-edit
+      - name: Apply patch
+        run: python3 .github/scripts/v97_patch.py
+      - name: Commit app changes
+        run: |
+          rm .github/workflows/v97-apply.yml
+          rm .github/scripts/v97_patch.py
+          git config user.name "dentar1997"
+          git config user.email "dentar1997@gmail.com"
+          git add AppViews.swift .github/workflows/v97-apply.yml .github/scripts/v97_patch.py
+          git commit -m "v97: fix long-card scrolling and leg editing"
+          git push origin ui/v97-scroll-and-leg-edit
