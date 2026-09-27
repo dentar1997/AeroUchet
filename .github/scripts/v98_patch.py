@@ -151,18 +151,24 @@ new_func = '''    private func dismissDrag(
     private func interactiveOffset('''
 text = text[:match.start()] + new_func + text[match.end():]
 
-# Text shown when no norm/table value exists.
 text = text.replace('"Отсутствует"', '"Нет данных"')
 
 replace_once(
-'''    private func legNumberBinding(_ index: Int) -> Binding<String> {
+'''    private func editableLegNumber(_ leg: FlightLeg) -> String {
+        if let legNumber = leg.legNumber {
+            return legNumber
+        }
+        return leg.displayedLegNumber
+    }
+
+    private func legNumberBinding(_ index: Int) -> Binding<String> {
         Binding(
-            get: { draft[index].legNumber ?? draft[index].flightNumber },
-            set: { draft[index].legNumber = $0.isEmpty ? nil : $0 }
+            get: { editableLegNumber(draft[index]) },
+            set: { draft[index].legNumber = $0 }
         )
     }
 ''',
-'''    private func legNumberValue(_ leg: FlightLeg, index: Int) -> String {
+'''    private func editableLegNumber(_ leg: FlightLeg, index: Int? = nil) -> String {
         if let legNumber = leg.legNumber {
             return legNumber.trimmingCharacters(in: .whitespacesAndNewlines)
         }
@@ -170,23 +176,25 @@ replace_once(
         let parts = leg.flightNumber
             .split(separator: "/", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        if parts.indices.contains(index), !parts[index].isEmpty {
+        if let index, parts.indices.contains(index), !parts[index].isEmpty {
             return parts[index]
         }
-        return leg.flightNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        if parts.count == 1, let only = parts.first {
+            return only
+        }
+        return leg.displayedLegNumber.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func legNumberBinding(_ index: Int) -> Binding<String> {
         Binding(
-            get: { legNumberValue(draft[index], index: index) },
+            get: { editableLegNumber(draft[index], index: index) },
             set: { draft[index].legNumber = String($0.prefix(7)) }
         )
     }
 ''',
-'leg number binding'
+'leg number helper'
 )
 
-# Add generic registration binding for legacy alphabetic registrations.
 anchor = '''    private func toggleScheduleType(_ index: Int) {
 '''
 if text.count(anchor) != 1:
@@ -227,7 +235,6 @@ registration_helpers = '''    private func registrationTextBinding(_ index: Int)
 '''
 text = text.replace(anchor, registration_helpers + anchor, 1)
 
-# Correct change-state comparison for registration.
 replace_once(
 '''            let before = String(original[index].registration.filter(\\.isNumber).prefix(5))
             let after = String(draft[index].registration.filter(\\.isNumber).prefix(5))
@@ -239,20 +246,15 @@ replace_once(
 'registration comparison'
 )
 
-# Compare the displayed leg value, not the whole slash-separated assignment string.
 replace_once(
-'''            let before = original[index].legNumber ?? original[index].flightNumber
-            let after = draft[index].legNumber ?? draft[index].flightNumber
-            return before != after
+'''            return editableLegNumber(original[index]) != editableLegNumber(draft[index])
 ''',
-'''            let before = legNumberValue(original[index], index: index)
-            let after = legNumberValue(draft[index], index: index)
-            return before != after
+'''            return editableLegNumber(original[index], index: index)
+                != editableLegNumber(draft[index], index: index)
 ''',
 'leg comparison'
 )
 
-# Flight editor: own leg only, max 7 symbols, correct restore value.
 replace_once(
 '''        let textBinding: Binding<String> = isEditing
             ? legNumberBinding(index)
@@ -260,26 +262,37 @@ replace_once(
 ''',
 '''        let textBinding: Binding<String> = isEditing
             ? legNumberBinding(index)
-            : .constant(legNumberValue(leg, index: index))
+            : .constant(editableLegNumber(leg, index: index))
 ''',
 'flight static binding'
 )
-replace_once('''                maxLength: 10,
-''', '''                maxLength: 7,
-''', 'flight max length')
+
+replace_once(
+'''                field: .legNumber(index),
+                keyboardType: .numbersAndPunctuation,
+                capitalization: .allCharacters,
+                maxLength: 10,
+''',
+'''                field: .legNumber(index),
+                keyboardType: .numbersAndPunctuation,
+                capitalization: .allCharacters,
+                maxLength: 7,
+''',
+'flight max length'
+)
+
 replace_once(
 '''                restoreValue: original.indices.contains(index)
-                    ? (original[index].legNumber ?? original[index].flightNumber)
+                    ? editableLegNumber(original[index])
                     : leg.displayedLegNumber,
 ''',
 '''                restoreValue: original.indices.contains(index)
-                    ? legNumberValue(original[index], index: index)
-                    : legNumberValue(leg, index: index),
+                    ? editableLegNumber(original[index], index: index)
+                    : editableLegNumber(leg, index: index),
 ''',
 'flight restore'
 )
 
-# Legacy alphabetic registrations do not receive an RA- prefix.
 reg_pattern = re.compile(r'''    private func registrationField\(_ leg: FlightLeg, index: Int\) -> some View \{.*?\n    \}\n\n    private func stableInlineEditor\(''', re.S)
 reg_match = reg_pattern.search(text)
 if not reg_match:
@@ -335,7 +348,6 @@ reg_func = '''    private func registrationField(_ leg: FlightLeg, index: Int) -
     private func stableInlineEditor('''
 text = text[:reg_match.start()] + reg_func + text[reg_match.end():]
 
-# Route endpoints track their own changed state, not the combined route state.
 route_color_old = '''                    isEditing
                         ? editorValueColor(
                             for: .route(index),
