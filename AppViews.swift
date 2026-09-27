@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import UIKit
+import GameController
 import UniformTypeIdentifiers
 
 
@@ -802,7 +803,9 @@ struct DutyDetailView: View {
         dutyCard(isEditing && isValid
                  ? FlightDuty(id: duty.id, legs: updatedLegs)
                  : duty)
-            .padding(16)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
             .frame(maxWidth: .infinity)
             .background {
                 Color.clear
@@ -960,7 +963,7 @@ struct DutyDetailView: View {
     }
     // Уровень 1: одна общая карточка полётного задания.
     private func dutyCard(_ duty: FlightDuty) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             dutyTotals(duty)
 
 
@@ -1048,45 +1051,39 @@ struct DutyDetailView: View {
     }
 
     private func dutyTitle(_ duty: FlightDuty) -> some View {
-        let title = duty.firstLeg.assignmentNumber.map {
-            "Задание на полёт № \($0)"
-        } ?? "Задание на полёт"
-
-        return Group {
-            if isEditing {
-                HStack(spacing: 4) {
-                    Text("Задание на полёт №")
-
-                    stableInlineEditor(
-                        text: $assignmentNumber,
-                        isActive: focusBinding(.assignment),
-                        keyboardType: .numberPad,
-                        capitalization: .none,
-                        expands: false,
-                        allowsEditing: isEditing
-                    )
-                }
-                .frame(height: 28, alignment: .center)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.accentColor.opacity(0.08))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
-                }
-                .accessibilityHint("Нажмите, чтобы изменить номер задания")
-            } else {
-                Text(title)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-            }
+        HStack(spacing: 4) {
+            Text("Задание на полёт №")
+            stableInlineEditor(
+                text: isEditing ? $assignmentNumber : .constant(duty.firstLeg.assignmentNumber ?? ""),
+                isActive: isEditing ? focusBinding(.assignment) : .constant(false),
+                keyboardType: .numberPad,
+                capitalization: .none,
+                expands: false,
+                allowsEditing: isEditing,
+                highlightHorizontalPadding: 0,
+                textFont: .title3.bold(),
+                inputFont: .systemFont(ofSize: 20, weight: .bold),
+                lineHeight: 24
+            )
         }
         .font(.title3.bold())
         .lineLimit(1)
         .minimumScaleFactor(0.85)
+        .frame(height: 24)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .background {
+            if isEditing {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.accentColor.opacity(0.08))
+            }
+        }
+        .overlay {
+            if isEditing {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
+            }
+        }
         .frame(maxWidth: .infinity)
     }
 
@@ -1145,10 +1142,11 @@ struct DutyDetailView: View {
                 .foregroundStyle(.secondary)
 
             timeAndNight(total: total, night: night)
+                .frame(height: 18, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(valueTileColor)
@@ -1177,12 +1175,12 @@ struct DutyDetailView: View {
 
     // Уровень 2: отдельная карточка каждого лега.
     private func legCard(_ leg: FlightLeg, index: Int, workEnd: Date) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             legHeader(leg, index: index)
                 .zIndex(headerEditorZIndex(index))
 
             // Все исходные точки редактируются на месте. Итоги остаются вычисляемыми.
-            LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: timeColumns, alignment: .leading, spacing: 6) {
                 timeCell(
                     title: "Начало работы",
                     value: formatDateTime(leg.timeline.workStart),
@@ -1396,18 +1394,21 @@ struct DutyDetailView: View {
         maxLength: Int? = nil,
         expands: Bool = true,
         allowsEditing: Bool = true,
-        highlightHorizontalPadding: CGFloat = 2
+        highlightHorizontalPadding: CGFloat = 2,
+        textFont: Font = .subheadline.weight(.semibold),
+        inputFont: UIFont = .systemFont(ofSize: 15, weight: .semibold),
+        lineHeight: CGFloat = 18
     ) -> some View {
         ZStack {
             HStack(spacing: 0) {
                 if !prefix.isEmpty {
                     Text(prefix)
-                        .font(.subheadline.weight(.semibold))
+                        .font(textFont)
                         .foregroundStyle(.primary)
                 }
 
                 Text(text.wrappedValue)
-                    .font(.subheadline.weight(.semibold))
+                    .font(textFont)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -1420,7 +1421,7 @@ struct DutyDetailView: View {
                     }
             }
             .fixedSize(horizontal: true, vertical: false)
-            .frame(maxWidth: expands ? .infinity : nil, minHeight: 18, maxHeight: 18)
+            .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
 
             InlineSelectAllTextField(
                 text: text,
@@ -1428,15 +1429,15 @@ struct DutyDetailView: View {
                 keyboardType: keyboardType,
                 capitalization: capitalization,
                 textAlignment: .center,
-                font: .systemFont(ofSize: 15, weight: .semibold),
+                font: inputFont,
                 maxLength: maxLength,
                 isEnabled: allowsEditing
             )
-            .frame(maxWidth: expands ? .infinity : nil, minHeight: 18, maxHeight: 18)
+            .frame(maxWidth: expands ? .infinity : nil, minHeight: lineHeight, maxHeight: lineHeight)
             .fixedSize(horizontal: !expands, vertical: false)
             .allowsHitTesting(allowsEditing)
         }
-        .frame(height: 18)
+        .frame(height: lineHeight)
     }
 
     private func identityField<Content: View>(
@@ -1460,7 +1461,7 @@ struct DutyDetailView: View {
         }
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background {
             if isEditing {
                 RoundedRectangle(cornerRadius: 10)
@@ -1500,7 +1501,7 @@ struct DutyDetailView: View {
         }
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background {
             if isEditing {
                 RoundedRectangle(cornerRadius: 10)
@@ -2050,7 +2051,7 @@ struct DutyDetailView: View {
             alignment: centered ? .center : .leading
         )
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(valueTileColor)
@@ -2069,10 +2070,11 @@ struct DutyDetailView: View {
                 .foregroundStyle(.secondary)
 
             timeAndNight(total: total, night: night)
+                .frame(height: 18, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(valueTileColor)
@@ -2231,6 +2233,47 @@ private final class HardwareFriendlyTextField: UITextField {
     }
 }
 
+// Preserve standard UIKit text input while a physical keyboard is connected.
+private final class AssignmentInputTextField: UITextField {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardConnectionChanged),
+            name: .GCKeyboardDidConnect, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(keyboardConnectionChanged),
+            name: .GCKeyboardDidDisconnect, object: nil
+        )
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        updateKeyboardPresentation()
+        return super.becomeFirstResponder()
+    }
+
+    @objc private func keyboardConnectionChanged() {
+        updateKeyboardPresentation()
+    }
+
+    private func updateKeyboardPresentation() {
+        let useHardware = GCKeyboard.coalesced != nil
+        guard useHardware != (inputView != nil) else { return }
+        inputView = useHardware ? UIView(frame: .zero) : nil
+        if isFirstResponder {
+            reloadInputViews()
+        }
+    }
+}
+
 private struct InlineSelectAllTextField: UIViewRepresentable {
     @Binding var text: String
     @Binding var isActive: Bool
@@ -2250,7 +2293,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UITextField {
-        let field = UITextField(frame: .zero)
+        let field = AssignmentInputTextField(frame: .zero)
         field.borderStyle = .none
         field.backgroundColor = .clear
         field.textColor = .clear
