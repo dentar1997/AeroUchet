@@ -1,0 +1,57 @@
+name: Fix v95 flight editor
+
+on:
+  push:
+    branches: ["ui/v95-edit-state-polish"]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/v95-edit-state-polish
+          fetch-depth: 0
+
+      - name: Fix argument order
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('AppViews.swift')
+          text = path.read_text()
+          old = '''                field: .legNumber(index),
+                keyboardType: .numbersAndPunctuation,
+                capitalization: .allCharacters,
+                clearOnFirstDelete: true,
+                maxLength: 10,
+                expands: false,
+                allowsEditing: isEditing,
+                restoreValue: original.indices.contains(index)
+                    ? (original[index].legNumber ?? original[index].flightNumber)
+                    : leg.displayedLegNumber'''
+          new = '''                field: .legNumber(index),
+                keyboardType: .numbersAndPunctuation,
+                capitalization: .allCharacters,
+                maxLength: 10,
+                expands: false,
+                allowsEditing: isEditing,
+                restoreValue: original.indices.contains(index)
+                    ? (original[index].legNumber ?? original[index].flightNumber)
+                    : leg.displayedLegNumber,
+                clearOnFirstDelete: true'''
+          if text.count(old) != 1:
+              raise SystemExit('flight editor snippet not found exactly once')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Commit fix
+        run: |
+          rm -f .github/workflows/v95-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "v95: fix flight editor argument order"
+          git push origin HEAD:ui/v95-edit-state-polish
