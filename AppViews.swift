@@ -1321,8 +1321,11 @@ struct DutyDetailView: View {
                 } else {
                     HStack(alignment: .top, spacing: 8) {
                         flightNumber(leg, index: index)
+                            .frame(maxWidth: .infinity)
                         aircraftField(leg, index: index)
+                            .frame(maxWidth: .infinity)
                         registrationField(leg, index: index)
+                            .frame(maxWidth: .infinity)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
@@ -1341,7 +1344,9 @@ struct DutyDetailView: View {
                 } else {
                     HStack(alignment: .top, spacing: 8) {
                         flightKindField(leg, index: index)
+                            .frame(maxWidth: .infinity)
                         calculatedTime(leg, index: index)
+                            .frame(maxWidth: .infinity)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                 }
@@ -1496,10 +1501,7 @@ struct DutyDetailView: View {
         }
         .multilineTextAlignment(.center)
         .padding(.horizontal, 10)
-        .frame(
-            maxWidth: sizeClass == .compact ? .infinity : nil,
-            alignment: .center
-        )
+        .frame(maxWidth: .infinity, alignment: .center)
         .padding(.vertical, 6)
         .background {
             if isEditing {
@@ -1513,7 +1515,6 @@ struct DutyDetailView: View {
                     .stroke(Color.accentColor.opacity(0.65), lineWidth: 1)
             }
         }
-        .fixedSize(horizontal: sizeClass != .compact, vertical: false)
         .contentShape(Rectangle())
         .onTapGesture {
             guard isEditing else { return }
@@ -1846,7 +1847,7 @@ struct DutyDetailView: View {
                             title: "Расчётное время",
                             value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
                             centered: true,
-                            compact: sizeClass != .compact
+                            compact: false
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
@@ -1929,7 +1930,7 @@ struct DutyDetailView: View {
                     title: "Расчётное время",
                     value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
                     centered: true,
-                    compact: sizeClass != .compact
+                    compact: false
                 )
             }
         }
