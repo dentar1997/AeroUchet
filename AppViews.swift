@@ -1184,10 +1184,6 @@ struct DutyDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(valueTileColor)
-        )
         .accessibilityElement(children: .combine)
     }
 
@@ -1320,10 +1316,10 @@ struct DutyDetailView: View {
                 flightKindField(leg, index: index)
                 calculatedTime(leg, index: index)
             }
-            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(width: 496, alignment: .center)
 
             routeField(leg, index: index)
-                .frame(maxWidth: .infinity)
+                .frame(width: 496)
         }
     }
 
@@ -1478,7 +1474,7 @@ struct DutyDetailView: View {
                 .frame(height: 18, alignment: .center)
         }
         .multilineTextAlignment(.center)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .fixedSize(horizontal: true, vertical: false)
         .background {
@@ -1823,7 +1819,7 @@ struct DutyDetailView: View {
                     } label: {
                         legValueCard(
                             title: "Расчётное время",
-                            value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
+                            value: leg.calculatedMinutes.map(timeText) ?? "Отсутствует",
                             centered: true,
                             compact: true
                         )
@@ -1859,7 +1855,7 @@ struct DutyDetailView: View {
                                         } else {
                                             Text(
                                                 draft[index].calculatedMinutes.map(timeText)
-                                                ?? "Ожидает норму"
+                                                ?? "Отсутствует"
                                             )
                                             .font(.subheadline.weight(.semibold))
                                             .foregroundStyle(.secondary)
@@ -1906,7 +1902,7 @@ struct DutyDetailView: View {
             } else {
                 legValueCard(
                     title: "Расчётное время",
-                    value: leg.calculatedMinutes.map(timeText) ?? "Ожидает норму",
+                    value: leg.calculatedMinutes.map(timeText) ?? "Отсутствует",
                     centered: true,
                     compact: true
                 )
@@ -2079,7 +2075,7 @@ struct DutyDetailView: View {
             maxWidth: compact ? nil : .infinity,
             alignment: centered ? .center : .leading
         )
-        .padding(.horizontal, 10)
+        .padding(.horizontal, compact ? 12 : 10)
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 10)
