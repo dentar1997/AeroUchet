@@ -1420,6 +1420,7 @@ struct DutyDetailView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
+        .onTapGesture { focusedField = nil }
     }
 
     private func timeAndNight(total: Int, night: Int) -> some View {
@@ -2428,6 +2429,7 @@ struct DutyDetailView: View {
         )
         .fixedSize(horizontal: compact, vertical: false)
         .accessibilityElement(children: .combine)
+        .onTapGesture { focusedField = nil }
     }
 
     private func legValueCard(
@@ -2451,6 +2453,7 @@ struct DutyDetailView: View {
                 .fill(valueTileColor)
         )
         .accessibilityElement(children: .combine)
+        .onTapGesture { focusedField = nil }
     }
 
 }
