@@ -95,11 +95,20 @@ struct AssignmentPlanItem: Identifiable, Codable, Equatable {
     }
 
     var normalizedFlightNumbers: Set<String> {
-        let legValues = flightLegs?.map(\.flightNumber) ?? []
-        let values = !legValues.isEmpty
-            ? legValues
-            : (flightNumbers ?? flightNumber.map { [$0] } ?? [])
-        return Set(values.flatMap(extractFlightNumbers).map(normalizedFlightNumber))
+        var values = flightLegs?.map(\.flightNumber) ?? []
+        if values.isEmpty {
+            if let flightNumbers {
+                values = flightNumbers
+            } else if let flightNumber {
+                values = [flightNumber]
+            }
+        }
+
+        return Set(
+            values
+                .flatMap { extractFlightNumbers($0) }
+                .map { normalizedFlightNumber($0) }
+        )
     }
 
     var normalizedWorkingFlightNumbers: Set<String> {
@@ -432,6 +441,8 @@ final class AssignmentPlanStore: ObservableObject {
 
     private func load() {
         let defaults = UserDefaults.standard
+        var migratedLegacyPlan = false
+
         if let data = defaults.data(forKey: itemsKey),
            let decoded = try? JSONDecoder().decode([AssignmentPlanItem].self, from: data) {
             items = decoded
@@ -443,15 +454,18 @@ final class AssignmentPlanStore: ObservableObject {
                 // Старый импортированный PDF был разобран прежним парсером с неверными
                 // границами диапазонов. Его просим импортировать заново, календарь сохраняем.
                 items = decoded.filter { $0.source == .subscribedCalendar }
-                lastFileImport = nil
+                migratedLegacyPlan = decoded.contains { $0.source == .importedFile }
+                if migratedLegacyPlan {
+                    defaults.removeObject(forKey: fileImportKey)
+                }
                 saveItems()
             }
         }
 
         lastCalendarRefresh = defaults.object(forKey: calendarRefreshKey) as? Date
-        if lastFileImport == nil {
-            lastFileImport = defaults.object(forKey: fileImportKey) as? Date
-        }
+        lastFileImport = migratedLegacyPlan
+            ? nil
+            : defaults.object(forKey: fileImportKey) as? Date
         lastCalendarCheck = defaults.object(forKey: calendarCheckKey) as? Date
         calendarCheckMessage = defaults.string(forKey: calendarMessageKey)
         if let raw = defaults.string(forKey: calendarHealthKey),
@@ -553,9 +567,11 @@ private func normalizedFlightNumber(_ value: String) -> String {
 private func normalizedText(_ value: String) -> String {
     value
         .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "ru_RU"))
-        .replacingOccurrences(of: #"[^a-zа-я0-9]"#,
-                              with: "",
-                              options: [.regularExpression, .caseInsensitive])
+        .replacingOccurrences(
+            of: #"[^a-zа-я0-9]"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
 }
 
 
@@ -1142,6 +1158,9 @@ enum AssignmentPlanImporter {
         var cleaned: [String] = []
         for raw in lines {
             guard !isMonthlySummary(raw), exactTime(raw) == nil else { continue }
+            guard regexMatches(in: raw, pattern: #"^\d{1,2}\.\d{1,2},"#).isEmpty else {
+                continue
+            }
             guard extractFlightNumbers(raw).isEmpty else { continue }
             guard perspectiveRoute(in: [raw]) == nil else { continue }
 
