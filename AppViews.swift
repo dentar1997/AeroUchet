@@ -633,8 +633,6 @@ struct FlightsView: View {
 
 // MARK: - Список смен
 
-// MARK: - Список смен
-
 struct DutiesListView: View {
     @ObservedObject var store: AppStore
     let duties: [FlightDuty]
@@ -699,7 +697,7 @@ struct DutiesListView: View {
 }
 
 
-private struct DutyAssignmentOverlay: View {private struct DutyAssignmentOverlay: View {
+private struct DutyAssignmentOverlay: View {
     let duty: FlightDuty
     @ObservedObject var store: AppStore
     let isCreating: Bool
@@ -1861,7 +1859,7 @@ struct DutyDetailView: View {
         }
     }
 
-    private func restCard    private func restCard(start: Date, end: Date) -> some View {
+    private func restCard(start: Date, end: Date) -> some View {
         let restMinutes = minutesBetween(start, end)
 
         return VStack(alignment: .leading, spacing: 6) {
@@ -1919,7 +1917,7 @@ struct DutyDetailView: View {
                     ?? duty.firstLeg.assignmentNumber
                     ?? "",
                 numbersOnly: false,
-                reserveText: "Manual 888",
+                reserveText: "Manual888",
                 highlightHorizontalPadding: 0,
                 textFont: .title3.bold(),
                 inputFont: .systemFont(ofSize: 20, weight: .bold),
