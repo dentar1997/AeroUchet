@@ -141,7 +141,7 @@ private struct CurrentPlanAssignmentsView: View {
                         .foregroundStyle(.secondary)
                     } else {
                         ForEach(items) { item in
-                            PlanAssignmentRow(
+                            PlanAssignmentRowV119(
                                 item: item,
                                 status: planStore.historySupersedes(
                                     item,
@@ -266,11 +266,13 @@ private struct CurrentPlanAssignmentsView: View {
 private struct ImportedPlanAssignmentsView: View {
     @ObservedObject var store: AppStore
     @ObservedObject var planStore: AssignmentPlanStore
+    @ObservedObject private var archiveStore = AssignmentImportArchiveStore.shared
 
     @State private var showImporter = false
     @State private var showDeleteConfirmation = false
     @State private var message = ""
     @State private var showMessage = false
+    @State private var pendingDraft: AssignmentImportDraft?
 
     private var items: [AssignmentPlanItem] {
         planStore.sourceItems(
@@ -280,39 +282,35 @@ private struct ImportedPlanAssignmentsView: View {
         )
     }
 
-    private var conflictCount: Int {
-        planStore.conflictPairCount(in: .importedFile)
-    }
-
     var body: some View {
         NavigationStack {
             List {
                 Section {
                     Text(
-                        "Сюда импортируется текущий или перспективный план. Диапазоны без времени читаются как «с первой даты включительно, до второй даты не включая её»."
+                        "Перспективный PDF сначала разбирается во временный план. Если назначения конфликтуют, приложение попросит разрешить конфликты до сохранения."
                     )
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 }
 
-                if conflictCount > 0 {
-                    Section {
-                        HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.red)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Обнаружено конфликтов: \(conflictCount)")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.red)
-                                Text(
-                                    "Назначения реально пересекаются по времени. Соприкосновение границ, например окончание отпуска в 00:00 и новое назначение с этой же минуты, конфликтом не считается."
-                                )
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                if archiveStore.hadConflicts,
+                   archiveStore.latestArchive != nil {
+                    Section("Импорт") {
+                        Button {
+                            reopenConflictResolution()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "arrow.uturn.backward.circle.fill")
+                                    .foregroundStyle(.orange)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Были конфликты")
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("Открыть предыдущие решения и изменить их")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
-                    } header: {
-                        Text("Проверка плана")
                     }
                 }
 
@@ -322,15 +320,11 @@ private struct ImportedPlanAssignmentsView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(items) { item in
-                            let conflicts = planStore.conflicts(
-                                for: item,
-                                in: .importedFile
-                            )
-                            PlanAssignmentRow(
+                            PlanAssignmentRowV119(
                                 item: item,
                                 status: status(for: item),
                                 statusColor: statusColor(for: item),
-                                conflictText: conflictText(conflicts)
+                                conflictText: nil
                             )
                         }
                     }
@@ -365,6 +359,17 @@ private struct ImportedPlanAssignmentsView: View {
             ) { result in
                 importFiles(result)
             }
+            .sheet(item: $pendingDraft) { draft in
+                AssignmentConflictResolverView(
+                    draft: draft,
+                    onCancel: {
+                        pendingDraft = nil
+                    },
+                    onSave: {
+                        saveDraft(draft)
+                    }
+                )
+            }
             .alert("Импортированный план", isPresented: $showMessage) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -374,10 +379,11 @@ private struct ImportedPlanAssignmentsView: View {
                 Button("Отмена", role: .cancel) { }
                 Button("Удалить", role: .destructive) {
                     planStore.deleteImportedPlan()
+                    archiveStore.clear()
                 }
             } message: {
                 Text(
-                    "Удалятся только файлы текущего/перспективного плана. Подписной календарь и история полётов останутся без изменений."
+                    "Удалятся только файлы текущего/перспективного плана и сохранённые решения его конфликтов. Подписной календарь и история полётов останутся без изменений."
                 )
             }
         }
@@ -403,51 +409,56 @@ private struct ImportedPlanAssignmentsView: View {
         return .secondary
     }
 
-    private func conflictText(_ conflicts: [AssignmentPlanItem]) -> String? {
-        guard !conflicts.isEmpty else { return nil }
-        let names = conflicts.prefix(2).map(\.title)
-        let suffix = conflicts.count > 2 ? " и ещё \(conflicts.count - 2)" : ""
-        return "Конфликт: \(names.joined(separator: ", "))\(suffix)"
-    }
-
     private func importFiles(_ result: Result<[URL], Error>) {
         do {
             let urls = try result.get()
-            var total = 0
-            var succeeded = 0
-            var failures: [String] = []
+            guard !urls.isEmpty else { return }
 
+            var accesses: [(URL, Bool)] = []
             for url in urls {
-                let access = url.startAccessingSecurityScopedResource()
-                do {
-                    total += try planStore.importPlanFile(
-                        url: url,
-                        actualFlights: store.flights
-                    )
-                    succeeded += 1
-                } catch {
-                    failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
-                }
-                if access {
+                accesses.append((url, url.startAccessingSecurityScopedResource()))
+            }
+            defer {
+                for (url, didAccess) in accesses where didAccess {
                     url.stopAccessingSecurityScopedResource()
                 }
             }
 
-            let conflicts = planStore.conflictPairCount(in: .importedFile)
-            let conflictPart = conflicts > 0
-                ? " Обнаружено конфликтов: \(conflicts). Они выделены красным."
-                : " Конфликтов не обнаружено."
-
-            if failures.isEmpty {
-                message = "Импортировано файлов: \(succeeded). Назначений: \(total).\(conflictPart)"
+            let draft = try AssignmentImportDraft.parse(urls: urls)
+            if draft.unresolvedConflictCount > 0 {
+                pendingDraft = draft
             } else {
-                message = "Импортировано файлов: \(succeeded) из \(urls.count). Назначений: \(total).\(conflictPart) \(failures.joined(separator: " "))"
+                let count = try draft.commit(
+                    to: planStore,
+                    actualFlights: store.flights
+                )
+                message = "Импорт завершён. Сохранено назначений: \(count). Конфликтов не обнаружено."
+                showMessage = true
             }
+        } catch {
+            message = error.localizedDescription
+            showMessage = true
+        }
+    }
+
+    private func saveDraft(_ draft: AssignmentImportDraft) {
+        do {
+            let count = try draft.commit(
+                to: planStore,
+                actualFlights: store.flights
+            )
+            pendingDraft = nil
+            message = "План сохранён. Назначений: \(count). Все конфликты разрешены."
             showMessage = true
         } catch {
             message = error.localizedDescription
             showMessage = true
         }
+    }
+
+    private func reopenConflictResolution() {
+        guard let archive = archiveStore.latestArchive else { return }
+        pendingDraft = AssignmentImportDraft(archive: archive)
     }
 }
 
@@ -605,246 +616,5 @@ private struct AccordWorkPlanView: View {
             message = error.localizedDescription
             showMessage = true
         }
-    }
-}
-
-
-private struct PlanAssignmentRow: View {
-    let item: AssignmentPlanItem
-    var status: String?
-    var statusColor: Color = .secondary
-    var conflictText: String?
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .foregroundStyle(iconColor)
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-
-                if let subtitle, !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let legs = item.flightLegs, !legs.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(legs) { leg in
-                            HStack(spacing: 6) {
-                                Image(
-                                    systemName: leg.role == .passenger
-                                        ? "suitcase.rolling.fill"
-                                        : "airplane"
-                                )
-                                .foregroundStyle(
-                                    leg.role == .passenger
-                                        ? Color.orange
-                                        : Color.blue
-                                )
-                                .frame(width: 18)
-
-                                Text(legTitle(leg))
-                                    .font(.caption)
-
-                                if leg.role == .passenger {
-                                    Text("пассажир")
-                                        .font(.caption2.weight(.semibold))
-                                        .foregroundStyle(.orange)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.top, 2)
-                }
-
-                if item.isFlightLike,
-                   let planned = item.plannedFlightMinutes {
-                    HStack(spacing: 10) {
-                        Label("Полётное: \(timeText(planned))", systemImage: "clock")
-                        Text("Период смены: \(timeText(item.durationMinutes))")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                }
-
-                if item.kind == .homeReserve, !item.isAllDay {
-                    Text(
-                        "В зачёт рабочего времени: \(timeText(item.creditedWorkMinutes)) · коэффициент 1/4"
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                }
-
-                if let status {
-                    Label(status, systemImage: "arrow.triangle.2.circlepath")
-                        .font(.caption2)
-                        .foregroundStyle(statusColor)
-                }
-
-                if let conflictText {
-                    Label(conflictText, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.red)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(dateLabel)
-                    .font(.caption)
-                    .foregroundStyle(
-                        conflictText == nil
-                            ? Color.secondary
-                            : Color.red
-                    )
-                    .multilineTextAlignment(.trailing)
-
-                if let timeRange {
-                    Text(timeRange)
-                        .font(.caption.monospacedDigit())
-                        .multilineTextAlignment(.trailing)
-                }
-
-                if !item.isAllDay,
-                   !item.isFlightLike,
-                   item.durationMinutes > 0 {
-                    Text(timeText(item.durationMinutes))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, conflictText == nil ? 0 : 8)
-        .background {
-            if conflictText != nil {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.red.opacity(0.10))
-            }
-        }
-    }
-
-    private var icon: String {
-        switch item.kind {
-        case .flight:
-            return "airplane"
-        case .passenger:
-            return "suitcase.rolling.fill"
-        case .hotelReserve:
-            return "bed.double.fill"
-        case .homeReserve:
-            return "house.fill"
-        case .dayOff:
-            return "moon.zzz"
-        case .leave:
-            return "calendar.badge.minus"
-        case .medical:
-            return "cross.case.fill"
-        case .simulator:
-            return "airplane.circle.fill"
-        case .training:
-            return "book.closed.fill"
-        case .ground:
-            return "briefcase"
-        }
-    }
-
-    private var iconColor: Color {
-        switch item.kind {
-        case .passenger:
-            return .orange
-        case .hotelReserve, .homeReserve:
-            return .indigo
-        case .medical:
-            return .red
-        case .leave:
-            return .purple
-        default:
-            return .blue
-        }
-    }
-
-    private var title: String {
-        if item.isFlightLike {
-            if let legs = item.flightLegs, legs.count > 1 {
-                return "Полётная смена · \(legs.count) рейса"
-            }
-            if let number = item.flightLegs?.first?.flightNumber ?? item.flightNumber {
-                let passenger = item.kind == .passenger
-                    || item.flightLegs?.first?.role == .passenger
-                return passenger ? "\(number) · пассажир" : number
-            }
-        }
-        return item.title
-    }
-
-    private var subtitle: String? {
-        if item.isFlightLike {
-            if let group = item.assignmentGroup, !group.isEmpty {
-                let aircraft = item.aircraft.map { " · \($0)" } ?? ""
-                return group + aircraft
-            }
-            if let departure = item.departure,
-               let arrival = item.arrival {
-                let aircraft = item.aircraft.map { " · \($0)" } ?? ""
-                return "\(departure) → \(arrival)\(aircraft)"
-            }
-            return item.aircraft
-        }
-
-        if let detail = item.detail,
-           !detail.isEmpty,
-           detail.caseInsensitiveCompare(item.title) != .orderedSame {
-            return detail
-        }
-        return nil
-    }
-
-    private func legTitle(_ leg: AssignmentPlanLeg) -> String {
-        if let departure = leg.departure,
-           let arrival = leg.arrival {
-            return "\(leg.flightNumber) · \(departure) → \(arrival)"
-        }
-        return leg.flightNumber
-    }
-
-    private var dateLabel: String {
-        guard item.isAllDay else {
-            return formatDate(item.start)
-        }
-
-        let includedEnd = moscowCalendar.date(
-            byAdding: .day,
-            value: -1,
-            to: item.end
-        ) ?? item.start
-        if moscowCalendar.isDate(item.start, inSameDayAs: includedEnd) {
-            return shortDate(item.start)
-        }
-        return "\(shortDate(item.start)) – \(shortDate(includedEnd))"
-    }
-
-    private var timeRange: String? {
-        if item.isAllDay {
-            return item.kind == .dayOff ? "Выходной" : nil
-        }
-
-        if moscowCalendar.isDate(item.start, inSameDayAs: item.end) {
-            return "\(formatClock(item.start)) – \(formatClock(item.end))"
-        }
-        return "\(shortDate(item.start)) \(formatClock(item.start)) – \(shortDate(item.end)) \(formatClock(item.end))"
-    }
-
-    private func shortDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.timeZone = moscowTimeZone
-        formatter.dateFormat = "dd.MM"
-        return formatter.string(from: date)
     }
 }
