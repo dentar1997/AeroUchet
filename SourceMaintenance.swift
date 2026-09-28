@@ -10,6 +10,10 @@ extension AppStore {
         flights.removeAll { !isManualFlight($0) }
     }
 
+    func deleteAllFlightHistory() {
+        deleteImportedFlightHistory()
+    }
+
     func deleteAllWorkPlanEvents() {
         workEvents.removeAll()
     }
