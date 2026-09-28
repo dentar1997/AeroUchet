@@ -44,6 +44,15 @@ struct SettingsRootV116View: View {
                     }
 
                     NavigationLink {
+                        EventAppearanceSettingsView()
+                    } label: {
+                        Label(
+                            "Настройка событий",
+                            systemImage: "paintpalette.fill"
+                        )
+                    }
+
+                    NavigationLink {
                         ProductionCalendarSettingsView(calendarSync: calendarSync)
                     } label: {
                         Label(
