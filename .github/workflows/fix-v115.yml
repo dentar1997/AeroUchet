@@ -1,0 +1,36 @@
+name: Fix version 115 patch
+
+on:
+  push:
+    branches:
+      - feature/duty-editor-v115
+    paths:
+      - scripts/fix_v115.py
+      - .github/workflows/fix-v115.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feature/duty-editor-v115
+
+      - name: Fix patch
+        run: python3 scripts/fix_v115.py
+
+      - name: Validate
+        run: git diff --check
+
+      - name: Commit result and remove temporary files
+        run: |
+          rm -f scripts/fix_v115.py .github/workflows/fix-v115.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Исправить вставки версии 115"
+          git push origin feature/duty-editor-v115
