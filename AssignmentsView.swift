@@ -36,15 +36,9 @@ struct AssignmentsView: View {
             case .flights:
                 FlightHistoryAssignmentsView(store: store)
             case .currentPlan:
-                CurrentPlanAssignmentsView(
-                    store: store,
-                    planStore: planStore
-                )
+                CurrentPlanAssignmentsView(store: store, planStore: planStore)
             case .importedPlan:
-                ImportedPlanAssignmentsView(
-                    store: store,
-                    planStore: planStore
-                )
+                ImportedPlanAssignmentsView(store: store, planStore: planStore)
             case .workPlan:
                 AccordWorkPlanView(store: store)
             }
@@ -81,10 +75,12 @@ private struct FlightHistoryAssignmentsView: View {
             .background(.bar)
 
             Divider()
-
             FlightsView(store: store)
         }
-        .alert("Удалить импортированную историю полётов?", isPresented: $showDeleteConfirmation) {
+        .alert(
+            "Удалить импортированную историю полётов?",
+            isPresented: $showDeleteConfirmation
+        ) {
             Button("Отмена", role: .cancel) { }
             Button("Удалить", role: .destructive) {
                 store.deleteImportedFlightHistory()
@@ -131,7 +127,6 @@ private struct CurrentPlanAssignmentsView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-
                         Spacer()
                     }
                 } header: {
@@ -203,17 +198,23 @@ private struct CurrentPlanAssignmentsView: View {
 
     private var statusIcon: String {
         switch planStore.calendarHealth {
-        case .working: return "checkmark.circle.fill"
-        case .failed: return "exclamationmark.triangle.fill"
-        case .notChecked: return planStore.hasCalendarURL ? "questionmark.circle.fill" : "link.badge.plus"
+        case .working:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        case .notChecked:
+            return planStore.hasCalendarURL ? "questionmark.circle.fill" : "link.badge.plus"
         }
     }
 
     private var statusColor: Color {
         switch planStore.calendarHealth {
-        case .working: return .green
-        case .failed: return .red
-        case .notChecked: return .orange
+        case .working:
+            return .green
+        case .failed:
+            return .red
+        case .notChecked:
+            return .orange
         }
     }
 
@@ -222,9 +223,12 @@ private struct CurrentPlanAssignmentsView: View {
             return "Ссылка не настроена"
         }
         switch planStore.calendarHealth {
-        case .working: return "Подписной календарь работает"
-        case .failed: return "Календарь недоступен"
-        case .notChecked: return "Ссылка сохранена, но ещё не проверена"
+        case .working:
+            return "Подписной календарь работает"
+        case .failed:
+            return "Календарь недоступен"
+        case .notChecked:
+            return "Ссылка сохранена, но ещё не проверена"
         }
     }
 
@@ -401,7 +405,7 @@ private struct ImportedPlanAssignmentsView: View {
 
     private func conflictText(_ conflicts: [AssignmentPlanItem]) -> String? {
         guard !conflicts.isEmpty else { return nil }
-        let names = conflicts.prefix(2).map { $0.title }
+        let names = conflicts.prefix(2).map(\.title)
         let suffix = conflicts.count > 2 ? " и ещё \(conflicts.count - 2)" : ""
         return "Конфликт: \(names.joined(separator: ", "))\(suffix)"
     }
@@ -415,7 +419,6 @@ private struct ImportedPlanAssignmentsView: View {
 
             for url in urls {
                 let access = url.startAccessingSecurityScopedResource()
-                defer { if access { url.stopAccessingSecurityScopedResource() } }
                 do {
                     total += try planStore.importPlanFile(
                         url: url,
@@ -424,6 +427,9 @@ private struct ImportedPlanAssignmentsView: View {
                     succeeded += 1
                 } catch {
                     failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
+                }
+                if access {
+                    url.stopAccessingSecurityScopedResource()
                 }
             }
 
@@ -578,7 +584,9 @@ private struct AccordWorkPlanView: View {
 
             Task {
                 defer {
-                    if access { url.stopAccessingSecurityScopedResource() }
+                    if access {
+                        url.stopAccessingSecurityScopedResource()
+                    }
                     isImporting = false
                 }
 
@@ -627,9 +635,17 @@ private struct PlanAssignmentRow: View {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(legs) { leg in
                             HStack(spacing: 6) {
-                                Image(systemName: leg.role == .passenger ? "suitcase.rolling.fill" : "airplane")
-                                    .foregroundStyle(leg.role == .passenger ? .orange : .blue)
-                                    .frame(width: 18)
+                                Image(
+                                    systemName: leg.role == .passenger
+                                        ? "suitcase.rolling.fill"
+                                        : "airplane"
+                                )
+                                .foregroundStyle(
+                                    leg.role == .passenger
+                                        ? Color.orange
+                                        : Color.blue
+                                )
+                                .frame(width: 18)
 
                                 Text(legTitle(leg))
                                     .font(.caption)
@@ -645,7 +661,8 @@ private struct PlanAssignmentRow: View {
                     .padding(.top, 2)
                 }
 
-                if item.isFlightLike, let planned = item.plannedFlightMinutes {
+                if item.isFlightLike,
+                   let planned = item.plannedFlightMinutes {
                     HStack(spacing: 10) {
                         Label("Полётное: \(timeText(planned))", systemImage: "clock")
                         Text("Период смены: \(timeText(item.durationMinutes))")
@@ -680,7 +697,11 @@ private struct PlanAssignmentRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(dateLabel)
                     .font(.caption)
-                    .foregroundStyle(conflictText == nil ? .secondary : .red)
+                    .foregroundStyle(
+                        conflictText == nil
+                            ? Color.secondary
+                            : Color.red
+                    )
                     .multilineTextAlignment(.trailing)
 
                 if let timeRange {
@@ -710,16 +731,26 @@ private struct PlanAssignmentRow: View {
 
     private var icon: String {
         switch item.kind {
-        case .flight: return "airplane"
-        case .passenger: return "suitcase.rolling.fill"
-        case .hotelReserve: return "bed.double.fill"
-        case .homeReserve: return "house.fill"
-        case .dayOff: return "moon.zzz"
-        case .leave: return "calendar.badge.minus"
-        case .medical: return "cross.case.fill"
-        case .simulator: return "airplane.circle.fill"
-        case .training: return "book.closed.fill"
-        case .ground: return "briefcase"
+        case .flight:
+            return "airplane"
+        case .passenger:
+            return "suitcase.rolling.fill"
+        case .hotelReserve:
+            return "bed.double.fill"
+        case .homeReserve:
+            return "house.fill"
+        case .dayOff:
+            return "moon.zzz"
+        case .leave:
+            return "calendar.badge.minus"
+        case .medical:
+            return "cross.case.fill"
+        case .simulator:
+            return "airplane.circle.fill"
+        case .training:
+            return "book.closed.fill"
+        case .ground:
+            return "briefcase"
         }
     }
 
