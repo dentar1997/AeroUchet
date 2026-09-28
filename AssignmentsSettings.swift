@@ -17,10 +17,7 @@ struct SettingsRootV116View: View {
                         AbsencesListView(store: absenceStore)
                     } label: {
                         HStack {
-                            Label(
-                                "Отсутствия",
-                                systemImage: "calendar.badge.minus"
-                            )
+                            Label("Отсутствия", systemImage: "calendar.badge.minus")
                             Spacer()
                             Text(String(absenceStore.absences.count))
                                 .foregroundStyle(.secondary)
@@ -33,21 +30,21 @@ struct SettingsRootV116View: View {
                         PilotPlanSettingsView(planStore: planStore)
                     } label: {
                         HStack {
-                            Label(
-                                "План полётов",
-                                systemImage: "airplane.circle"
-                            )
+                            Label("План полётов", systemImage: "airplane.circle")
                             Spacer()
-                            Text(planStore.hasCalendarURL ? "Настроен" : "Не настроен")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 5) {
+                                Circle()
+                                    .fill(planStatusColor)
+                                    .frame(width: 8, height: 8)
+                                Text(planStatusText)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
 
                     NavigationLink {
-                        ProductionCalendarSettingsView(
-                            calendarSync: calendarSync
-                        )
+                        ProductionCalendarSettingsView(calendarSync: calendarSync)
                     } label: {
                         Label(
                             "Производственный календарь",
@@ -61,42 +58,45 @@ struct SettingsRootV116View: View {
                         FlightNormsView(store: flightNormStore)
                     } label: {
                         HStack {
-                            Label(
-                                "Расчётное время",
-                                systemImage: "tablecells"
-                            )
+                            Label("Расчётное время", systemImage: "tablecells")
                             Spacer()
                             Text(String(flightNormStore.versions.count))
                                 .foregroundStyle(.secondary)
                         }
                     }
 
-                    HStack {
-                        Text("Легов")
-                        Spacer()
-                        Text(String(store.flights.count))
-                    }
-
-                    HStack {
-                        Text("Полётных смен")
-                        Spacer()
-                        Text(String(store.duties.count))
-                    }
-
-                    HStack {
-                        Text("Назначений плана")
-                        Spacer()
-                        Text(
-                            String(
-                                planStore.visibleItems(
-                                    actualFlights: store.flights
-                                ).count
-                            )
-                        )
-                    }
+                    LabeledContent("Легов истории", value: String(store.flights.count))
+                    LabeledContent("Полётных смен", value: String(store.duties.count))
+                    LabeledContent(
+                        "Текущий план",
+                        value: String(planStore.calendarSourceItems.count)
+                    )
+                    LabeledContent(
+                        "Импортированный план",
+                        value: String(planStore.importedSourceItems.count)
+                    )
+                    LabeledContent("План работ", value: String(store.workEvents.count))
                 }
             }
             .navigationTitle("Ещё")
+        }
+    }
+
+    private var planStatusColor: Color {
+        guard planStore.hasCalendarURL else { return .secondary }
+        switch planStore.calendarHealth {
+        case .working: return .green
+        case .failed: return .red
+        case .notChecked: return .orange
+        }
+    }
+
+    private var planStatusText: String {
+        guard planStore.hasCalendarURL else { return "Не настроен" }
+        switch planStore.calendarHealth {
+        case .working: return "Работает"
+        case .failed: return "Ошибка"
+        case .notChecked: return "Не проверен"
         }
     }
 }
@@ -109,10 +109,35 @@ private struct PilotPlanSettingsView: View {
     private var calendarURL = ""
 
     @State private var draftURL = ""
+    @State private var isChecking = false
     @State private var message: String?
 
     var body: some View {
         Form {
+            Section {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(statusColor.opacity(0.14))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: statusIcon)
+                            .foregroundStyle(statusColor)
+                            .font(.title3.weight(.semibold))
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(statusTitle)
+                            .font(.headline)
+                        Text(statusSubtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text("Состояние")
+            }
+
             Section {
                 TextField(
                     "https://…/calendar.ics",
@@ -124,50 +149,74 @@ private struct PilotPlanSettingsView: View {
                 .keyboardType(.URL)
                 .lineLimit(2...4)
 
-                Button("Сохранить ссылку") {
-                    saveURL()
+                Button {
+                    saveAndCheck()
+                } label: {
+                    HStack {
+                        if isChecking {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "checkmark.circle")
+                        }
+                        Text(isChecking ? "Проверяем…" : "Сохранить и проверить ссылку")
+                    }
                 }
                 .disabled(
-                    draftURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    isChecking
+                        || draftURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 )
 
                 if !calendarURL.isEmpty {
+                    Button {
+                        checkSavedURL()
+                    } label: {
+                        Label("Проверить сейчас", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(isChecking)
+
                     Button("Удалить ссылку", role: .destructive) {
                         calendarURL = ""
                         draftURL = ""
-                        message = "Ссылка удалена. Уже импортированный план сохранён."
+                        planStore.resetCalendarValidation()
+                        message = "Ссылка удалена. Уже загруженные планы сохранены отдельно."
                     }
                 }
             } header: {
                 Text("Подписной календарь")
             } footer: {
                 Text(
-                    "Ссылка сохраняется только в настройках приложения и не зашивается в исходный код. Обновление запускается вручную кнопкой «Обновить план» во вкладке «Назначения» → «Полёты»."
+                    "Проверка скачивает календарь и убеждается, что ссылка действительно возвращает читаемые назначения. Сам текущий план обновляется вручную во вкладке «Назначения» → «Текущий план»."
                 )
             }
 
-            Section("Состояние") {
+            Section("Данные") {
                 LabeledContent(
-                    "Ссылка",
-                    value: planStore.hasCalendarURL ? "Настроена" : "Не настроена"
+                    "Назначений текущего плана",
+                    value: String(planStore.calendarSourceItems.count)
+                )
+                LabeledContent(
+                    "Назначений из файла",
+                    value: String(planStore.importedSourceItems.count)
                 )
 
+                if let date = planStore.lastCalendarCheck {
+                    LabeledContent("Последняя проверка", value: formatDateTime(date))
+                }
+
                 if let date = planStore.lastCalendarRefresh {
-                    LabeledContent(
-                        "Последнее обновление",
-                        value: formatDateTime(date)
-                    )
+                    LabeledContent("Последнее обновление плана", value: formatDateTime(date))
                 }
 
                 if let date = planStore.lastFileImport {
-                    LabeledContent(
-                        "Последний импорт файла",
-                        value: formatDateTime(date)
-                    )
+                    LabeledContent("Последний импорт файла", value: formatDateTime(date))
                 }
 
                 if let message {
                     Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else if let checkMessage = planStore.calendarCheckMessage {
+                    Text(checkMessage)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -180,7 +229,48 @@ private struct PilotPlanSettingsView: View {
         }
     }
 
-    private func saveURL() {
+    private var statusColor: Color {
+        guard planStore.hasCalendarURL else { return .secondary }
+        switch planStore.calendarHealth {
+        case .working: return .green
+        case .failed: return .red
+        case .notChecked: return .orange
+        }
+    }
+
+    private var statusIcon: String {
+        guard planStore.hasCalendarURL else { return "link.badge.plus" }
+        switch planStore.calendarHealth {
+        case .working: return "checkmark.circle.fill"
+        case .failed: return "exclamationmark.triangle.fill"
+        case .notChecked: return "questionmark.circle.fill"
+        }
+    }
+
+    private var statusTitle: String {
+        guard planStore.hasCalendarURL else {
+            return "Подписной календарь не настроен"
+        }
+        switch planStore.calendarHealth {
+        case .working: return "Подписной календарь работает"
+        case .failed: return "Календарь не прошёл проверку"
+        case .notChecked: return "Ссылка сохранена, но не проверена"
+        }
+    }
+
+    private var statusSubtitle: String {
+        if planStore.calendarHealth == .working {
+            return "Ссылка отвечает и назначения читаются."
+        }
+        if planStore.calendarHealth == .failed {
+            return planStore.calendarCheckMessage ?? "Не удалось получить назначения."
+        }
+        return planStore.hasCalendarURL
+            ? "Нажми «Проверить сейчас»."
+            : "Вставь ссылку подписного ICS-календаря."
+    }
+
+    private func saveAndCheck() {
         let trimmed = draftURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed),
               let scheme = url.scheme?.lowercased(),
@@ -191,6 +281,23 @@ private struct PilotPlanSettingsView: View {
 
         calendarURL = url.absoluteString
         draftURL = calendarURL
-        message = "Ссылка сохранена."
+        planStore.resetCalendarValidation()
+        checkSavedURL()
+    }
+
+    private func checkSavedURL() {
+        guard !isChecking else { return }
+        isChecking = true
+        message = nil
+
+        Task {
+            do {
+                let count = try await planStore.validateSubscribedCalendar()
+                message = "Проверка пройдена. Ссылка работает, найдено назначений: \(count)."
+            } catch {
+                message = "Проверка не пройдена: \(error.localizedDescription)"
+            }
+            isChecking = false
+        }
     }
 }
