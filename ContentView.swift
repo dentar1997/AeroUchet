@@ -31,11 +31,6 @@ struct ContentView: View {
                 Label("Назначения", systemImage: "square.grid.2x2")
             }
 
-            InlineWheelTestView()
-                .tabItem {
-                    Label("Тест", systemImage: "dial.medium")
-                }
-
             AccountingView(
                 store: store,
                 absenceStore: absenceStore,
