@@ -2,135 +2,68 @@ import SwiftUI
 
 
 struct ContentView: View {
-    
-    @StateObject
-    private var store =
-    AppStore()
-    
-    
-    @StateObject
-    private var absenceStore =
-    AbsenceStore()
-    
-    
-    @StateObject
-    private var calendarSync =
-    ProductionCalendarSyncModel()
-    
-    
+    @StateObject private var store = AppStore()
+    @StateObject private var absenceStore = AbsenceStore()
+    @StateObject private var calendarSync = ProductionCalendarSyncModel()
+    @StateObject private var planStore = AssignmentPlanStore()
+
     var body: some View {
-        
         TabView {
-            
-            HomeView(
-                store:
-                    store
-            )
-            .tabItem {
-                
-                Label(
-                    "Главная",
-                    systemImage:
-                        "house.fill"
-                )
-            }
-            
-            
+            HomeView(store: store)
+                .tabItem {
+                    Label("Главная", systemImage: "house.fill")
+                }
+
             CalendarView(
-                store:
-                    store,
-                absenceStore:
-                    absenceStore,
-                calendarSync:
-                    calendarSync
+                store: store,
+                absenceStore: absenceStore,
+                calendarSync: calendarSync
             )
             .tabItem {
-                
-                Label(
-                    "Календарь",
-                    systemImage:
-                        "calendar"
-                )
+                Label("Календарь", systemImage: "calendar")
             }
-            
-            
-            FlightsView(
-                store:
-                    store
+
+            AssignmentsView(
+                store: store,
+                planStore: planStore
             )
             .tabItem {
-                
-                Label(
-                    "Полёты",
-                    systemImage:
-                        "airplane"
-                )
+                Label("Назначения", systemImage: "square.grid.2x2")
             }
-            
-            
+
             InlineWheelTestView()
                 .tabItem {
-                    Label(
-                        "Тест",
-                        systemImage:
-                            "dial.medium"
-                    )
+                    Label("Тест", systemImage: "dial.medium")
                 }
-            
-            
+
             AccountingView(
-                store:
-                    store,
-                absenceStore:
-                    absenceStore,
-                calendarSync:
-                    calendarSync
+                store: store,
+                absenceStore: absenceStore,
+                calendarSync: calendarSync
             )
             .tabItem {
-                
-                Label(
-                    "Учёт",
-                    systemImage:
-                        "list.clipboard"
-                )
+                Label("Учёт", systemImage: "list.clipboard")
             }
-            
-            
+
             SimplePage(
-                title:
-                    "Зарплата",
-                icon:
-                    "rublesign.circle"
+                title: "Зарплата",
+                icon: "rublesign.circle"
             )
             .tabItem {
-                
-                Label(
-                    "Зарплата",
-                    systemImage:
-                        "rublesign.circle"
-                )
+                Label("Зарплата", systemImage: "rublesign.circle")
             }
-            
-            
-            SettingsRootView(
-                store:
-                    store,
-                absenceStore:
-                    absenceStore,
-                calendarSync:
-                    calendarSync
+
+            SettingsRootV116View(
+                store: store,
+                absenceStore: absenceStore,
+                calendarSync: calendarSync,
+                planStore: planStore
             )
             .tabItem {
-                
-                Label(
-                    "Ещё",
-                    systemImage:
-                        "ellipsis.circle"
-                )
+                Label("Ещё", systemImage: "ellipsis.circle")
             }
         }
-        .environmentObject(
-            store
-        )
+        .environmentObject(store)
+        .environmentObject(planStore)
     }
 }
