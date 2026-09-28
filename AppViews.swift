@@ -196,44 +196,37 @@ struct HomeView: View {
 
 // MARK: - Полёты
 
-private enum DutySearchField: String, CaseIterable, Identifiable {
-    case airport = "Аэропорт / IATA"
-    case assignment = "Задание на полёт"
-    case date = "Дата"
-    case scheduleType = "Вид полёта"
-    case flightNumber = "Рейс"
-    case registration = "Бортовой номер"
-    var id: String { rawValue }
-}
-
 private enum DutyFlightCountFilter: String, CaseIterable, Identifiable {
     case all = "Все"
     case one = "1 рейс"
     case two = "2 рейса"
     case three = "3 рейса"
-    case four = "4 рейса"
     case fourPlus = "4+ рейса"
     var id: String { rawValue }
 }
 
 private enum DutySortOrder: String, CaseIterable, Identifiable {
-    case newest = "Сначала новые"
-    case oldest = "Сначала старые"
-    case assignment = "По заданию"
-    case route = "По маршруту"
-    case flightCount = "По количеству рейсов"
+    case date = "Дата"
+    case dutyDuration = "Полётная смена"
+    case flightCount = "Количество рейсов"
+    case assignment = "Задание"
+    case route = "Маршрут"
     var id: String { rawValue }
 }
+
 
 struct FlightsView: View {
     @ObservedObject var store: AppStore
 
     @State private var newDuty: FlightDuty?
     @State private var showSearchTools = false
-    @State private var searchField: DutySearchField = .airport
+    @State private var showDatePicker = false
     @State private var searchText = ""
+    @State private var selectedDate: Date?
     @State private var flightCountFilter: DutyFlightCountFilter = .all
-    @State private var sortOrder: DutySortOrder = .newest
+    @State private var sortOrder: DutySortOrder = .date
+    @State private var sortDescending = true
+    @State private var scrollTargetDutyID: UUID?
 
     @State private var showImport = false
     @State private var showImportConfirmation = false
@@ -242,32 +235,69 @@ struct FlightsView: View {
     @State private var pendingFlights: [FlightLeg] = []
     @State private var verificationStatus = ""
 
+    private var selectedDateBinding: Binding<Date> {
+        Binding(
+            get: { selectedDate ?? Date() },
+            set: { selectedDate = $0 }
+        )
+    }
+
+    private var hasActiveLookup: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || selectedDate != nil
+            || flightCountFilter != .all
+    }
+
     private var visibleDuties: [FlightDuty] {
         var values = store.duties.filter { duty in
-            matchesCount(duty) && matchesSearch(duty)
+            matchesCount(duty) && matchesSelectedDate(duty) && matchesSearch(duty)
+        }
+
+        func localizedBefore(_ lhs: String, _ rhs: String) -> Bool {
+            let comparison = lhs.localizedStandardCompare(rhs)
+            return sortDescending
+                ? comparison == .orderedDescending
+                : comparison == .orderedAscending
         }
 
         switch sortOrder {
-        case .newest:
-            values.sort { $0.start > $1.start }
-        case .oldest:
-            values.sort { $0.start < $1.start }
-        case .assignment:
+        case .date:
+            values.sort { sortDescending ? $0.start > $1.start : $0.start < $1.start }
+        case .dutyDuration:
             values.sort {
-                ($0.firstLeg.assignmentNumber ?? "")
-                    .localizedStandardCompare($1.firstLeg.assignmentNumber ?? "") == .orderedAscending
-            }
-        case .route:
-            values.sort {
-                AirportDatabase.routeDisplayName([$0.firstLeg.departure] + $0.legs.map(\.arrival))
-                    .localizedStandardCompare(
-                        AirportDatabase.routeDisplayName([$1.firstLeg.departure] + $1.legs.map(\.arrival))
-                    ) == .orderedAscending
+                if $0.workMinutes == $1.workMinutes {
+                    return sortDescending ? $0.start > $1.start : $0.start < $1.start
+                }
+                return sortDescending
+                    ? $0.workMinutes > $1.workMinutes
+                    : $0.workMinutes < $1.workMinutes
             }
         case .flightCount:
             values.sort {
-                if $0.legs.count == $1.legs.count { return $0.start > $1.start }
-                return $0.legs.count < $1.legs.count
+                if $0.legs.count == $1.legs.count {
+                    return sortDescending ? $0.start > $1.start : $0.start < $1.start
+                }
+                return sortDescending
+                    ? $0.legs.count > $1.legs.count
+                    : $0.legs.count < $1.legs.count
+            }
+        case .assignment:
+            values.sort {
+                localizedBefore(
+                    $0.firstLeg.assignmentNumber ?? "",
+                    $1.firstLeg.assignmentNumber ?? ""
+                )
+            }
+        case .route:
+            values.sort {
+                localizedBefore(
+                    AirportDatabase.routeDisplayName(
+                        [$0.firstLeg.departure] + $0.legs.map(\.arrival)
+                    ),
+                    AirportDatabase.routeDisplayName(
+                        [$1.firstLeg.departure] + $1.legs.map(\.arrival)
+                    )
+                )
             }
         }
         return values
@@ -276,7 +306,13 @@ struct FlightsView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                DutiesListView(store: store, duties: visibleDuties)
+                DutiesListView(
+                    store: store,
+                    duties: visibleDuties,
+                    scrollTarget: $scrollTargetDutyID,
+                    showsRevealButton: hasActiveLookup,
+                    onReveal: revealInFullList
+                )
 
                 if let duty = newDuty {
                     DutyAssignmentOverlay(
@@ -304,15 +340,57 @@ struct FlightsView: View {
                         Text("Поиск, фильтр и сортировка")
                             .font(.headline)
 
-                        Picker("Искать по", selection: $searchField) {
-                            ForEach(DutySearchField.allCases) { field in
-                                Text(field.rawValue).tag(field)
+                        HStack(spacing: 8) {
+                            TextField(
+                                "Аэропорт, дата, рейс, борт, тип ВС",
+                                text: $searchText
+                            )
+                            .textFieldStyle(.roundedBorder)
+
+                            Button {
+                                showDatePicker.toggle()
+                            } label: {
+                                Image(systemName: selectedDate == nil
+                                      ? "calendar"
+                                      : "calendar.badge.checkmark")
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel("Выбрать дату")
+                        }
+
+                        if showDatePicker {
+                            DatePicker(
+                                "Дата",
+                                selection: selectedDateBinding,
+                                displayedComponents: .date
+                            )
+                            .datePickerStyle(.graphical)
+                            .labelsHidden()
+                            .environment(\.locale, Locale(identifier: "ru_RU"))
+                            .environment(\.timeZone, moscowTimeZone)
+                        }
+
+                        if let selectedDate {
+                            HStack(spacing: 8) {
+                                Label(
+                                    formatDate(selectedDate),
+                                    systemImage: "calendar"
+                                )
+                                .font(.subheadline.weight(.semibold))
+
+                                Spacer()
+
+                                Button {
+                                    self.selectedDate = nil
+                                    showDatePicker = false
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("Сбросить дату")
                             }
                         }
-                        .pickerStyle(.menu)
-
-                        TextField("Введите значение", text: $searchText)
-                            .textFieldStyle(.roundedBorder)
 
                         Divider()
 
@@ -323,41 +401,81 @@ struct FlightsView: View {
                         }
                         .pickerStyle(.menu)
 
-                        Picker("Сортировка", selection: $sortOrder) {
-                            ForEach(DutySortOrder.allCases) { value in
-                                Text(value.rawValue).tag(value)
+                        HStack(spacing: 8) {
+                            Picker("Сортировка", selection: $sortOrder) {
+                                ForEach(DutySortOrder.allCases) { value in
+                                    Text(value.rawValue).tag(value)
+                                }
                             }
+                            .pickerStyle(.menu)
+
+                            Button {
+                                sortDescending.toggle()
+                            } label: {
+                                Image(systemName: sortDescending ? "arrow.down" : "arrow.up")
+                                    .frame(width: 18, height: 18)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel(
+                                sortDescending ? "По убыванию" : "По возрастанию"
+                            )
                         }
-                        .pickerStyle(.menu)
 
                         HStack {
                             Button("Сбросить") {
                                 searchText = ""
-                                searchField = .airport
+                                selectedDate = nil
+                                showDatePicker = false
                                 flightCountFilter = .all
-                                sortOrder = .newest
+                                sortOrder = .date
+                                sortDescending = true
                             }
                             .buttonStyle(.bordered)
+
                             Spacer()
-                            Button("Готово") { showSearchTools = false }
-                                .buttonStyle(.borderedProminent)
+
+                            Button("Готово") {
+                                showSearchTools = false
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
                     }
                     .padding(16)
-                    .frame(width: 330)
+                    .frame(width: 360)
                     .presentationCompactAdaptation(.popover)
                 }
 
-                Button("Импорт истории", systemImage: "square.and.arrow.down") {
-                    showImport = true
-                }
+                Menu {
+                    Button {
+                        showImport = true
+                    } label: {
+                        Label(
+                            "Импорт истории рейсов из файла",
+                            systemImage: "square.and.arrow.down"
+                        )
+                    }
 
-                Button {
-                    newDuty = makeManualDuty()
+                    Button {
+                        newDuty = makeManualDuty()
+                    } label: {
+                        Label(
+                            "Создать задание на полёт самостоятельно",
+                            systemImage: "airplane.badge.plus"
+                        )
+                    }
+
+                    Button {
+                    } label: {
+                        Label(
+                            "Добавить перспективный план · в разработке",
+                            systemImage: "calendar.badge.plus"
+                        )
+                    }
+                    .disabled(true)
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("Новое задание на полёт")
+                .accessibilityLabel("Добавить")
             }
             .fileImporter(
                 isPresented: $showImport,
@@ -403,60 +521,74 @@ struct FlightsView: View {
         case .one: return duty.legs.count == 1
         case .two: return duty.legs.count == 2
         case .three: return duty.legs.count == 3
-        case .four: return duty.legs.count == 4
         case .fourPlus: return duty.legs.count >= 4
         }
+    }
+
+    private func matchesSelectedDate(_ duty: FlightDuty) -> Bool {
+        guard let selectedDate else { return true }
+        return moscowCalendar.isDate(duty.start, inSameDayAs: selectedDate)
     }
 
     private func matchesSearch(_ duty: FlightDuty) -> Bool {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return true }
-        let needle = query.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        let needle = query.folding(
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: .current
+        )
 
         func contains(_ value: String) -> Bool {
-            value.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-                .contains(needle)
+            value.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: .current
+            )
+            .contains(needle)
         }
 
-        switch searchField {
-        case .airport:
-            return duty.legs.contains { leg in
-                contains(leg.departure)
-                    || contains(leg.arrival)
-                    || contains(AirportDatabase.displayName(for: leg.departure))
-                    || contains(AirportDatabase.displayName(for: leg.arrival))
-            }
-        case .assignment:
-            return contains(duty.firstLeg.assignmentNumber ?? "")
-        case .date:
-            return contains(formatDate(duty.start))
-        case .scheduleType:
-            return duty.legs.contains { contains(($0.scheduleType ?? .planned).rawValue) }
-        case .flightNumber:
-            return duty.legs.contains {
-                contains($0.flightNumber) || contains($0.legNumber ?? "")
-            }
-        case .registration:
-            return duty.legs.contains { contains(formattedRegistration($0.registration)) }
+        if contains(formatDate(duty.start)) {
+            return true
+        }
+
+        return duty.legs.contains { leg in
+            contains(leg.departure)
+                || contains(AirportDatabase.displayName(for: leg.departure))
+                || contains(leg.flightNumber)
+                || contains(leg.legNumber ?? "")
+                || contains(formattedRegistration(leg.registration))
+                || contains(leg.aircraft)
+        }
+    }
+
+    private func revealInFullList(_ duty: FlightDuty) {
+        showSearchTools = false
+        searchText = ""
+        selectedDate = nil
+        showDatePicker = false
+        flightCountFilter = .all
+
+        DispatchQueue.main.async {
+            scrollTargetDutyID = duty.id
         }
     }
 
     private func nextManualAssignmentNumber() -> String {
         let values = store.flights.compactMap(\.assignmentNumber)
-        let manualNumbers = values.compactMap { value -> Int? in
-            guard value.hasPrefix("Manual ") else { return nil }
-            return Int(value.dropFirst("Manual ".count))
-        }
-        let next = (manualNumbers.max() ?? 0) + 1
-        if next <= 999 {
-            return String(format: "Manual %03d", next)
+
+        func number(for value: String, prefix: String) -> Int? {
+            let compact = value.replacingOccurrences(of: " ", with: "")
+            guard compact.hasPrefix(prefix) else { return nil }
+            return Int(compact.dropFirst(prefix.count))
         }
 
-        let overflowNumbers = values.compactMap { value -> Int? in
-            guard value.hasPrefix("ManuA ") else { return nil }
-            return Int(value.dropFirst("ManuA ".count))
+        let manualNumbers = values.compactMap { number(for: $0, prefix: "Manual") }
+        let next = (manualNumbers.max() ?? 0) + 1
+        if next <= 999 {
+            return String(format: "Manual%03d", next)
         }
-        return String(format: "ManuA %03d", (overflowNumbers.max() ?? 0) + 1)
+
+        let overflowNumbers = values.compactMap { number(for: $0, prefix: "ManuA") }
+        return String(format: "ManuA%03d", (overflowNumbers.max() ?? 0) + 1)
     }
 
     private func makeManualDuty() -> FlightDuty {
@@ -477,9 +609,9 @@ struct FlightsView: View {
         )
         let leg = FlightLeg(
             date: formatDate(engineOn),
-            flightNumber: "1111",
+            flightNumber: "11-10",
             departure: "SVO",
-            arrival: "",
+            arrival: "AER",
             aircraft: "A321B",
             registration: "73-709",
             plannedDeparture: formatClock(engineOn),
@@ -490,7 +622,7 @@ struct FlightsView: View {
             engineOff: formatClock(engineOff),
             portalTimes: times,
             assignmentNumber: assignment,
-            legNumber: "1111",
+            legNumber: "11-10",
             scheduleType: .planned,
             calculatedMinutesOverride: nil
         )
@@ -501,21 +633,54 @@ struct FlightsView: View {
 
 // MARK: - Список смен
 
+// MARK: - Список смен
+
 struct DutiesListView: View {
     @ObservedObject var store: AppStore
     let duties: [FlightDuty]
+    @Binding var scrollTarget: UUID?
+    let showsRevealButton: Bool
+    let onReveal: (FlightDuty) -> Void
+
     @State private var selectedDuty: FlightDuty?
 
     var body: some View {
         ZStack {
-            List(duties) { duty in
-                Button {
-                    selectedDuty = duty
-                } label: {
-                    DutyRow(duty: duty)
-                        .contentShape(Rectangle())
+            ScrollViewReader { proxy in
+                List(duties) { duty in
+                    HStack(spacing: 8) {
+                        Button {
+                            selectedDuty = duty
+                        } label: {
+                            DutyRow(duty: duty)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if showsRevealButton {
+                            Button {
+                                onReveal(duty)
+                            } label: {
+                                Image(systemName: "list.bullet.rectangle")
+                                    .frame(width: 28, height: 28)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .accessibilityLabel("Показать в общем списке")
+                        }
+                    }
+                    .id(duty.id)
                 }
-                .buttonStyle(.plain)
+                .onChange(of: scrollTarget) { _, target in
+                    guard let target else { return }
+                    DispatchQueue.main.async {
+                        withAnimation {
+                            proxy.scrollTo(target, anchor: .center)
+                        }
+                        scrollTarget = nil
+                    }
+                }
             }
             .scrollDisabled(selectedDuty != nil)
             .allowsHitTesting(selectedDuty == nil)
@@ -533,7 +698,8 @@ struct DutiesListView: View {
     }
 }
 
-private struct DutyAssignmentOverlay: View {
+
+private struct DutyAssignmentOverlay: View {private struct DutyAssignmentOverlay: View {
     let duty: FlightDuty
     @ObservedObject var store: AppStore
     let isCreating: Bool
@@ -1538,12 +1704,22 @@ struct DutyDetailView: View {
             }
 
             ForEach(duty.legs.indices, id: \.self) { index in
-                legCard(
-                    duty.legs[index],
-                    index: index,
-                    workEnd: duty.workIntervals[index].end
-                )
-                .zIndex(legEditorZIndex(index))
+                SwipeDeleteFlightCard(
+                    isEnabled: isCreating
+                        && draft.count > 3
+                        && index > 0
+                        && focusedField == nil,
+                    onDelete: {
+                        removeManualLeg(at: index)
+                    }
+                ) {
+                    legCard(
+                        duty.legs[index],
+                        index: index,
+                        workEnd: duty.workIntervals[index].end
+                    )
+                    .zIndex(legEditorZIndex(index))
+                }
 
                 if index + 1 < duty.legs.count {
                     let restStart = duty.workIntervals[index].end
@@ -1582,13 +1758,7 @@ struct DutyDetailView: View {
     }
 
     private func deletionFlightCountText(_ count: Int) -> String {
-        switch count {
-        case 1: return "одним рейсом"
-        case 2: return "двумя рейсами"
-        case 3: return "тремя рейсами"
-        case 4: return "четырьмя рейсами"
-        default: return "\(count) рейсами"
-        }
+        count == 1 ? "1 рейсом" : "\(count) рейсами"
     }
 
     private func appendManualLeg() {
@@ -1612,6 +1782,12 @@ struct DutyDetailView: View {
         previousLeg.engineOff = formatClock(previousUpdated.engineOff)
         draft[lastIndex] = previousLeg
 
+        let newIndex = draft.count
+        let outbound = newIndex.isMultiple(of: 2)
+        let flightNumber = outbound ? "11-10" : "11-11"
+        let departure = outbound ? "SVO" : "AER"
+        let arrival = outbound ? "AER" : "SVO"
+
         let workStart = previousUpdated.engineOff
         let engineOn = moscowCalendar.date(byAdding: .minute, value: 60, to: workStart) ?? workStart
         let takeoff = moscowCalendar.date(byAdding: .minute, value: 10, to: engineOn) ?? engineOn
@@ -1628,9 +1804,9 @@ struct DutyDetailView: View {
         )
         let newLeg = FlightLeg(
             date: formatDate(engineOn),
-            flightNumber: "1111",
-            departure: previousLeg.arrival,
-            arrival: "",
+            flightNumber: flightNumber,
+            departure: departure,
+            arrival: arrival,
             aircraft: "A321B",
             registration: "73-709",
             plannedDeparture: formatClock(engineOn),
@@ -1641,7 +1817,7 @@ struct DutyDetailView: View {
             engineOff: formatClock(engineOff),
             portalTimes: values,
             assignmentNumber: assignmentNumber,
-            legNumber: "1111",
+            legNumber: flightNumber,
             scheduleType: .planned,
             calculatedMinutesOverride: nil
         )
@@ -1649,7 +1825,43 @@ struct DutyDetailView: View {
         focusedField = nil
     }
 
-    private func restCard(start: Date, end: Date) -> some View {
+    private func removeManualLeg(at index: Int) {
+        guard isCreating, draft.count > 3, index > 0, draft.indices.contains(index) else {
+            return
+        }
+
+        focusedField = nil
+        draft.remove(at: index)
+
+        for currentIndex in draft.indices {
+            var leg = draft[currentIndex]
+            let values = times(for: leg)
+            let workEnd = currentIndex == draft.indices.last
+                ? (moscowCalendar.date(
+                    byAdding: .minute,
+                    value: 30,
+                    to: values.engineOff
+                ) ?? values.engineOff)
+                : values.engineOff
+
+            leg.portalTimes = PortalFlightTimes(
+                workStart: values.workStart,
+                engineOn: values.engineOn,
+                takeoff: values.takeoff,
+                landing: values.landing,
+                engineOff: values.engineOff,
+                workEnd: workEnd
+            )
+            leg.workStart = formatClock(values.workStart)
+            leg.engineOn = formatClock(values.engineOn)
+            leg.takeoff = formatClock(values.takeoff)
+            leg.landing = formatClock(values.landing)
+            leg.engineOff = formatClock(values.engineOff)
+            draft[currentIndex] = leg
+        }
+    }
+
+    private func restCard    private func restCard(start: Date, end: Date) -> some View {
         let restMinutes = minutesBetween(start, end)
 
         return VStack(alignment: .leading, spacing: 6) {
@@ -2741,6 +2953,90 @@ struct DutyDetailView: View {
 }
 
 
+private struct SwipeDeleteFlightCard<Content: View>: View {
+    let isEnabled: Bool
+    let onDelete: () -> Void
+    let content: () -> Content
+
+    @State private var horizontalOffset: CGFloat = 0
+
+    init(
+        isEnabled: Bool,
+        onDelete: @escaping () -> Void,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.isEnabled = isEnabled
+        self.onDelete = onDelete
+        self.content = content
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            if isEnabled {
+                Button {
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        horizontalOffset = 0
+                    }
+                    onDelete()
+                } label: {
+                    Image(systemName: "trash.fill")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(width: 54, height: 42)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.red)
+                        )
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 4)
+                .accessibilityLabel("Удалить рейс")
+            }
+
+            content()
+                .offset(x: horizontalOffset)
+        }
+        .clipped()
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 18)
+                .onChanged { value in
+                    guard isEnabled else { return }
+                    guard abs(value.translation.width) > abs(value.translation.height) else {
+                        return
+                    }
+                    guard value.translation.width < 0 else {
+                        horizontalOffset = 0
+                        return
+                    }
+                    horizontalOffset = max(-66, value.translation.width)
+                }
+                .onEnded { value in
+                    guard isEnabled else {
+                        horizontalOffset = 0
+                        return
+                    }
+                    guard abs(value.translation.width) > abs(value.translation.height) else {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            horizontalOffset = 0
+                        }
+                        return
+                    }
+
+                    withAnimation(.easeOut(duration: 0.16)) {
+                        horizontalOffset = value.translation.width < -30 ? -62 : 0
+                    }
+                }
+        )
+        .onChange(of: isEnabled) { _, enabled in
+            if !enabled {
+                horizontalOffset = 0
+            }
+        }
+    }
+}
+
+
 private struct InlineCalculatedTimeValue: View {
     let displayed: String
     let originalMinutes: Int
@@ -2858,17 +3154,27 @@ private struct InlineCalculatedTimeValue: View {
         .overlay(alignment: .bottomTrailing) {
             if isEditing && hasChanges {
                 Button {
-                    onRestore()
                     activePart = nil
+                    onRestore()
                 } label: {
                     Image(systemName: "arrow.uturn.backward")
                         .font(.system(size: 9, weight: .semibold))
                         .frame(width: 17, height: 17)
                         .background(.ultraThinMaterial, in: Circle())
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
-                .padding(.bottom, 6)
+                .padding(.trailing, -7)
+                .padding(.bottom, -1)
+                .zIndex(10000)
+                .highPriorityGesture(
+                    TapGesture().onEnded {
+                        activePart = nil
+                        onRestore()
+                    }
+                )
                 .accessibilityLabel("Вернуть исходное расчётное время")
             }
         }
