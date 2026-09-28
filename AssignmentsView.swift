@@ -36,15 +36,9 @@ struct AssignmentsView: View {
             case .flights:
                 FlightHistoryAssignmentsView(store: store)
             case .currentPlan:
-                CurrentPlanAssignmentsView(
-                    store: store,
-                    planStore: planStore
-                )
+                CurrentPlanAssignmentsView(store: store, planStore: planStore)
             case .importedPlan:
-                ImportedPlanAssignmentsView(
-                    store: store,
-                    planStore: planStore
-                )
+                ImportedPlanAssignmentsView(store: store, planStore: planStore)
             case .workPlan:
                 AccordWorkPlanView(store: store)
             }
@@ -61,7 +55,7 @@ private struct FlightHistoryAssignmentsView: View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Label(
-                    "История полётов · \(store.flights.count) легов",
+                    "История полётов · \(store.importedFlightHistoryCount) легов",
                     systemImage: "checkmark.seal.fill"
                 )
                 .font(.subheadline.weight(.semibold))
@@ -74,24 +68,26 @@ private struct FlightHistoryAssignmentsView: View {
                     Label("Удалить историю", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
-                .disabled(store.flights.isEmpty)
+                .disabled(store.importedFlightHistoryCount == 0)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(.bar)
 
             Divider()
-
             FlightsView(store: store)
         }
-        .alert("Удалить всю историю полётов?", isPresented: $showDeleteConfirmation) {
+        .alert(
+            "Удалить импортированную историю полётов?",
+            isPresented: $showDeleteConfirmation
+        ) {
             Button("Отмена", role: .cancel) { }
             Button("Удалить", role: .destructive) {
-                store.deleteAllFlightHistory()
+                store.deleteImportedFlightHistory()
             }
         } message: {
             Text(
-                "Будут удалены все \(store.flights.count) импортированных и вручную сохранённых легов. Текущий план, импортированный план и план работ останутся на месте."
+                "Будут удалены только \(store.importedFlightHistoryCount) легов из импортированной истории. Ручные задания Manual, текущий план, импортированный план и план работ останутся на месте."
             )
         }
     }
@@ -131,7 +127,6 @@ private struct CurrentPlanAssignmentsView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-
                         Spacer()
                     }
                 } header: {
@@ -152,7 +147,8 @@ private struct CurrentPlanAssignmentsView: View {
                                     item,
                                     actualFlights: store.flights
                                 ) ? "Есть в истории полётов · факт имеет приоритет" : nil,
-                                statusColor: .green
+                                statusColor: .green,
+                                conflictText: nil
                             )
                         }
                     }
@@ -202,17 +198,23 @@ private struct CurrentPlanAssignmentsView: View {
 
     private var statusIcon: String {
         switch planStore.calendarHealth {
-        case .working: return "checkmark.circle.fill"
-        case .failed: return "exclamationmark.triangle.fill"
-        case .notChecked: return planStore.hasCalendarURL ? "questionmark.circle.fill" : "link.badge.plus"
+        case .working:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        case .notChecked:
+            return planStore.hasCalendarURL ? "questionmark.circle.fill" : "link.badge.plus"
         }
     }
 
     private var statusColor: Color {
         switch planStore.calendarHealth {
-        case .working: return .green
-        case .failed: return .red
-        case .notChecked: return .orange
+        case .working:
+            return .green
+        case .failed:
+            return .red
+        case .notChecked:
+            return .orange
         }
     }
 
@@ -221,9 +223,12 @@ private struct CurrentPlanAssignmentsView: View {
             return "Ссылка не настроена"
         }
         switch planStore.calendarHealth {
-        case .working: return "Подписной календарь работает"
-        case .failed: return "Календарь недоступен"
-        case .notChecked: return "Ссылка сохранена, но ещё не проверена"
+        case .working:
+            return "Подписной календарь работает"
+        case .failed:
+            return "Календарь недоступен"
+        case .notChecked:
+            return "Ссылка сохранена, но ещё не проверена"
         }
     }
 
@@ -275,15 +280,40 @@ private struct ImportedPlanAssignmentsView: View {
         )
     }
 
+    private var conflictCount: Int {
+        planStore.conflictPairCount(in: .importedFile)
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 Section {
                     Text(
-                        "Сюда импортируется файл текущего или перспективного плана. Он хранится отдельно от подписного календаря, чтобы можно было проверить оба источника независимо."
+                        "Сюда импортируется текущий или перспективный план. Диапазоны без времени читаются как «с первой даты включительно, до второй даты не включая её»."
                     )
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                }
+
+                if conflictCount > 0 {
+                    Section {
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Обнаружено конфликтов: \(conflictCount)")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.red)
+                                Text(
+                                    "Назначения реально пересекаются по времени. Соприкосновение границ, например окончание отпуска в 00:00 и новое назначение с этой же минуты, конфликтом не считается."
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
+                    } header: {
+                        Text("Проверка плана")
+                    }
                 }
 
                 Section("Импортированный план · \(items.count)") {
@@ -292,10 +322,15 @@ private struct ImportedPlanAssignmentsView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(items) { item in
+                            let conflicts = planStore.conflicts(
+                                for: item,
+                                in: .importedFile
+                            )
                             PlanAssignmentRow(
                                 item: item,
                                 status: status(for: item),
-                                statusColor: statusColor(for: item)
+                                statusColor: statusColor(for: item),
+                                conflictText: conflictText(conflicts)
                             )
                         }
                     }
@@ -368,6 +403,13 @@ private struct ImportedPlanAssignmentsView: View {
         return .secondary
     }
 
+    private func conflictText(_ conflicts: [AssignmentPlanItem]) -> String? {
+        guard !conflicts.isEmpty else { return nil }
+        let names = conflicts.prefix(2).map(\.title)
+        let suffix = conflicts.count > 2 ? " и ещё \(conflicts.count - 2)" : ""
+        return "Конфликт: \(names.joined(separator: ", "))\(suffix)"
+    }
+
     private func importFiles(_ result: Result<[URL], Error>) {
         do {
             let urls = try result.get()
@@ -377,7 +419,6 @@ private struct ImportedPlanAssignmentsView: View {
 
             for url in urls {
                 let access = url.startAccessingSecurityScopedResource()
-                defer { if access { url.stopAccessingSecurityScopedResource() } }
                 do {
                     total += try planStore.importPlanFile(
                         url: url,
@@ -387,12 +428,20 @@ private struct ImportedPlanAssignmentsView: View {
                 } catch {
                     failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
                 }
+                if access {
+                    url.stopAccessingSecurityScopedResource()
+                }
             }
 
+            let conflicts = planStore.conflictPairCount(in: .importedFile)
+            let conflictPart = conflicts > 0
+                ? " Обнаружено конфликтов: \(conflicts). Они выделены красным."
+                : " Конфликтов не обнаружено."
+
             if failures.isEmpty {
-                message = "Импортировано файлов: \(succeeded). Назначений: \(total)."
+                message = "Импортировано файлов: \(succeeded). Назначений: \(total).\(conflictPart)"
             } else {
-                message = "Импортировано файлов: \(succeeded) из \(urls.count). Назначений: \(total). \(failures.joined(separator: " "))"
+                message = "Импортировано файлов: \(succeeded) из \(urls.count). Назначений: \(total).\(conflictPart) \(failures.joined(separator: " "))"
             }
             showMessage = true
         } catch {
@@ -535,7 +584,9 @@ private struct AccordWorkPlanView: View {
 
             Task {
                 defer {
-                    if access { url.stopAccessingSecurityScopedResource() }
+                    if access {
+                        url.stopAccessingSecurityScopedResource()
+                    }
                     isImporting = false
                 }
 
@@ -562,79 +613,238 @@ private struct PlanAssignmentRow: View {
     let item: AssignmentPlanItem
     var status: String?
     var statusColor: Color = .secondary
+    var conflictText: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-                .foregroundStyle(item.kind == .passenger ? .orange : .blue)
+                .foregroundStyle(iconColor)
                 .frame(width: 24)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
 
-                Text(subtitle)
-                    .font(.caption)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let legs = item.flightLegs, !legs.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(legs) { leg in
+                            HStack(spacing: 6) {
+                                Image(
+                                    systemName: leg.role == .passenger
+                                        ? "suitcase.rolling.fill"
+                                        : "airplane"
+                                )
+                                .foregroundStyle(
+                                    leg.role == .passenger
+                                        ? Color.orange
+                                        : Color.blue
+                                )
+                                .frame(width: 18)
+
+                                Text(legTitle(leg))
+                                    .font(.caption)
+
+                                if leg.role == .passenger {
+                                    Text("пассажир")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+
+                if item.isFlightLike,
+                   let planned = item.plannedFlightMinutes {
+                    HStack(spacing: 10) {
+                        Label("Полётное: \(timeText(planned))", systemImage: "clock")
+                        Text("Период смены: \(timeText(item.durationMinutes))")
+                    }
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
+                }
+
+                if item.kind == .homeReserve, !item.isAllDay {
+                    Text(
+                        "В зачёт рабочего времени: \(timeText(item.creditedWorkMinutes)) · коэффициент 1/4"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
 
                 if let status {
                     Label(status, systemImage: "arrow.triangle.2.circlepath")
                         .font(.caption2)
                         .foregroundStyle(statusColor)
                 }
+
+                if let conflictText {
+                    Label(conflictText, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                }
             }
 
             Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(formatDate(item.start))
+                Text(dateLabel)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(timeRange)
-                    .font(.caption.monospacedDigit())
-                if item.durationMinutes > 0, item.kind != .dayOff {
+                    .foregroundStyle(
+                        conflictText == nil
+                            ? Color.secondary
+                            : Color.red
+                    )
+                    .multilineTextAlignment(.trailing)
+
+                if let timeRange {
+                    Text(timeRange)
+                        .font(.caption.monospacedDigit())
+                        .multilineTextAlignment(.trailing)
+                }
+
+                if !item.isAllDay,
+                   !item.isFlightLike,
+                   item.durationMinutes > 0 {
                     Text(timeText(item.durationMinutes))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 6)
+        .padding(.horizontal, conflictText == nil ? 0 : 8)
+        .background {
+            if conflictText != nil {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.red.opacity(0.10))
+            }
+        }
     }
 
     private var icon: String {
         switch item.kind {
-        case .flight: return "airplane"
-        case .passenger: return "person.crop.circle.badge.checkmark"
-        case .ground: return "briefcase"
-        case .dayOff: return "moon.zzz"
+        case .flight:
+            return "airplane"
+        case .passenger:
+            return "suitcase.rolling.fill"
+        case .hotelReserve:
+            return "bed.double.fill"
+        case .homeReserve:
+            return "house.fill"
+        case .dayOff:
+            return "moon.zzz"
+        case .leave:
+            return "calendar.badge.minus"
+        case .medical:
+            return "cross.case.fill"
+        case .simulator:
+            return "airplane.circle.fill"
+        case .training:
+            return "book.closed.fill"
+        case .ground:
+            return "briefcase"
+        }
+    }
+
+    private var iconColor: Color {
+        switch item.kind {
+        case .passenger:
+            return .orange
+        case .hotelReserve, .homeReserve:
+            return .indigo
+        case .medical:
+            return .red
+        case .leave:
+            return .purple
+        default:
+            return .blue
         }
     }
 
     private var title: String {
-        if let number = item.flightNumber {
-            return item.kind == .passenger ? "\(number) · пассажир" : number
+        if item.isFlightLike {
+            if let legs = item.flightLegs, legs.count > 1 {
+                return "Полётная смена · \(legs.count) рейса"
+            }
+            if let number = item.flightLegs?.first?.flightNumber ?? item.flightNumber {
+                let passenger = item.kind == .passenger
+                    || item.flightLegs?.first?.role == .passenger
+                return passenger ? "\(number) · пассажир" : number
+            }
         }
         return item.title
     }
 
-    private var subtitle: String {
-        if let departure = item.departure,
-           let arrival = item.arrival {
-            let aircraft = item.aircraft.map { " · \($0)" } ?? ""
-            return "\(departure) → \(arrival)\(aircraft)"
+    private var subtitle: String? {
+        if item.isFlightLike {
+            if let group = item.assignmentGroup, !group.isEmpty {
+                let aircraft = item.aircraft.map { " · \($0)" } ?? ""
+                return group + aircraft
+            }
+            if let departure = item.departure,
+               let arrival = item.arrival {
+                let aircraft = item.aircraft.map { " · \($0)" } ?? ""
+                return "\(departure) → \(arrival)\(aircraft)"
+            }
+            return item.aircraft
         }
-        if let group = item.assignmentGroup, !group.isEmpty {
-            let aircraft = item.aircraft.map { " · \($0)" } ?? ""
-            return group + aircraft
+
+        if let detail = item.detail,
+           !detail.isEmpty,
+           detail.caseInsensitiveCompare(item.title) != .orderedSame {
+            return detail
         }
-        return item.title
+        return nil
     }
 
-    private var timeRange: String {
-        if item.kind == .dayOff {
-            return "Выходной"
+    private func legTitle(_ leg: AssignmentPlanLeg) -> String {
+        if let departure = leg.departure,
+           let arrival = leg.arrival {
+            return "\(leg.flightNumber) · \(departure) → \(arrival)"
         }
-        return "\(formatClock(item.start)) – \(formatClock(item.end))"
+        return leg.flightNumber
+    }
+
+    private var dateLabel: String {
+        guard item.isAllDay else {
+            return formatDate(item.start)
+        }
+
+        let includedEnd = moscowCalendar.date(
+            byAdding: .day,
+            value: -1,
+            to: item.end
+        ) ?? item.start
+        if moscowCalendar.isDate(item.start, inSameDayAs: includedEnd) {
+            return shortDate(item.start)
+        }
+        return "\(shortDate(item.start)) – \(shortDate(includedEnd))"
+    }
+
+    private var timeRange: String? {
+        if item.isAllDay {
+            return item.kind == .dayOff ? "Выходной" : nil
+        }
+
+        if moscowCalendar.isDate(item.start, inSameDayAs: item.end) {
+            return "\(formatClock(item.start)) – \(formatClock(item.end))"
+        }
+        return "\(shortDate(item.start)) \(formatClock(item.start)) – \(shortDate(item.end)) \(formatClock(item.end))"
+    }
+
+    private func shortDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "dd.MM"
+        return formatter.string(from: date)
     }
 }
