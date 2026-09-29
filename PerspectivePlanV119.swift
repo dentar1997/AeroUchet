@@ -82,6 +82,18 @@ enum AssignmentV119MetadataCodec {
 }
 
 
+private enum PerspectivePlanV119ParserError: LocalizedError {
+    case unexpectedFormat
+
+    var errorDescription: String? {
+        switch self {
+        case .unexpectedFormat:
+            return "Формат перспективного плана изменился или документ распознан не полностью. Импорт отменён, чтобы не потерять назначения."
+        }
+    }
+}
+
+
 enum PerspectivePlanV119Parser {
     static func parseFile(url: URL) throws -> AssignmentPlanSnapshot {
         guard url.pathExtension.lowercased() == "pdf" else {
@@ -98,18 +110,23 @@ enum PerspectivePlanV119Parser {
         guard headerText.localizedCaseInsensitiveContains("перспективный план") else {
             return try AssignmentPlanImporter.parseFile(url: url)
         }
-
-        let year = firstYear(in: headerText)
-            ?? moscowCalendar.component(.year, from: Date())
-        let scopeMonthKey = scopeMonthKey(in: headerText, year: year)
+        guard let year = firstYear(in: headerText),
+              let scopeMonthKey = scopeMonthKey(in: headerText, year: year) else {
+            throw PerspectivePlanV119ParserError.unexpectedFormat
+        }
 
         var rawItems: [AssignmentPlanItem] = []
         var inheritedDate: Date?
+        var parsedAssignmentRows = 0
 
         for pageIndex in 0..<document.pageCount {
-            guard let page = document.page(at: pageIndex) else { continue }
+            guard let page = document.page(at: pageIndex) else {
+                throw PerspectivePlanV119ParserError.unexpectedFormat
+            }
             let rows = geometryRows(page: page)
-            guard !rows.isEmpty else { continue }
+            guard !rows.isEmpty else {
+                throw PerspectivePlanV119ParserError.unexpectedFormat
+            }
 
             for (rowIndex, row) in rows.enumerated() {
                 let dateText = text(
@@ -140,6 +157,14 @@ enum PerspectivePlanV119Parser {
                     )
                 )
 
+                let combinedText = dateText + " " + timeText + " " + contentText
+                if combinedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    continue
+                }
+                if isHeaderRow(combinedText) {
+                    continue
+                }
+
                 let dates = dates(in: dateText, year: year)
                 let baseDate = dates.first ?? inheritedDate
                 if let first = dates.first {
@@ -148,57 +173,52 @@ enum PerspectivePlanV119Parser {
                     inheritedDate = first
                 }
 
-                guard let baseDate else { continue }
-                guard !isHeaderRow(dateText + " " + timeText + " " + contentText) else {
-                    continue
+                guard let baseDate else {
+                    throw PerspectivePlanV119ParserError.unexpectedFormat
                 }
 
                 let rowID = "p119|\(pageIndex)|\(rowIndex)|\(dayKey(baseDate))"
                 if dates.count >= 2 {
-                    if let item = makeRangeItem(
+                    guard let item = makeRangeItem(
                         start: dates[0],
                         rawEnd: dates[1],
                         content: contentText,
                         id: rowID,
                         scopeMonthKey: scopeMonthKey
-                    ) {
-                        rawItems.append(item)
+                    ) else {
+                        throw PerspectivePlanV119ParserError.unexpectedFormat
                     }
+                    rawItems.append(item)
+                    parsedAssignmentRows += 1
                     continue
                 }
 
                 let times = exactTimes(in: timeText)
-                guard times.count >= 2 else {
-                    // Иногда PDFKit присоединяет время к первой колонке.
-                    let mergedTimes = exactTimes(in: dateText + " " + timeText)
-                    if mergedTimes.count >= 2 {
-                        rawItems.append(contentsOf: makeTimedItems(
-                            date: baseDate,
-                            startClock: mergedTimes[0],
-                            endClock: mergedTimes[1],
-                            content: contentText,
-                            id: rowID,
-                            scopeMonthKey: scopeMonthKey
-                        ))
-                    }
-                    continue
+                let mergedTimes = times.count >= 2
+                    ? times
+                    : exactTimes(in: dateText + " " + timeText)
+                guard mergedTimes.count >= 2 else {
+                    throw PerspectivePlanV119ParserError.unexpectedFormat
                 }
 
-                rawItems.append(contentsOf: makeTimedItems(
+                let items = makeTimedItems(
                     date: baseDate,
-                    startClock: times[0],
-                    endClock: times[1],
+                    startClock: mergedTimes[0],
+                    endClock: mergedTimes[1],
                     content: contentText,
                     id: rowID,
                     scopeMonthKey: scopeMonthKey
-                ))
+                )
+                guard !items.isEmpty else {
+                    throw PerspectivePlanV119ParserError.unexpectedFormat
+                }
+                rawItems.append(contentsOf: items)
+                parsedAssignmentRows += 1
             }
         }
 
-        guard !rawItems.isEmpty else {
-            // Геометрический разбор имеет безопасный откат на v118 для
-            // неожиданного варианта корпоративного шаблона.
-            return try AssignmentPlanImporter.parseFile(url: url)
+        guard parsedAssignmentRows > 0, !rawItems.isEmpty else {
+            throw PerspectivePlanV119ParserError.unexpectedFormat
         }
 
         let linked = linkPassengerAndWorkingEvents(rawItems.sorted { $0.start < $1.start })
@@ -336,8 +356,10 @@ enum PerspectivePlanV119Parser {
 
         return clusters.compactMap { cluster -> CGFloat? in
             guard let first = cluster.first, let last = cluster.last else { return nil }
-            let center = CGFloat(first + last) / 2
-            return center / scale
+            let renderedY = CGFloat(first + last) / 2 / scale
+            // Буфер рендера и topRect используют противоположное направление Y.
+            // Возвращаем координату как расстояние от верхнего края страницы.
+            return bounds.height - renderedY
         }
         .filter { $0 > 55 && $0 < bounds.height - 30 }
         .sorted()
