@@ -295,15 +295,41 @@ struct PlanAssignmentRowV119: View {
             return "\(fullDate(item.start)) — \(fullDate(includedEnd))"
         }
 
-        if moscowCalendar.isDate(item.start, inSameDayAs: item.end) {
-            return fullDate(item.start)
+        let start = displayIntervalStart
+        let end = displayIntervalEnd
+        if moscowCalendar.isDate(start, inSameDayAs: end) {
+            return fullDate(start)
         }
-        return "\(fullDate(item.start)) — \(fullDate(item.end))"
+        return "\(fullDate(start)) — \(fullDate(end))"
     }
 
     private var timeRange: String? {
         guard !item.isAllDay else { return nil }
-        return "\(clock(item.start)) — \(clock(item.end))"
+        // Для пассажирского перемещения исходное время вылета/прилёта уже
+        // показано в теле карточки. Справа оставляем только дату, чтобы не
+        // дублировать расчётное начало за 40 минут до вылета.
+        if item.kind == .passenger,
+           metadata?.sourceStart != nil,
+           metadata?.sourceEnd != nil {
+            return nil
+        }
+        return "\(clock(displayIntervalStart)) — \(clock(displayIntervalEnd))"
+    }
+
+    private var displayIntervalStart: Date {
+        if item.kind == .passenger,
+           let sourceStart = metadata?.sourceStart {
+            return sourceStart
+        }
+        return item.start
+    }
+
+    private var displayIntervalEnd: Date {
+        if item.kind == .passenger,
+           let sourceEnd = metadata?.sourceEnd {
+            return sourceEnd
+        }
+        return item.end
     }
 
     private func fullDate(_ date: Date) -> String {
@@ -341,15 +367,13 @@ struct PlanAssignmentRowV119: View {
 
     private func plannedMinutesMarker(in detail: String?) -> Int? {
         guard let detail,
-              let range = detail.range(
-                of: #"\[\[AU119FLIGHT:(\d+)\]\]"#,
-                options: .regularExpression
+              let start = detail.range(of: "[[AU119FLIGHT:"),
+              let end = detail.range(
+                of: "]]",
+                range: start.upperBound..<detail.endIndex
               ) else {
             return nil
         }
-        let token = String(detail[range])
-        return token.filter(\.isNumber).dropFirst(3).isEmpty
-            ? Int(token.filter(\.isNumber))
-            : Int(token.filter(\.isNumber).dropFirst(3))
+        return Int(detail[start.upperBound..<end.lowerBound])
     }
 }
