@@ -370,6 +370,9 @@ private enum AssignmentImportICSBridge {
         if let detail = item.detail, !detail.isEmpty {
             parts.append(detail)
         }
+        if let plannedFlightMinutes = item.plannedFlightMinutes {
+            parts.append("[[AU119FLIGHT:\(plannedFlightMinutes)]]")
+        }
         if item.kind == .passenger {
             let basis = AssignmentV119MetadataCodec.metadata(from: item.detail)?.passengerBasis
                 ?? "по заданию"
