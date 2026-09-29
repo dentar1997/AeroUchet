@@ -133,8 +133,16 @@ final class AssignmentImportDraft: ObservableObject, Identifiable {
         conflictPairs.count
     }
 
+    var canSave: Bool {
+        unresolvedConflictCount == 0 && !includedItems.isEmpty
+    }
+
     func item(id: String) -> AssignmentPlanItem? {
         records.first(where: { $0.id == id })?.effectiveItem
+    }
+
+    func isEdited(_ id: String) -> Bool {
+        records.first(where: { $0.id == id })?.edited != nil
     }
 
     func exclude(_ id: String) {
@@ -476,13 +484,44 @@ struct AssignmentConflictResolverView: View {
                 if draft.conflictPairs.isEmpty {
                     Section("Назначения после разрешения") {
                         ForEach(draft.includedItems) { item in
-                            HStack {
-                                Text(item.title)
-                                Spacer()
-                                Text(dateSummary(item))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 7) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(item.title)
+                                            .font(.subheadline.weight(.semibold))
+                                        Text(dateSummary(item))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if draft.isEdited(item.id) {
+                                        Text("Изменено")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.orange)
+                                    }
+                                }
+
+                                HStack {
+                                    Button("Изменить") {
+                                        editingItem = item
+                                    }
+                                    .buttonStyle(.bordered)
+
+                                    if draft.isEdited(item.id) {
+                                        Button("Вернуть исходное") {
+                                            draft.restoreOriginal(item.id)
+                                        }
+                                        .buttonStyle(.bordered)
+                                    }
+
+                                    Button("Исключить", role: .destructive) {
+                                        draft.exclude(item.id)
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                                .font(.caption)
                             }
+                            .padding(.vertical, 2)
                         }
                     }
                 }
@@ -496,7 +535,7 @@ struct AssignmentConflictResolverView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Сохранить план", action: onSave)
                         .fontWeight(.semibold)
-                        .disabled(draft.unresolvedConflictCount > 0)
+                        .disabled(!draft.canSave)
                 }
             }
             .sheet(item: $editingItem) { item in
