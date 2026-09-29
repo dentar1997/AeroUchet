@@ -598,10 +598,13 @@ struct AssignmentConflictResolverView: View {
                    ? ""
                    : " — " + formatFullDate(end))
         }
-        let dates = moscowCalendar.isDate(item.start, inSameDayAs: item.end)
-            ? formatFullDate(item.start)
-            : "\(formatFullDate(item.start)) — \(formatFullDate(item.end))"
-        return dates + " · \(clock(item.start)) — \(clock(item.end))"
+        let metadata = AssignmentV119MetadataCodec.metadata(from: item.detail)
+        let start = metadata?.sourceStart ?? item.start
+        let end = metadata?.sourceEnd ?? item.end
+        let dates = moscowCalendar.isDate(start, inSameDayAs: end)
+            ? formatFullDate(start)
+            : "\(formatFullDate(start)) — \(formatFullDate(end))"
+        return dates + " · \(clock(start)) — \(clock(end))"
     }
 
     private func formatFullDate(_ date: Date) -> String {
@@ -627,16 +630,32 @@ private struct AssignmentImportEditView: View {
 
     @State private var item: AssignmentPlanItem
     @State private var humanDetail: String
+    @State private var editableStart: Date
+    @State private var editableEnd: Date
+
     let onSave: (AssignmentPlanItem) -> Void
+
+    private var metadata: AssignmentV119Metadata? {
+        AssignmentV119MetadataCodec.metadata(from: item.detail)
+    }
+
+    private var usesSourceFlightInterval: Bool {
+        (item.kind == .flight || item.kind == .passenger)
+            && metadata?.sourceStart != nil
+            && metadata?.sourceEnd != nil
+    }
 
     init(
         item: AssignmentPlanItem,
         onSave: @escaping (AssignmentPlanItem) -> Void
     ) {
+        let metadata = AssignmentV119MetadataCodec.metadata(from: item.detail)
         _item = State(initialValue: item)
         _humanDetail = State(
             initialValue: AssignmentV119MetadataCodec.humanDetail(item.detail) ?? ""
         )
+        _editableStart = State(initialValue: metadata?.sourceStart ?? item.start)
+        _editableEnd = State(initialValue: metadata?.sourceEnd ?? item.end)
         self.onSave = onSave
     }
 
@@ -649,21 +668,31 @@ private struct AssignmentImportEditView: View {
                         .lineLimit(2...5)
                 }
 
-                Section("Время") {
+                Section(usesSourceFlightInterval ? "Время из перспективного плана" : "Время") {
                     if item.isAllDay {
-                        DatePicker("Начало", selection: $item.start, displayedComponents: .date)
-                        DatePicker("Конец", selection: $item.end, displayedComponents: .date)
+                        DatePicker("Начало", selection: $editableStart, displayedComponents: .date)
+                        DatePicker("Конец", selection: $editableEnd, displayedComponents: .date)
                     } else {
                         DatePicker(
                             "Начало",
-                            selection: $item.start,
+                            selection: $editableStart,
                             displayedComponents: [.date, .hourAndMinute]
                         )
                         DatePicker(
                             "Конец",
-                            selection: $item.end,
+                            selection: $editableEnd,
                             displayedComponents: [.date, .hourAndMinute]
                         )
+                    }
+
+                    if usesSourceFlightInterval {
+                        Text(
+                            item.kind == .passenger
+                                ? "После сохранения приложение заново добавит 40 минут до вылета к рабочему времени пассажирского перемещения."
+                                : "После сохранения приложение заново рассчитает полётную смену: 1:00 до вылета и 0:30 после прилёта."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -675,20 +704,69 @@ private struct AssignmentImportEditView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Готово") {
-                        if let metadata = AssignmentV119MetadataCodec.metadata(from: item.detail) {
-                            item.detail = AssignmentV119MetadataCodec.encode(
-                                humanDetail: humanDetail,
-                                metadata: metadata
-                            )
-                        } else {
-                            item.detail = humanDetail.isEmpty ? nil : humanDetail
-                        }
+                        applyEditedIntervalAndMetadata()
                         onSave(item)
                         dismiss()
                     }
-                    .disabled(item.end <= item.start || item.title.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(
+                        editableEnd <= editableStart
+                            || item.title.trimmingCharacters(in: .whitespaces).isEmpty
+                    )
                 }
             }
+        }
+    }
+
+    private func applyEditedIntervalAndMetadata() {
+        if var metadata = metadata, usesSourceFlightInterval {
+            metadata.sourceStart = editableStart
+            metadata.sourceEnd = editableEnd
+            metadata.waitingMinutes = nil
+            metadata.subsequentDutyReductionMinutes = nil
+            metadata.linkedSequenceMinutes = nil
+            metadata.linkedGroupID = nil
+
+            if item.kind == .passenger {
+                let movementStart = moscowCalendar.date(
+                    byAdding: .minute,
+                    value: -40,
+                    to: editableStart
+                ) ?? editableStart
+                item.start = movementStart
+                item.end = editableEnd
+                metadata.passengerMovementMinutes = max(
+                    0,
+                    Int(editableEnd.timeIntervalSince(movementStart) / 60)
+                )
+            } else {
+                item.start = moscowCalendar.date(
+                    byAdding: .minute,
+                    value: -60,
+                    to: editableStart
+                ) ?? editableStart
+                item.end = moscowCalendar.date(
+                    byAdding: .minute,
+                    value: 30,
+                    to: editableEnd
+                ) ?? editableEnd
+            }
+
+            item.detail = AssignmentV119MetadataCodec.encode(
+                humanDetail: humanDetail,
+                metadata: metadata
+            )
+            return
+        }
+
+        item.start = editableStart
+        item.end = editableEnd
+        if let metadata = metadata {
+            item.detail = AssignmentV119MetadataCodec.encode(
+                humanDetail: humanDetail,
+                metadata: metadata
+            )
+        } else {
+            item.detail = humanDetail.isEmpty ? nil : humanDetail
         }
     }
 }
