@@ -1,16 +1,25 @@
 # START HERE — AeroUchet workflow routing
 
-> **For ChatGPT / AI agents:** before inspecting AeroUchet source files, commits, pull requests, versions, or deciding what to do next, restore the project's durable context first.
+> **For ChatGPT / AI agents:** this public repository is application code. AeroUchet Workflow activation is explicit and project-scoped; generic GitHub requests do not activate it.
 
-This repository is the **public application-code repository**. The canonical project memory and workflow live in the connected private companion repository:
+The canonical activation command is:
 
-`dentar1997/AeroUchet-Private`
+`AeroUchet START`
 
-Required order for a fresh/new chat or a generic request such as `проверь GitHub` / `что дальше?`:
+Its full semantics live in the connected private companion repository:
+
+`dentar1997/AeroUchet-Private/docs/WORKFLOW_ACTIVATION.md`
+
+After AeroUchet Workflow has been activated, before inspecting AeroUchet source files, commits, pull requests, versions, or deciding what to do next:
 
 1. Open `dentar1997/AeroUchet-Private/00_START_HERE.md`.
 2. Follow its pointer to `INDEX.yaml` and `PROJECT_CONTEXT.md`.
 3. Complete the canonical **Context Recovery** from the private repository.
-4. Only then return here to inspect code / commits / PRs as required by the user's actual task.
+4. Continue through the fixed Workflow Stage Sequence.
+5. Only then return here to inspect code / commits / PRs as required by the user's actual task.
 
-Do **not** copy the full private workflow into this public repository. This file is only a routing safeguard so entering through the code repository does not bypass project memory.
+Generic requests such as `Гитхаб`, `проверь GitHub`, a GitHub URL, or work on another repository do not by themselves activate AeroUchet Workflow.
+
+`AeroUchet START` activates Workflow only. AeroUchet application-code mutation still requires the separate explicit user command `Программируй`.
+
+Do **not** copy the full private Workflow into this public repository. This file is only a routing safeguard after the AeroUchet Profile is active.
