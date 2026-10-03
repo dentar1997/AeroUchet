@@ -1,3 +1,5 @@
+> **АРХИВ (с 04.10.2026).** Не выполнять. Живая память и инструкция — [`.memory/README.md`](../README.md).
+
 # WORKFLOW AEROUCHET BOOTSTRAP
 
 ## Purpose
