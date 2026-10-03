@@ -4,8 +4,8 @@ import UniformTypeIdentifiers
 
 private enum AssignmentsSection: String, CaseIterable, Identifiable {
     case flights = "Полёты"
-    case currentPlan = "Текущий план"
-    case importedPlan = "Импортированный план"
+    case currentPlan = "Текущий"
+    case importedPlan = "Перспективный"
     case workPlan = "План работ"
 
     var id: String { rawValue }
@@ -19,29 +19,37 @@ struct AssignmentsView: View {
     @State private var section: AssignmentsSection = .flights
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("Назначения", selection: $section) {
-                ForEach(AssignmentsSection.allCases) { value in
-                    Text(value.rawValue).tag(value)
+        // Одна общая навигационная панель на всю вкладку: в iPadOS 26
+        // вкладки приложения плавают сверху, и только NavigationStack
+        // опускает содержимое (переключатель разделов) под них.
+        // Разделы ниже своих NavigationStack не создают — их toolbar
+        // попадает в эту общую панель.
+        NavigationStack {
+            VStack(spacing: 0) {
+                Picker("Назначения", selection: $section) {
+                    ForEach(AssignmentsSection.allCases) { value in
+                        Text(value.rawValue).tag(value)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+
+                Divider()
+
+                switch section {
+                case .flights:
+                    FlightHistoryAssignmentsView(store: store)
+                case .currentPlan:
+                    CurrentPlanAssignmentsView(store: store, planStore: planStore)
+                case .importedPlan:
+                    ImportedPlanAssignmentsView(store: store, planStore: planStore)
+                case .workPlan:
+                    AccordWorkPlanView(store: store)
                 }
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 8)
-
-            Divider()
-
-            switch section {
-            case .flights:
-                FlightHistoryAssignmentsView(store: store)
-            case .currentPlan:
-                CurrentPlanAssignmentsView(store: store, planStore: planStore)
-            case .importedPlan:
-                ImportedPlanAssignmentsView(store: store, planStore: planStore)
-            case .workPlan:
-                AccordWorkPlanView(store: store)
-            }
+            .toolbarTitleDisplayMode(.inline)
         }
     }
 }
@@ -112,7 +120,7 @@ private struct CurrentPlanAssignmentsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        Group {
             List {
                 Section {
                     HStack(spacing: 12) {
@@ -154,8 +162,6 @@ private struct CurrentPlanAssignmentsView: View {
                     }
                 }
             }
-            .navigationTitle("Текущий план")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
@@ -283,7 +289,7 @@ private struct ImportedPlanAssignmentsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        Group {
             List {
                 Section {
                     Text(
@@ -330,8 +336,6 @@ private struct ImportedPlanAssignmentsView: View {
                     }
                 }
             }
-            .navigationTitle("Импортированный план")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
@@ -479,7 +483,7 @@ private struct AccordWorkPlanView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        Group {
             List {
                 Section {
                     Text(
@@ -507,8 +511,6 @@ private struct AccordWorkPlanView: View {
                     }
                 }
             }
-            .navigationTitle("План работ")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Menu {

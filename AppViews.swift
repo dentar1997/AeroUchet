@@ -304,7 +304,9 @@ struct FlightsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        // Без собственного NavigationStack: FlightsView живёт внутри
+        // общей панели вкладки «Назначения» (см. AssignmentsView).
+        Group {
             ZStack {
                 DutiesListView(
                     store: store,
