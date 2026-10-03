@@ -278,6 +278,7 @@ struct PlanAssignmentRowV119: View {
 
     private var shouldShowGroundDuration: Bool {
         !item.isAllDay
+            && eventType != .dayOff
             && !item.isFlightLike
             && item.durationMinutes > 0
     }
