@@ -1,0 +1,58 @@
+name: AeroUchet Auto Version
+
+# После каждого изменения Swift-кода в main поднимает номер в AppVersion.swift
+# и записывает хеш коммита, PR и дату. Коммит бота называется «Версия N: …» —
+# по нему Денис видит в GitSync, что пришла новая версия.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.swift'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: auto-version
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump AppVersion
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Update AppVersion.swift
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT_MSG_FILE: ${{ runner.temp }}/version_msg.txt
+        run: python3 .github/scripts/auto_version.py
+
+      - name: Commit and push
+        env:
+          COMMIT_MSG_FILE: ${{ runner.temp }}/version_msg.txt
+        run: |
+          if git diff --quiet -- AppVersion.swift; then
+            echo "Нечего коммитить"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AppVersion.swift
+          git commit -F "$COMMIT_MSG_FILE"
+          for i in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            git pull --rebase origin main
+          done
+          exit 1
