@@ -86,7 +86,7 @@ Claude, ChatGPT, Copilot и любой другой ИИ работают с **�
 | [archive/](archive/) | Старые входы: COPILOT_CONTEXT, Workflow-бутстрап, OPTIMIZATION_NOTES | Только для справки |
 
 ## 6. Дословный архив (вне этого репозитория)
-- **ChatGPT:** раз в неделю или после большого этапа Денис делает экспорт данных ChatGPT и загружает `conversations.json` в приватный **AeroUchet-Claude2**; Claude запускает `scripts/build_archive.py` — получаются дословные чаты с ID сообщений.
+- **ChatGPT:** раз в неделю или после большого этапа Денис делает экспорт данных ChatGPT и загружает `conversations.json` в приватный архив **AeroUchet-Private**; Claude запускает `scripts/build_archive.py` — получаются дословные чаты с ID сообщений.
 - **Claude:** ссылка на сессию — в каждом коммите и PR.
 - **Copilot:** переписка — это сам PR и его коммиты.
 - Скриншоты и видео: нелично — в комментарий PR; лично — AeroUchet-Private.

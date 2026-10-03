@@ -25,8 +25,7 @@
 - TestFlight не используется (Apple Developer $99/год — «пока без подписки»).
 - **GitHub:** аккаунт `dentar1997`.
   - `AeroUchet` — **публичный** (с 26.09, ради бесплатных macOS-раннеров), код приложения.
-  - `AeroUchet-Private` — приватный: вложения (PDF, .xls, видео) и старый Workflow ChatGPT (с 04.10 — архив, не вход).
-  - `AeroUchet-Claude2` — приватный: дословные чаты ChatGPT 22–30.09 и их разбор (архив).
+  - `AeroUchet-Private` — приватный архив: дословные чаты ChatGPT, разбор, реконструкция чата 1, личные вложения (с 04.10 вобрал AeroUchet-Claude2; Workflow удалён).
   - **Живая память — `.memory/` в AeroUchet** (с 04.10), см. [README.md](README.md).
   - Личные данные (выгрузки .xls, ICS-токен) **не класть в публичный репозиторий**.
 - CI (`.github/workflows/ios-ci.yml`, `quality.yml`): свои регрессионные тесты (`Scripts/run-core-time-tests.sh`, `run-test-event-cleanup-tests.sh`) + сборка под iOS Simulator + `xcodebuild analyze` + SwiftLint/SwiftFormat (только проверка) + артефакт AeroUchet-Simulator.zip. Запускается на PR. Иногда падает только шаг загрузки артефакта — помогает перезапуск job.

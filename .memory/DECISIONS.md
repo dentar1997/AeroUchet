@@ -2,8 +2,8 @@
 
 Единый список, сведённый 03.10 из трёх источников:
 - `CGPT` — ChatGPT Rebuild v2, `chatgpt_rebuild/hot/ACTIVE_DECISIONS.md` и `DO_NOT_REPEAT.md`;
-- `PRIV` — AeroUchet-Private, `docs/DO_NOT_REPEAT.md` (DNR-001…011), со ссылками на R-реконструкцию чата 1;
-- `CL` — разбор Claude (приватный архив AeroUchet-Claude2, docs/02–05).
+- `PRIV` — реестры ChatGPT Workflow, теперь `AeroUchet-Private/chatgpt_reconstruction/DO_NOT_REPEAT.md` (DNR-001…011), со ссылками на R-реконструкцию чата 1;
+- `CL` — разбор Claude (AeroUchet-Private, docs/02–05).
 
 Источники `CGPT`, `PRIV`, `CL` лежат в приватных репозиториях; в этом файле — всё, что нужно для работы. **Новые решения дописывать сюда** (следующий свободный номер), источник — дата и файл записи в `log/`.
 
