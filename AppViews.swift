@@ -1318,7 +1318,7 @@ struct DutyDetailView: View {
         .controlSize(.mini)
         .overlay(alignment: .bottom) {
             if isEditing {
-                KeyInputIndicator()
+                KeyInputIndicator(activeCell: focusedField?.title)
                     .offset(y: 12)
             }
         }
@@ -3265,6 +3265,19 @@ private enum DutyFocusedField: Hashable {
     case registration(Int)
     case calculatedTime(Int)
     case time(Int, DutyEditPoint)
+
+    var title: String {
+        switch self {
+        case .assignment: return "Назначение"
+        case .legNumber: return "Рейс"
+        case .route: return "Маршрут"
+        case .flightKind: return "Вид полёта"
+        case .aircraft: return "Тип ВС"
+        case .registration: return "Бортовой номер"
+        case .calculatedTime: return "Расчётное время"
+        case .time(_, let point): return point.title
+        }
+    }
 }
 
 private enum DutyEditPoint: CaseIterable, Identifiable, Hashable {
@@ -3366,14 +3379,19 @@ final class KeyInputDiagnostics: ObservableObject {
 }
 
 private struct KeyInputIndicator: View {
+    let activeCell: String?
     @ObservedObject private var diagnostics = KeyInputDiagnostics.shared
 
     var body: some View {
-        Text(diagnostics.count == 0
-             ? "⌨︎ нет"
-             : "⌨︎ клавиша получена: \(diagnostics.count)")
+        Text("Активная ячейка: \(activeCell ?? "нет") · ⌨︎ "
+             + (diagnostics.count == 0
+                ? "клавиш нет"
+                : "клавиш получено: \(diagnostics.count)"))
             .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(diagnostics.count == 0 ? Color.orange : Color.green)
+            .foregroundStyle(
+                activeCell == nil ? Color.red
+                    : (diagnostics.count == 0 ? Color.orange : Color.green)
+            )
             .accessibilityLabel("Диагностика ввода с клавиатуры")
     }
 }
