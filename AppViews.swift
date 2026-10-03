@@ -3554,7 +3554,43 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
 
         func textFieldDidEndEditing(_ textField: UITextField) {
             replaceOnNextInput = false
+            if Self.isCoveredByPresentation(textField) {
+                // Системное окно (импорт файлов и т.п.) временно забрало фокус.
+                // Сохраняем активность ячейки и возвращаем first responder
+                // после закрытия окна, иначе физическая клавиатура «теряется».
+                restoreFocusAfterPresentation(of: textField)
+                return
+            }
             isActive.wrappedValue = false
+        }
+
+        private static func isCoveredByPresentation(_ field: UITextField) -> Bool {
+            guard let window = field.window else { return false }
+            var top = window.rootViewController
+            while let next = top?.presentedViewController { top = next }
+            guard let topView = top?.viewIfLoaded,
+                  top !== window.rootViewController else { return false }
+            return !field.isDescendant(of: topView)
+        }
+
+        private func restoreFocusAfterPresentation(
+            of field: UITextField,
+            attempt: Int = 0
+        ) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self, weak field] in
+                guard let self, let field, self.isActive.wrappedValue,
+                      field.window != nil else { return }
+                if Self.isCoveredByPresentation(field) {
+                    if attempt < 600 {
+                        self.restoreFocusAfterPresentation(of: field, attempt: attempt + 1)
+                    }
+                    return
+                }
+                if !field.isFirstResponder {
+                    field.becomeFirstResponder()
+                    self.prepareToReplaceCurrentValue(in: field)
+                }
+            }
         }
 
         func textField(
