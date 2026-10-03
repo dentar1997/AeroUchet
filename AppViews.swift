@@ -1316,6 +1316,15 @@ struct DutyDetailView: View {
         .frame(maxWidth: .infinity)
         .buttonStyle(.bordered)
         .controlSize(.mini)
+        .overlay(alignment: .bottom) {
+            if isEditing {
+                KeyInputIndicator()
+                    .offset(y: 12)
+            }
+        }
+        .onChange(of: isEditing) { _, editing in
+            if editing { KeyInputDiagnostics.shared.reset() }
+        }
     }
 
     private func recordEdit() {
@@ -3342,8 +3351,40 @@ private struct CompactFlightValue: View {
 // UITextField уже реализует UIKeyInput. Перехватываем именно текстовый канал
 // insertText/deleteBackward: его использует система и для программной, и для
 // физической клавиатуры, когда поле является first responder.
+final class KeyInputDiagnostics: ObservableObject {
+    static let shared = KeyInputDiagnostics()
+
+    @Published private(set) var count = 0
+
+    func registerKey() {
+        DispatchQueue.main.async { self.count += 1 }
+    }
+
+    func reset() {
+        DispatchQueue.main.async { self.count = 0 }
+    }
+}
+
+private struct KeyInputIndicator: View {
+    @ObservedObject private var diagnostics = KeyInputDiagnostics.shared
+
+    var body: some View {
+        Text(diagnostics.count == 0
+             ? "⌨︎ нет"
+             : "⌨︎ клавиша получена: \(diagnostics.count)")
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(diagnostics.count == 0 ? Color.orange : Color.green)
+            .accessibilityLabel("Диагностика ввода с клавиатуры")
+    }
+}
+
 private final class AssignmentInputTextField: UITextField {
     var hardwareInputHandler: ((String?, Bool) -> Void)?
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        KeyInputDiagnostics.shared.registerKey()
+        super.pressesBegan(presses, with: event)
+    }
 
     override func insertText(_ text: String) {
         guard let hardwareInputHandler else {
