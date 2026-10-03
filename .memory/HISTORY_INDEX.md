@@ -1,6 +1,6 @@
 # Индекс версий и PR: что сделано и как отреагировал Денис
 
-Все 129 PR репозитория AeroUchet (по GitHub API на 03.10) плюс v120, которая ушла без PR. Это **навигация**: подробности — в самом PR, в [FEATURES.md](FEATURES.md) и в дословных чатах (приватный архив AeroUchet-Claude2, `chats/TIMELINE.md` по дате). **После каждого слияния и каждой проверки на iPad — обновить строку.**
+Все 129 PR репозитория AeroUchet (по GitHub API на 03.10) плюс v120, которая ушла без PR. Это **навигация**: подробности — в самом PR, в [FEATURES.md](FEATURES.md) и в дословных чатах (приватный архив AeroUchet-Private, `chats/TIMELINE.md` по дате). **После каждого слияния и каждой проверки на iPad — обновить строку.**
 
 **Колонка «Реакция Дениса»** — первое сообщение Дениса после слияния PR (до следующего слияния). Сопоставление автоматическое, поэтому иногда это реплика из параллельного чата на другую тему.
 
@@ -154,3 +154,5 @@
 | #127 |  | 03.10 16:43 | Add physical-keyboard diagnostic indicator to flight duty edit mode | DIAGNOSTIC_USED |  |
 | #128 |  | 03.10 16:53 | Show active cell name in physical-keyboard diagnostic indicator | DIAGNOSTIC_USED |  |
 | #129 |  | 03.10 17:47 | Restore hardware keyboard focus after the system file importer closes | NEEDS_VERIFICATION |  |
+| #130 |  | 04.10 00:18 | Единая живая память для всех ИИ (.memory/) — только документы | MERGED |  |
+| #131 | 122 | 04.10 01:23 | Автоверсия: номер версии поднимает GitHub Action (коммит бота c6c4e6e) | NEEDS_VERIFICATION |  |
