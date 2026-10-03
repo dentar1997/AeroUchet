@@ -1,3 +1,5 @@
+> **АРХИВ (с 04.10.2026).** Не выполнять. Живая память и инструкция — [`.memory/README.md`](../README.md).
+
 # START HERE — AeroUchet routing
 
 > **For ChatGPT / AI agents:** this public repository is application code. The reusable Workflow tool is separate; AeroUchet is a Project Profile.
