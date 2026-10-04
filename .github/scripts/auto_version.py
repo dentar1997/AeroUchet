@@ -76,6 +76,16 @@ body = f'''enum AppVersion {{
 }}
 '''
 open(PATH, "w", encoding="utf-8").write(body)
+
+# Строка в индекс версий памяти (единственный способ, которым туда попадают новые версии)
+INDEX = ".memory/HISTORY_INDEX.md"
+if os.path.exists(INDEX):
+    idx = open(INDEX, encoding="utf-8").read()
+    pr_cell = f"#{pr}" if pr else f"`{short}`"
+    if not re.search(rf"^\| {re.escape(pr_cell)} \| {new} \|", idx, re.M):
+        safe_title = title.replace("|", "/")
+        row = f"| {pr_cell} | {new} | {date[:5]} {date[-5:]} | {safe_title} | NEEDS_VERIFICATION |  |"
+        open(INDEX, "w", encoding="utf-8").write(idx.rstrip("\n") + "\n" + row + "\n")
 pr_part = f"PR #{pr}, " if pr else ""
 open(msg_file, "w", encoding="utf-8").write(f"Версия {new}: {title} ({pr_part}{short})\n")
 print(f"Версия {old} → {new}, коммит {short}, PR {pr}")

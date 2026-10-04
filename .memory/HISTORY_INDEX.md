@@ -4,6 +4,8 @@
 
 **Колонка «Реакция Дениса»** — первое сообщение Дениса после слияния PR (до следующего слияния). Сопоставление автоматическое, поэтому иногда это реплика из параллельного чата на другую тему.
 
+**С v123 строки сюда дописывает бот автоверсии** (`.github/scripts/auto_version.py`) со статусом NEEDS_VERIFICATION. ИИ меняет только статус и реакцию Дениса после проверки.
+
 **Статусы:**
 - **USER_OK** — Денис явно подтвердил;
 - **ITERATED** — Денис увидел сборку и дал следующие правки к тому же экрану (явного «ок» нет);
@@ -153,6 +155,7 @@
 | #126 | 121 | 03.10 15:37 | Версия 121: вкладка «Назначения» не перекрывается вкладками iPadOS 26 | NO_FEEDBACK |  |
 | #127 |  | 03.10 16:43 | Add physical-keyboard diagnostic indicator to flight duty edit mode | DIAGNOSTIC_USED |  |
 | #128 |  | 03.10 16:53 | Show active cell name in physical-keyboard diagnostic indicator | DIAGNOSTIC_USED |  |
-| #129 |  | 03.10 17:47 | Restore hardware keyboard focus after the system file importer closes | NEEDS_VERIFICATION |  |
+| #129 |  | 03.10 17:47 | Restore hardware keyboard focus after the system file importer closes | ISSUE | 04.10: после «Импорта» клавиатура не работает — не помогло |
 | #130 |  | 04.10 00:18 | Единая живая память для всех ИИ (.memory/) — только документы | MERGED |  |
-| #131 | 122 | 04.10 01:23 | Автоверсия: номер версии поднимает GitHub Action (коммит бота c6c4e6e) | NEEDS_VERIFICATION |  |
+| #131 | 122 | 04.10 01:23 | Автоверсия: номер версии поднимает GitHub Action (коммит бота c6c4e6e) | USER_OK | подтверждена на v123 |
+| #132 | 123 | 04.10 02:19 | Скрыть длительность у выходных (ChatGPT) | USER_OK | «Идеально. Работает!» |

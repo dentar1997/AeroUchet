@@ -1,0 +1,26 @@
+name: AeroUchet Privacy Guard
+
+# Репозиторий публичный. Проверяет, что в нём нет личных файлов и ссылок с токенами.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: No personal data
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Scan
+        run: python3 .github/scripts/privacy_guard.py
