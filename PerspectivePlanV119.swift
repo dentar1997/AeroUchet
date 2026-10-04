@@ -168,8 +168,6 @@ enum PerspectivePlanV119Parser {
                 let dates = dates(in: dateText, year: year)
                 let baseDate = dates.first ?? inheritedDate
                 if let first = dates.first {
-                    // Для диапазона запоминаем именно начальную дату. Это критично
-                    // для объединённой ячейки даты в корпоративном шаблоне.
                     inheritedDate = first
                 }
 
@@ -247,8 +245,6 @@ enum PerspectivePlanV119Parser {
         let separatorTops = renderedSeparatorTops(page: page, bounds: pageBounds)
         guard separatorTops.count >= 2 else { return [] }
 
-        // Координаты заданы как доли ширины — шаблон стабилен, но это
-        // сохраняет работу при одинаковом макете на другом размере страницы.
         let left = pageBounds.width * (75.0 / 595.275)
         let dateRight = pageBounds.width * (136.5 / 595.275)
         let contentLeft = pageBounds.width * (180.0 / 595.275)
@@ -357,8 +353,6 @@ enum PerspectivePlanV119Parser {
         return clusters.compactMap { cluster -> CGFloat? in
             guard let first = cluster.first, let last = cluster.last else { return nil }
             let renderedY = CGFloat(first + last) / 2 / scale
-            // Буфер рендера и topRect используют противоположное направление Y.
-            // Возвращаем координату как расстояние от верхнего края страницы.
             return bounds.height - renderedY
         }
         .filter { $0 > 55 && $0 < bounds.height - 30 }
@@ -427,12 +421,17 @@ enum PerspectivePlanV119Parser {
         guard !numbers.isEmpty else {
             let labels = eventLabels(content)
             guard !labels.title.isEmpty else { return [] }
+            let kind = classify(labels.title + " " + (labels.detail ?? ""))
+            let aircraft = kind == .simulator
+                ? aircraftTypes(in: content).first.map(normalizedAircraft)
+                : nil
             return [makeItem(
                 id: id + "|ground",
-                kind: classify(labels.title + " " + (labels.detail ?? "")),
+                kind: kind,
                 start: sourceStart,
                 end: sourceEnd,
                 title: labels.title,
+                aircraft: aircraft,
                 detail: labels.detail,
                 isAllDayRange: false,
                 originMonthKey: scopeMonthKey
@@ -479,9 +478,6 @@ enum PerspectivePlanV119Parser {
             )]
         }
 
-        // Защитный вариант для редкого смешанного назначения в одной строке.
-        // События всё равно разделяются на пассажирское и рабочее, чтобы
-        // пассажирский участок никогда не становился частью полётной смены.
         let passengerNumbers = numbers.filter { passengerSet.contains(normalizedFlight($0)) }
         let workingNumbers = numbers.filter { !passengerSet.contains(normalizedFlight($0)) }
         var result: [AssignmentPlanItem] = []
@@ -764,7 +760,7 @@ enum PerspectivePlanV119Parser {
         let title = canonicalTitle(first)
         let detail = lines.dropFirst()
             .filter { normalizedText($0) != normalizedText(title) }
-            .joined(separator: " ")
+            .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return (title, detail.isEmpty ? nil : detail)
     }
@@ -785,7 +781,7 @@ enum PerspectivePlanV119Parser {
     }
 
     private static func classify(_ text: String) -> AssignmentPlanKind {
-        let value = text.lowercased()
+        let value = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if value.contains("резерв в месте жит") || value.contains("резерв в месте житель") {
             return .homeReserve
         }
@@ -793,6 +789,7 @@ enum PerspectivePlanV119Parser {
         if value.contains("выходн") { return .dayOff }
         if value.contains("медкомисс") || value.contains("влэк") { return .medical }
         if value.contains("отпуск") { return .leave }
+        if value.hasPrefix("явка") { return .training }
         if value.contains("тренаж") || value.contains("ктс") { return .simulator }
         if value.contains("обуч") || value.contains("явка") || value.contains("инструктаж") {
             return .training
@@ -858,15 +855,28 @@ enum PerspectivePlanV119Parser {
     }
 
     private static func splitRoute(_ route: String, expectedLegCount: Int) -> [String]? {
-        var protected = route
-        let protectedNames = ["Горно-Алтайск", "Улан-Удэ", "Санкт-Петербург"]
-        for name in protectedNames {
-            protected = protected.replacingOccurrences(of: name, with: name.replacingOccurrences(of: "-", with: "§"))
+        var protected = route.replacingOccurrences(
+            of: #"[‐‑‒–—]"#,
+            with: "-",
+            options: .regularExpression
+        )
+
+        // Защищаем дефисы внутри названий аэропортов по общей базе,
+        // а не списком отдельных исключений. Поэтому Ханты-Мансийск,
+        // Горно-Алтайск, Южно-Сахалинск и другие названия не ломают маршрут.
+        for airport in AirportDatabase.airports where airport.name.contains("-") {
+            protected = protected.replacingOccurrences(
+                of: airport.name,
+                with: airport.name.replacingOccurrences(of: "-", with: "§"),
+                options: [.caseInsensitive]
+            )
         }
+
         let nodes = protected
             .split(separator: "-")
             .map { String($0).replacingOccurrences(of: "§", with: "-") }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
         return nodes.count == expectedLegCount + 1 ? nodes : nil
     }
 
