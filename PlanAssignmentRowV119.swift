@@ -10,6 +10,7 @@ struct PlanAssignmentRowV119: View {
     var perspectiveStyle = false
 
     @ObservedObject private var appearanceStore = AssignmentAppearanceStore.shared
+    @ObservedObject private var scheduleStore = FlightScheduleStoreV129.shared
 
     private var metadata: AssignmentV119Metadata? {
         AssignmentV119MetadataCodec.metadata(from: item.detail)
@@ -77,21 +78,17 @@ struct PlanAssignmentRowV119: View {
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text(dateLabel)
-                    .font(perspectiveStyle ? .subheadline.weight(.semibold) : .caption)
+                    .font(.caption)
                     .foregroundStyle(
                         conflictText == nil
-                            ? (perspectiveStyle ? Color.primary : Color.secondary)
+                            ? Color.secondary
                             : Color.red
                     )
                     .multilineTextAlignment(.trailing)
 
                 if let timeRange {
                     Text(timeRange)
-                        .font(
-                            perspectiveStyle
-                                ? .subheadline.weight(.semibold).monospacedDigit()
-                                : .caption.monospacedDigit()
-                        )
+                        .font(.caption.monospacedDigit())
                         .multilineTextAlignment(.trailing)
                 }
 
@@ -152,7 +149,7 @@ struct PlanAssignmentRowV119: View {
                let total = metadata?.linkedSequenceMinutes,
                total > 0 {
                 Text(
-                    "Полётная смена + перемещ. в кач. пассаж. = \(timeText(total)) ≤ макс. продолж. полётной смены + 02:00"
+                    "Полётная смена + Перемещ. в кач. пассаж. = \(timeText(total)) ≤ Макс. продолж. полётной смены + 02:00"
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -310,12 +307,29 @@ struct PlanAssignmentRowV119: View {
 
     private func legText(_ leg: DisplayLeg) -> String {
         var parts = [leg.flightNumber]
-        if let departure = leg.departure,
-           let arrival = leg.arrival {
+        if perspectiveStyle,
+           !scheduleStore.entries.isEmpty,
+           let match = PerspectiveDutyBuilderV129.scheduleDisplay(
+                flightNumber: leg.flightNumber,
+                date: metadata?.sourceStart ?? item.start,
+                departureHint: leg.departure,
+                arrivalHint: leg.arrival
+           ) {
+            let departure = DutyAutofillV129.displayAirport(
+                code: match.entry.departure,
+                terminal: match.entry.departureTerminal
+            )
+            let arrival = DutyAutofillV129.displayAirport(
+                code: match.entry.arrival,
+                terminal: match.entry.arrivalTerminal
+            )
+            parts.append("\(departure) → \(arrival)")
+        } else if let departure = leg.departure,
+                  let arrival = leg.arrival {
             parts.append("\(departure) → \(arrival)")
         }
         if let aircraft = leg.aircraft, !aircraft.isEmpty {
-            parts.append(aircraft)
+            parts.append(AircraftFamilyV129.display(aircraft))
         }
         return parts.joined(separator: " · ")
     }
@@ -376,7 +390,15 @@ struct PlanAssignmentRowV119: View {
                     && !line.uppercased().contains(aircraft)
             }
             .filter { $0.caseInsensitiveCompare(item.title) != .orderedSame }
-        let value = lines.joined(separator: perspectiveStyle ? " " : "\n")
+        let displayedLines = lines.enumerated().map { index, line in
+            guard perspectiveStyle, index < lines.count - 1 else { return line }
+            return line.replacingOccurrences(
+                of: #"\.\s*$"#,
+                with: "",
+                options: .regularExpression
+            )
+        }
+        let value = displayedLines.joined(separator: perspectiveStyle ? " " : "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
     }
@@ -397,16 +419,16 @@ struct PlanAssignmentRowV119: View {
                 to: item.end
             ) ?? item.start
             if moscowCalendar.isDate(item.start, inSameDayAs: includedEnd) {
-                return fullDate(item.start)
+                return displayDate(item.start)
             }
-            return "\(fullDate(item.start)) — \(fullDate(includedEnd))"
+            return "\(displayDate(item.start)) — \(displayDate(includedEnd))"
         }
 
         let interval = dateInterval
         if moscowCalendar.isDate(interval.start, inSameDayAs: interval.end) {
-            return fullDate(interval.start)
+            return displayDate(interval.start)
         }
-        return "\(fullDate(interval.start)) — \(fullDate(interval.end))"
+        return "\(displayDate(interval.start)) — \(displayDate(interval.end))"
     }
 
     private var dateInterval: (start: Date, end: Date) {
@@ -439,14 +461,16 @@ struct PlanAssignmentRowV119: View {
     }
 
     private var secondaryTimeRange: String? {
-        guard perspectiveStyle,
-              !item.isAllDay,
-              item.kind == .flight,
-              metadata?.sourceStart != nil,
-              metadata?.sourceEnd != nil else {
-            return nil
-        }
-        return "\(clock(item.start)) — \(clock(item.end))"
+        nil
+    }
+
+    private func displayDate(_ date: Date) -> String {
+        if !perspectiveStyle { return fullDate(date) }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "dd.MM"
+        return formatter.string(from: date)
     }
 
     private func fullDate(_ date: Date) -> String {
@@ -467,7 +491,7 @@ struct PlanAssignmentRowV119: View {
 
     private func displayFlightNumber(_ value: String) -> String {
         let digits = value.filter(\.isNumber)
-        return digits.isEmpty ? value : "SU \(digits)"
+        return digits.isEmpty ? value : digits
     }
 
     private func expandAirport(_ value: String) -> String {

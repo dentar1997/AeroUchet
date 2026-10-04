@@ -592,40 +592,51 @@ struct FlightsView: View {
     }
 
     private func makeManualDuty() -> FlightDuty {
-        let start = Date()
-        let engineOn = moscowCalendar.date(byAdding: .minute, value: 60, to: start) ?? start
-        let takeoff = moscowCalendar.date(byAdding: .minute, value: 10, to: engineOn) ?? engineOn
-        let landing = takeoff
-        let engineOff = moscowCalendar.date(byAdding: .minute, value: 10, to: landing) ?? landing
-        let workEnd = moscowCalendar.date(byAdding: .minute, value: 30, to: engineOff) ?? engineOff
+        let reference = Date()
         let assignment = nextManualAssignmentNumber()
-        let times = PortalFlightTimes(
-            workStart: start,
-            engineOn: engineOn,
-            takeoff: takeoff,
-            landing: landing,
-            engineOff: engineOff,
-            workEnd: workEnd
+        let number = "1110"
+        let fallbackEngineOn = moscowCalendar.date(byAdding: .minute, value: 60, to: reference) ?? reference
+        let fallbackEngineOff = moscowCalendar.date(byAdding: .minute, value: 120, to: fallbackEngineOn) ?? fallbackEngineOn
+        let fallbackTimes = PortalFlightTimes(
+            workStart: fallbackEngineOn.addingTimeInterval(-60 * 60),
+            engineOn: fallbackEngineOn,
+            takeoff: fallbackEngineOn.addingTimeInterval(8 * 60),
+            landing: fallbackEngineOff.addingTimeInterval(-8 * 60),
+            engineOff: fallbackEngineOff,
+            workEnd: fallbackEngineOff.addingTimeInterval(30 * 60)
         )
-        let leg = FlightLeg(
-            date: formatDate(engineOn),
-            flightNumber: "11-10",
+        var leg = FlightLeg(
+            date: formatDate(fallbackEngineOn),
+            flightNumber: number,
             departure: "SVO",
             arrival: "AER",
-            aircraft: "A321B",
-            registration: "73-709",
-            plannedDeparture: formatClock(engineOn),
-            workStart: formatClock(start),
-            engineOn: formatClock(engineOn),
-            takeoff: formatClock(takeoff),
-            landing: formatClock(landing),
-            engineOff: formatClock(engineOff),
-            portalTimes: times,
+            aircraft: AircraftFamilyV129.a320.rawValue,
+            registration: "",
+            plannedDeparture: formatClock(fallbackEngineOn),
+            workStart: formatClock(fallbackTimes.workStart),
+            engineOn: formatClock(fallbackEngineOn),
+            takeoff: formatClock(fallbackTimes.takeoff),
+            landing: formatClock(fallbackTimes.landing),
+            engineOff: formatClock(fallbackEngineOff),
+            portalTimes: fallbackTimes,
             assignmentNumber: assignment,
-            legNumber: "11-10",
+            legNumber: number,
             scheduleType: .planned,
             calculatedMinutesOverride: nil
         )
+        if let match = DutyAutofillV129.scheduleMatch(
+            flightNumber: number,
+            referenceDate: reference
+        ) {
+            leg = DutyAutofillV129.applyingSchedule(
+                to: leg,
+                match: match,
+                index: 0,
+                totalCount: 1,
+                previousEngineOff: nil
+            )
+            leg.assignmentNumber = assignment
+        }
         return FlightDuty(id: UUID(), legs: [leg])
     }
 }
@@ -1005,6 +1016,7 @@ struct DutyDetailView: View {
     let onEditModeChange: ((Bool) -> Void)?
     let externalEditorDismissSignal: Int
     let isCreating: Bool
+    let isReadOnly: Bool
     let onCreate: (([FlightLeg]) -> Void)?
 
     init(
@@ -1015,6 +1027,7 @@ struct DutyDetailView: View {
         onEditModeChange: ((Bool) -> Void)? = nil,
         externalEditorDismissSignal: Int = 0,
         isCreating: Bool = false,
+        isReadOnly: Bool = false,
         onCreate: (([FlightLeg]) -> Void)? = nil
     ) {
         self.duty = duty
@@ -1024,6 +1037,7 @@ struct DutyDetailView: View {
         self.onEditModeChange = onEditModeChange
         self.externalEditorDismissSignal = externalEditorDismissSignal
         self.isCreating = isCreating
+        self.isReadOnly = isReadOnly
         self.onCreate = onCreate
         _isEditing = State(initialValue: isCreating)
         _draft = State(initialValue: isCreating ? duty.legs : [])
@@ -1113,8 +1127,11 @@ struct DutyDetailView: View {
         }
         .onChange(of: draft) { _ in recordEdit() }
         .onChange(of: assignmentNumber) { _ in recordEdit() }
-        .onChange(of: focusedField) { value in
-            onEditorFocusChange?(value != nil)
+        .onChange(of: focusedField) { oldValue, newValue in
+            if oldValue != newValue {
+                handleEditorBlur(oldValue)
+            }
+            onEditorFocusChange?(newValue != nil)
         }
         .onChange(of: isEditing) { value in
             onEditModeChange?(value)
@@ -1213,7 +1230,7 @@ struct DutyDetailView: View {
                         .font(.subheadline)
                         .presentationCompactAdaptation(.popover)
                     }
-                } else {
+                } else if !isReadOnly {
                     Button {
                         original = duty.legs
                         draft = duty.legs
@@ -1265,7 +1282,7 @@ struct DutyDetailView: View {
                     }
                     .disabled(historyIndex + 1 >= editHistory.count)
                     .accessibilityLabel("Повторить изменение")
-                } else {
+                } else if !isReadOnly {
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
@@ -1458,7 +1475,11 @@ struct DutyDetailView: View {
     private func legNumberBinding(_ index: Int) -> Binding<String> {
         Binding(
             get: { editableLegNumber(draft[index], index: index) },
-            set: { draft[index].legNumber = String($0.prefix(7)) }
+            set: { raw in
+                let digits = DutyAutofillV129.normalizedFlightNumber(raw)
+                draft[index].legNumber = digits
+                draft[index].flightNumber = digits
+            }
         )
     }
 
@@ -1511,6 +1532,65 @@ struct DutyDetailView: View {
         guard formatted.hasPrefix("RA-") else { return false }
         let suffix = formatted.dropFirst(3)
         return !suffix.isEmpty && suffix.allSatisfy(\.isNumber)
+    }
+
+    private func handleEditorBlur(_ field: DutyFocusedField?) {
+        guard isEditing, let field else { return }
+        switch field {
+        case .legNumber(let index):
+            autofillSchedule(index: index)
+        case .registration(let index):
+            guard draft.indices.contains(index) else { return }
+            draft[index] = DutyAutofillV129.applyingAircraftReference(to: draft[index])
+        default:
+            break
+        }
+    }
+
+    private func autofillSchedule(index: Int) {
+        guard draft.indices.contains(index) else { return }
+        let number = DutyAutofillV129.normalizedFlightNumber(
+            editableLegNumber(draft[index], index: index)
+        )
+        guard !number.isEmpty else { return }
+        draft[index].legNumber = number
+        draft[index].flightNumber = number
+
+        let previousEnd = index > 0 ? times(for: draft[index - 1]).engineOff : nil
+        let reference = previousEnd ?? times(for: draft[index]).engineOn
+        var match = DutyAutofillV129.scheduleMatch(
+            flightNumber: number,
+            referenceDate: reference,
+            notBefore: previousEnd,
+            departureHint: draft[index].departure,
+            arrivalHint: draft[index].arrival
+        )
+        if match == nil {
+            match = DutyAutofillV129.scheduleMatch(
+                flightNumber: number,
+                referenceDate: reference,
+                notBefore: previousEnd
+            )
+        }
+        guard let match else { return }
+        draft[index] = DutyAutofillV129.applyingSchedule(
+            to: draft[index],
+            match: match,
+            index: index,
+            totalCount: draft.count,
+            previousEngineOff: previousEnd
+        )
+    }
+
+    private func selectAircraftType(_ type: AircraftFamilyV129, index: Int) {
+        guard draft.indices.contains(index) else { return }
+        let current = AircraftFamilyV129.normalized(draft[index].aircraft)
+        let hasRegistration = draft[index].registration.filter(\.isNumber).count == 5
+        if hasRegistration, current != type {
+            draft[index].registration = ""
+        }
+        draft[index].aircraft = type.rawValue
+        focusedField = nil
     }
 
     private func toggleScheduleType(_ index: Int) {
@@ -1789,45 +1869,63 @@ struct DutyDetailView: View {
         previousLeg.engineOff = formatClock(previousUpdated.engineOff)
         draft[lastIndex] = previousLeg
 
+        let previousNumber = editableLegNumber(previousLeg, index: lastIndex)
+        let flightNumber = DutyAutofillV129.pairedFlightNumber(after: previousNumber) ?? previousNumber
         let newIndex = draft.count
-        let outbound = newIndex.isMultiple(of: 2)
-        let flightNumber = outbound ? "11-10" : "11-11"
-        let departure = outbound ? "SVO" : "AER"
-        let arrival = outbound ? "AER" : "SVO"
-
-        let workStart = previousUpdated.engineOff
-        let engineOn = moscowCalendar.date(byAdding: .minute, value: 60, to: workStart) ?? workStart
-        let takeoff = moscowCalendar.date(byAdding: .minute, value: 10, to: engineOn) ?? engineOn
-        let landing = takeoff
-        let engineOff = moscowCalendar.date(byAdding: .minute, value: 10, to: landing) ?? landing
-        let workEnd = moscowCalendar.date(byAdding: .minute, value: 30, to: engineOff) ?? engineOff
-        let values = PortalFlightTimes(
-            workStart: workStart,
-            engineOn: engineOn,
-            takeoff: takeoff,
-            landing: landing,
-            engineOff: engineOff,
-            workEnd: workEnd
+        let fallbackEngineOn = previousUpdated.engineOff.addingTimeInterval(60 * 60)
+        let fallbackEngineOff = fallbackEngineOn.addingTimeInterval(120 * 60)
+        let fallbackTimes = PortalFlightTimes(
+            workStart: previousUpdated.engineOff,
+            engineOn: fallbackEngineOn,
+            takeoff: fallbackEngineOn.addingTimeInterval(8 * 60),
+            landing: fallbackEngineOff.addingTimeInterval(-8 * 60),
+            engineOff: fallbackEngineOff,
+            workEnd: fallbackEngineOff.addingTimeInterval(30 * 60)
         )
-        let newLeg = FlightLeg(
-            date: formatDate(engineOn),
+        var newLeg = FlightLeg(
+            date: formatDate(fallbackEngineOn),
             flightNumber: flightNumber,
-            departure: departure,
-            arrival: arrival,
-            aircraft: "A321B",
-            registration: "73-709",
-            plannedDeparture: formatClock(engineOn),
-            workStart: formatClock(workStart),
-            engineOn: formatClock(engineOn),
-            takeoff: formatClock(takeoff),
-            landing: formatClock(landing),
-            engineOff: formatClock(engineOff),
-            portalTimes: values,
+            departure: previousLeg.arrival,
+            arrival: previousLeg.departure,
+            aircraft: AircraftFamilyV129.display(previousLeg.aircraft),
+            registration: previousLeg.registration,
+            plannedDeparture: formatClock(fallbackEngineOn),
+            workStart: formatClock(fallbackTimes.workStart),
+            engineOn: formatClock(fallbackEngineOn),
+            takeoff: formatClock(fallbackTimes.takeoff),
+            landing: formatClock(fallbackTimes.landing),
+            engineOff: formatClock(fallbackEngineOff),
+            portalTimes: fallbackTimes,
             assignmentNumber: assignmentNumber,
             legNumber: flightNumber,
             scheduleType: .planned,
             calculatedMinutesOverride: nil
         )
+
+        var match = DutyAutofillV129.scheduleMatch(
+            flightNumber: flightNumber,
+            referenceDate: previousUpdated.engineOff,
+            notBefore: previousUpdated.engineOff,
+            departureHint: previousLeg.arrival,
+            arrivalHint: previousLeg.departure
+        )
+        if match == nil {
+            match = DutyAutofillV129.scheduleMatch(
+                flightNumber: flightNumber,
+                referenceDate: previousUpdated.engineOff,
+                notBefore: previousUpdated.engineOff
+            )
+        }
+        if let match {
+            newLeg = DutyAutofillV129.applyingSchedule(
+                to: newLeg,
+                match: match,
+                index: newIndex,
+                totalCount: newIndex + 1,
+                previousEngineOff: previousUpdated.engineOff
+            )
+            newLeg.assignmentNumber = assignmentNumber
+        }
         draft.append(newLeg)
         focusedField = nil
     }
@@ -2162,9 +2260,9 @@ struct DutyDetailView: View {
                 text: textBinding,
                 isActive: activeBinding,
                 field: .legNumber(index),
-                keyboardType: .numbersAndPunctuation,
-                capitalization: .allCharacters,
-                maxLength: 7,
+                keyboardType: .numberPad,
+                capitalization: .none,
+                maxLength: 4,
                 expands: false,
                 allowsEditing: isEditing,
                 restoreValue: original.indices.contains(index)
@@ -2188,33 +2286,30 @@ struct DutyDetailView: View {
     }
 
     private func aircraftField(_ leg: FlightLeg, index: Int) -> some View {
-        let textBinding: Binding<String> = isEditing
-            ? $draft[index].aircraft
-            : .constant(leg.aircraft)
-        let activeBinding: Binding<Bool> = isEditing
-            ? focusBinding(.aircraft(index))
-            : .constant(false)
-
-        return identityField("Тип ВС", field: .aircraft(index)) {
-            stableInlineEditor(
-                text: textBinding,
-                isActive: activeBinding,
-                field: .aircraft(index),
-                keyboardType: .default,
-                capitalization: .allCharacters,
-                maxLength: 10,
-                expands: false,
-                allowsEditing: isEditing,
-                restoreValue: original.indices.contains(index)
-                    ? original[index].aircraft
-                    : leg.aircraft
-            )
+        identityField("Тип ВС", field: .aircraft(index)) {
+            if isEditing {
+                Menu {
+                    ForEach(AircraftFamilyV129.allCases) { type in
+                        Button(type.rawValue) {
+                            selectAircraftType(type, index: index)
+                        }
+                    }
+                } label: {
+                    Text(AircraftFamilyV129.display(leg.aircraft))
+                        .font(.caption.bold())
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(AircraftFamilyV129.display(leg.aircraft))
+                    .font(.caption.bold())
+            }
         }
     }
 
     private func registrationField(_ leg: FlightLeg, index: Int) -> some View {
         let formatted = formattedRegistration(leg.registration)
-        let numericRegistration = isNumericRegistration(formatted)
+        let numericRegistration = isCreating || isNumericRegistration(formatted)
         let activeBinding: Binding<Bool> = isEditing
             ? focusBinding(.registration(index))
             : .constant(false)

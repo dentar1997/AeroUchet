@@ -760,10 +760,18 @@ enum PerspectivePlanV119Parser {
 
         guard let first = lines.first else { return ("", nil) }
         let title = canonicalTitle(first)
-        let detail = lines.dropFirst()
+        let detailLines = lines.dropFirst()
             .filter { normalizedText($0) != normalizedText(title) }
-            .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = detailLines.enumerated().map { index, line in
+            guard index < detailLines.count - 1 else { return line }
+            return line.replacingOccurrences(
+                of: #"\.\s*$"#,
+                with: "",
+                options: .regularExpression
+            )
+        }
+        .joined(separator: " ")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
         return (title, detail.isEmpty ? nil : detail)
     }
 
