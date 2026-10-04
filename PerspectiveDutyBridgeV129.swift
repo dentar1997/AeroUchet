@@ -5,7 +5,9 @@ import Foundation
 @MainActor
 enum DutyAutofillV129 {
     static func normalizedFlightNumber(_ raw: String) -> String {
-        String(raw.filter(\.isNumber).prefix(4))
+        let digits = String(raw.filter(\.isNumber).prefix(4))
+        guard let number = Int(digits) else { return "" }
+        return String(number)
     }
 
     static func pairedFlightNumber(after raw: String) -> String? {
@@ -112,20 +114,54 @@ enum DutyAutofillV129 {
     static func displayAirport(code: String, terminal: String?) -> String {
         let base = code.uppercased()
         let airport = AirportDatabase.airport(for: base)
-        let name: String
-        if base == "SVO" {
-            name = "Шереметьево"
-        } else {
-            name = airport?.name ?? base
-        }
-        let terminalValue = terminal?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let shownCode: String
-        if let terminalValue, !terminalValue.isEmpty {
-            shownCode = "\(base)/\(terminalValue.uppercased())"
-        } else {
-            shownCode = base
-        }
+        let name = base == "SVO" ? "Шереметьево" : (airport?.name ?? base)
+        let terminalValue = terminal?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        let shownTerminal = base == "SVO" && ["D", "E", "F"].contains(terminalValue ?? "")
+            ? terminalValue
+            : nil
+        let shownCode = shownTerminal.map { "\(base)/\($0)" } ?? base
         return "\(name) (\(shownCode))"
+    }
+}
+
+
+@MainActor
+final class PerspectiveDutyOverrideStoreV130: ObservableObject {
+    static let shared = PerspectiveDutyOverrideStoreV130()
+
+    private static let key = "aerouchet.v130.perspectiveDutyOverrides"
+    @Published private(set) var values: [String: [FlightLeg]] = [:]
+
+    private init() {
+        guard let data = UserDefaults.standard.data(forKey: Self.key),
+              let decoded = try? JSONDecoder().decode([String: [FlightLeg]].self, from: data) else {
+            return
+        }
+        values = decoded
+    }
+
+    func legs(for itemID: String) -> [FlightLeg]? {
+        guard let legs = values[itemID], !legs.isEmpty else { return nil }
+        return legs
+    }
+
+    func save(_ legs: [FlightLeg], for itemID: String) {
+        guard !legs.isEmpty else { return }
+        values[itemID] = legs
+        persist()
+    }
+
+    func remove(itemID: String) {
+        values.removeValue(forKey: itemID)
+        persist()
+    }
+
+    private func persist() {
+        if let data = try? JSONEncoder().encode(values) {
+            UserDefaults.standard.set(data, forKey: Self.key)
+        }
     }
 }
 
@@ -135,6 +171,7 @@ enum PerspectiveDutyBuilderV129 {
     enum Result {
         case ready(FlightDuty)
         case missing(String)
+        case routeMismatch(String)
         case mismatch(FlightDuty, expected: Int, actual: Int)
     }
 
@@ -146,6 +183,14 @@ enum PerspectiveDutyBuilderV129 {
     }
 
     static func build(item: AssignmentPlanItem) -> Result {
+        if let saved = PerspectiveDutyOverrideStoreV130.shared.legs(for: item.id) {
+            return .ready(FlightDuty(id: UUID(), legs: saved))
+        }
+
+        if let conflict = routeConflict(item: item) {
+            return .routeMismatch(conflict)
+        }
+
         let metadata = AssignmentV119MetadataCodec.metadata(from: item.detail)
         let planLegs = resolvedPlanLegs(item: item, metadata: metadata)
         guard !planLegs.isEmpty else {
@@ -158,20 +203,25 @@ enum PerspectiveDutyBuilderV129 {
 
         for planLeg in planLegs {
             let reference = previousEnd ?? sourceStart
-            var match = DutyAutofillV129.scheduleMatch(
-                flightNumber: planLeg.flightNumber,
-                referenceDate: reference,
-                notBefore: previousEnd,
-                departureHint: planLeg.departure,
-                arrivalHint: planLeg.arrival
-            )
-            if match == nil {
+            let depHint = FlightScheduleStoreV129.airportCode(planLeg.departure)
+            let arrHint = FlightScheduleStoreV129.airportCode(planLeg.arrival)
+            let match: FlightScheduleMatchV129?
+            if depHint != nil || arrHint != nil {
+                match = DutyAutofillV129.scheduleMatch(
+                    flightNumber: planLeg.flightNumber,
+                    referenceDate: reference,
+                    notBefore: previousEnd,
+                    departureHint: depHint,
+                    arrivalHint: arrHint
+                )
+            } else {
                 match = DutyAutofillV129.scheduleMatch(
                     flightNumber: planLeg.flightNumber,
                     referenceDate: reference,
                     notBefore: previousEnd
                 )
             }
+
             guard let match else {
                 return .missing(
                     "В загруженном расписании не найден рейс \(DutyAutofillV129.normalizedFlightNumber(planLeg.flightNumber)) рядом с \(shortDate(reference))."
@@ -181,7 +231,11 @@ enum PerspectiveDutyBuilderV129 {
             previousEnd = match.engineOff
         }
 
-        let duty = makeDuty(selected)
+        let duty = makeDuty(
+            selected,
+            itemID: item.id,
+            assignmentDate: sourceStart
+        )
         if let expected = item.plannedFlightMinutes,
            expected > 0,
            expected != duty.flightMinutes {
@@ -190,18 +244,62 @@ enum PerspectiveDutyBuilderV129 {
         return .ready(duty)
     }
 
+    static func routeConflict(item: AssignmentPlanItem) -> String? {
+        let metadata = AssignmentV119MetadataCodec.metadata(from: item.detail)
+        let planLegs = resolvedPlanLegs(item: item, metadata: metadata)
+        guard !planLegs.isEmpty else { return nil }
+
+        let sourceStart = metadata?.sourceStart ?? item.start
+        var previousEnd: Date?
+
+        for planLeg in planLegs {
+            let depHint = FlightScheduleStoreV129.airportCode(planLeg.departure)
+            let arrHint = FlightScheduleStoreV129.airportCode(planLeg.arrival)
+            guard depHint != nil || arrHint != nil else { continue }
+
+            let reference = previousEnd ?? sourceStart
+            if let strict = DutyAutofillV129.scheduleMatch(
+                flightNumber: planLeg.flightNumber,
+                referenceDate: reference,
+                notBefore: previousEnd,
+                departureHint: depHint,
+                arrivalHint: arrHint
+            ) {
+                previousEnd = strict.engineOff
+                continue
+            }
+
+            if let plain = DutyAutofillV129.scheduleMatch(
+                flightNumber: planLeg.flightNumber,
+                referenceDate: reference,
+                notBefore: previousEnd
+            ) {
+                let number = DutyAutofillV129.normalizedFlightNumber(planLeg.flightNumber)
+                let expected = "\(depHint ?? "?") → \(arrHint ?? "?")"
+                let actual = "\(plain.entry.departure) → \(plain.entry.arrival)"
+                return "Рейс \(number): маршрут плана \(expected), в расписании \(actual)"
+            }
+        }
+        return nil
+    }
+
     static func scheduleDisplay(
         flightNumber: String,
         date: Date,
         departureHint: String? = nil,
         arrivalHint: String? = nil
     ) -> FlightScheduleMatchV129? {
-        DutyAutofillV129.scheduleMatch(
-            flightNumber: flightNumber,
-            referenceDate: date,
-            departureHint: departureHint,
-            arrivalHint: arrivalHint
-        ) ?? DutyAutofillV129.scheduleMatch(
+        let depHint = FlightScheduleStoreV129.airportCode(departureHint)
+        let arrHint = FlightScheduleStoreV129.airportCode(arrivalHint)
+        if depHint != nil || arrHint != nil {
+            return DutyAutofillV129.scheduleMatch(
+                flightNumber: flightNumber,
+                referenceDate: date,
+                departureHint: depHint,
+                arrivalHint: arrHint
+            )
+        }
+        return DutyAutofillV129.scheduleMatch(
             flightNumber: flightNumber,
             referenceDate: date
         )
@@ -245,9 +343,13 @@ enum PerspectiveDutyBuilderV129 {
     }
 
     private static func makeDuty(
-        _ values: [(PlanLeg, FlightScheduleMatchV129)]
+        _ values: [(PlanLeg, FlightScheduleMatchV129)],
+        itemID: String,
+        assignmentDate: Date
     ) -> FlightDuty {
         var legs: [FlightLeg] = []
+        let assignmentNumber = shortDate(assignmentDate)
+
         for index in values.indices {
             let planLeg = values[index].0
             let match = values[index].1
@@ -261,10 +363,15 @@ enum PerspectiveDutyBuilderV129 {
             let workEnd = index == values.indices.last
                 ? engineOff.addingTimeInterval(30 * 60)
                 : engineOff
-            let rawAircraft = planLeg.aircraft ?? ""
-            let aircraft = AircraftFamilyV129.display(
-                rawAircraft.replacingOccurrences(of: "-", with: "")
+
+            let sourceAircraft = planLeg.aircraft ?? match.entry.rawAircraftCode
+            let reference = aircraftReference(
+                rawAircraft: sourceAircraft,
+                itemID: itemID + "|\(index)"
             )
+            let aircraft = reference?.type.rawValue
+                ?? AircraftFamilyV129.display(sourceAircraft.replacingOccurrences(of: "-", with: ""))
+            let registration = reference?.registration ?? ""
             let number = DutyAutofillV129.normalizedFlightNumber(planLeg.flightNumber)
             let times = PortalFlightTimes(
                 workStart: workStart,
@@ -281,7 +388,7 @@ enum PerspectiveDutyBuilderV129 {
                     departure: match.departureWithTerminal,
                     arrival: match.arrivalWithTerminal,
                     aircraft: aircraft,
-                    registration: "",
+                    registration: registration,
                     plannedDeparture: formatClock(engineOn),
                     workStart: formatClock(workStart),
                     engineOn: formatClock(engineOn),
@@ -290,7 +397,7 @@ enum PerspectiveDutyBuilderV129 {
                     engineOff: formatClock(engineOff),
                     portalTimes: times,
                     portalKey: nil,
-                    assignmentNumber: "План",
+                    assignmentNumber: assignmentNumber,
                     legNumber: number,
                     scheduleType: .planned,
                     calculatedMinutesOverride: nil
@@ -298,6 +405,28 @@ enum PerspectiveDutyBuilderV129 {
             )
         }
         return FlightDuty(id: UUID(), legs: legs)
+    }
+
+    private static func aircraftReference(
+        rawAircraft: String,
+        itemID: String
+    ) -> AircraftReferenceV129? {
+        guard let family = AircraftFamilyV129.normalized(rawAircraft) else { return nil }
+        let store = AircraftReferenceStoreV129.shared
+
+        if family == .a320 || family == .a320S,
+           let tarasov = store.aircraft(for: "73772") {
+            return tarasov
+        }
+
+        let candidates = store.aircraft
+            .filter { $0.type == family }
+            .sorted { $0.registration < $1.registration }
+        guard !candidates.isEmpty else { return nil }
+        let seed = itemID.utf8.reduce(UInt64(1469598103934665603)) { partial, byte in
+            (partial ^ UInt64(byte)) &* 1099511628211
+        }
+        return candidates[Int(seed % UInt64(candidates.count))]
     }
 
     private static func shortDate(_ date: Date) -> String {
@@ -311,36 +440,24 @@ enum PerspectiveDutyBuilderV129 {
 
 
 struct PerspectiveDutyOverlayV129: View {
+    let item: AssignmentPlanItem
     let duty: FlightDuty
     @ObservedObject var store: AppStore
+    @ObservedObject var planStore: AssignmentPlanStore
     let onClose: () -> Void
 
     var body: some View {
-        GeometryReader { geometry in
-            let width = min(geometry.size.width * 0.92, 556)
-            ZStack {
-                Color.black.opacity(0.65)
-                    .ignoresSafeArea()
-                    .onTapGesture { onClose() }
-
-                ScrollView(.vertical) {
-                    DutyDetailView(
-                        duty: duty,
-                        onClose: onClose,
-                        scrollsAsPage: true,
-                        isReadOnly: true
-                    )
-                    .environmentObject(store)
-                    .frame(width: width)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.vertical, 20)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: geometry.size.height, alignment: .center)
-                }
-                .scrollIndicators(.hidden)
-                .scrollBounceBehavior(.basedOnSize)
-            }
-        }
-        .ignoresSafeArea(.keyboard, edges: .bottom)
+        DutyAssignmentOverlay(
+            duty: duty,
+            store: store,
+            onUpdate: { legs in
+                PerspectiveDutyOverrideStoreV130.shared.save(legs, for: item.id)
+            },
+            onDelete: {
+                PerspectiveDutyOverrideStoreV130.shared.remove(itemID: item.id)
+                planStore.deleteItem(id: item.id)
+            },
+            onClose: onClose
+        )
     }
 }
