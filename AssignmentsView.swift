@@ -282,6 +282,7 @@ private struct ImportedPlanAssignmentsView: View {
     @State private var message = ""
     @State private var showMessage = false
     @State private var pendingDraft: AssignmentImportDraft?
+    @State private var selectedPerspectiveDuty: FlightDuty?
 
     private var items: [AssignmentPlanItem] {
         planStore.sourceItems(
@@ -331,7 +332,8 @@ private struct ImportedPlanAssignmentsView: View {
                         PerspectivePlanMonthCardsView(
                             items: items,
                             status: status(for:),
-                            statusColor: statusColor(for:)
+                            statusColor: statusColor(for:),
+                            onFlightTap: openPerspectiveDuty
                         )
                         .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
                         .listRowBackground(Color.clear)
@@ -392,6 +394,31 @@ private struct ImportedPlanAssignmentsView: View {
                     "Удалятся только файлы текущего/перспективного плана и сохранённые решения его конфликтов. Подписной календарь и история полётов останутся без изменений."
                 )
             }
+        }
+        .overlay {
+            if let duty = selectedPerspectiveDuty {
+                PerspectiveDutyOverlayV129(
+                    duty: duty,
+                    store: store,
+                    onClose: { selectedPerspectiveDuty = nil }
+                )
+                .zIndex(50)
+            }
+        }
+    }
+
+    private func openPerspectiveDuty(_ item: AssignmentPlanItem) {
+        guard item.kind == .flight else { return }
+        switch PerspectiveDutyBuilderV129.build(item: item) {
+        case .ready(let duty):
+            selectedPerspectiveDuty = duty
+        case .missing(let reason):
+            message = reason + " Сначала импортируй подходящее расписание в «Ещё» → «Расписание рейсов»."
+            showMessage = true
+        case .mismatch(let duty, let expected, let actual):
+            selectedPerspectiveDuty = duty
+            message = "Расписание построило полётное время \(timeText(actual)), а в перспективном плане указано \(timeText(expected)). Карточка открыта для проверки."
+            showMessage = true
         }
     }
 
@@ -473,6 +500,7 @@ private struct PerspectivePlanMonthCardsView: View {
     let items: [AssignmentPlanItem]
     let status: (AssignmentPlanItem) -> String?
     let statusColor: (AssignmentPlanItem) -> Color
+    var onFlightTap: ((AssignmentPlanItem) -> Void)? = nil
 
     private struct MonthSection: Identifiable {
         let key: Int
@@ -577,14 +605,31 @@ private struct PerspectivePlanMonthCardsView: View {
             ForEach(assignmentGroups(month.primary)) { group in
                 VStack(spacing: 0) {
                     ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                        PlanAssignmentRowV119(
-                            item: item,
-                            status: status(item),
-                            statusColor: statusColor(item),
-                            conflictText: nil,
-                            perspectiveStyle: true
-                        )
-                        .padding(.horizontal, 10)
+                        if item.kind == .flight, let onFlightTap {
+                            Button {
+                                onFlightTap(item)
+                            } label: {
+                                PlanAssignmentRowV119(
+                                    item: item,
+                                    status: status(item),
+                                    statusColor: statusColor(item),
+                                    conflictText: nil,
+                                    perspectiveStyle: true
+                                )
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 10)
+                        } else {
+                            PlanAssignmentRowV119(
+                                item: item,
+                                status: status(item),
+                                statusColor: statusColor(item),
+                                conflictText: nil,
+                                perspectiveStyle: true
+                            )
+                            .padding(.horizontal, 10)
+                        }
 
                         if index < group.items.count - 1 {
                             Divider()
@@ -817,7 +862,7 @@ private struct PerspectivePlanTestView: View {
                 metadata: flightMetadata
             ),
             flightLegs: [flightLeg],
-            plannedFlightMinutes: nil,
+            plannedFlightMinutes: 200,
             isAllDayRange: false,
             originMonthKey: 202610
         )

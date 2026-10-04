@@ -74,6 +74,28 @@ struct SettingsRootV116View: View {
                         }
                     }
 
+                    NavigationLink {
+                        AircraftReferenceSettingsV129View()
+                    } label: {
+                        HStack {
+                            Label("Воздушные суда", systemImage: "airplane")
+                            Spacer()
+                            Text(String(AircraftReferenceStoreV129.shared.aircraft.count))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    NavigationLink {
+                        FlightScheduleSettingsV129View()
+                    } label: {
+                        HStack {
+                            Label("Расписание рейсов", systemImage: "calendar.badge.clock")
+                            Spacer()
+                            Text(String(FlightScheduleStoreV129.shared.entries.count))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     LabeledContent("Легов истории", value: String(store.flights.count))
                     LabeledContent("Полётных смен", value: String(store.duties.count))
                     LabeledContent(
