@@ -8,6 +8,22 @@ struct PlanAssignmentRowV119: View {
     var statusColor: Color = .secondary
     var conflictText: String?
     var perspectiveStyle = false
+    private let decodedMetadata: AssignmentV119Metadata?
+
+    init(
+        item: AssignmentPlanItem,
+        status: String? = nil,
+        statusColor: Color = .secondary,
+        conflictText: String? = nil,
+        perspectiveStyle: Bool = false
+    ) {
+        self.item = item
+        self.status = status
+        self.statusColor = statusColor
+        self.conflictText = conflictText
+        self.perspectiveStyle = perspectiveStyle
+        self.decodedMetadata = AssignmentV119MetadataCodec.metadata(from: item.detail)
+    }
 
     private var effectiveConflictText: String? {
         if let conflictText { return conflictText }
@@ -19,7 +35,7 @@ struct PlanAssignmentRowV119: View {
     @ObservedObject private var scheduleStore = FlightScheduleStoreV129.shared
 
     private var metadata: AssignmentV119Metadata? {
-        AssignmentV119MetadataCodec.metadata(from: item.detail)
+        decodedMetadata
     }
 
     private var eventType: AssignmentEventType {
