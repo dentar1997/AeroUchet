@@ -1237,16 +1237,39 @@ struct FlightScheduleDatabaseV130View: View {
         return formatter.string(from: selectedDate)
     }
 
+    private var selectedDateButtonTitle: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "dd.MM.yyyy"
+        return formatter.string(from: selectedDate)
+    }
+
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
-                DatePicker(
-                    "Дата",
-                    selection: $selectedDate,
-                    displayedComponents: .date
-                )
-                .labelsHidden()
-                .datePickerStyle(.compact)
+                if exactSearchNumber != nil,
+                   routeCandidates.count == 1,
+                   let route = routeCandidates.first {
+                    Button {
+                        openExecutionCalendar(for: route)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar")
+                            Text(selectedDateButtonTitle)
+                                .font(.subheadline.monospacedDigit())
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                } else {
+                    DatePicker(
+                        "Дата",
+                        selection: $selectedDate,
+                        displayedComponents: .date
+                    )
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                }
 
                 Picker("Семейство ВС", selection: $group) {
                     ForEach(FlightScheduleAircraftGroupV131.allCases) { value in
@@ -1289,13 +1312,7 @@ struct FlightScheduleDatabaseV130View: View {
                             }
                             Spacer()
                             Button("Календарь выполнения") {
-                                let dates = executionDates(for: route.entries)
-                                calendarRequest = FlightScheduleCalendarRequestV131(
-                                    flightNumber: route.flightNumber,
-                                    departure: route.departure,
-                                    arrival: route.arrival,
-                                    dates: dates
-                                )
+                                openExecutionCalendar(for: route)
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
@@ -1406,6 +1423,17 @@ struct FlightScheduleDatabaseV130View: View {
         return false
     }
 
+    private func openExecutionCalendar(for route: FlightScheduleRouteCandidateV131) {
+        let dates = executionDates(for: route.entries)
+        calendarRequest = FlightScheduleCalendarRequestV131(
+            flightNumber: route.flightNumber,
+            departure: route.departure,
+            arrival: route.arrival,
+            dates: dates,
+            selectedDate: selectedDate
+        )
+    }
+
     private func executionDates(for entries: [FlightScheduleEntryV129]) -> [Date] {
         var result = Set<Date>()
         for entry in entries {
@@ -1450,6 +1478,7 @@ private struct FlightScheduleCalendarRequestV131: Identifiable {
     let departure: String
     let arrival: String
     let dates: [Date]
+    let selectedDate: Date
     var id: String { "\(FlightScheduleStoreV129.normalizedFlightNumber(flightNumber))|\(departure)|\(arrival)" }
 }
 
@@ -1463,7 +1492,17 @@ private struct FlightExecutionCalendarV131View: View {
     init(request: FlightScheduleCalendarRequestV131, onSelect: @escaping (Date) -> Void) {
         self.request = request
         self.onSelect = onSelect
-        let seed = request.dates.first ?? Date()
+        let selectedMonth = Self.monthStart(request.selectedDate)
+        let firstMonth = request.dates.first.map(Self.monthStart)
+        let lastMonth = request.dates.last.map(Self.monthStart)
+        let seed: Date
+        if let firstMonth, let lastMonth,
+           selectedMonth >= firstMonth,
+           selectedMonth <= lastMonth {
+            seed = request.selectedDate
+        } else {
+            seed = request.dates.first ?? request.selectedDate
+        }
         _month = State(initialValue: Self.monthStart(seed))
     }
 
@@ -1501,6 +1540,7 @@ private struct FlightExecutionCalendarV131View: View {
                     ForEach(Array(monthCells.enumerated()), id: \.offset) { _, date in
                         if let date {
                             let active = executionDay(date)
+                            let selected = selectedDay(date)
                             Button {
                                 guard active else { return }
                                 onSelect(date)
@@ -1511,16 +1551,22 @@ private struct FlightExecutionCalendarV131View: View {
                                     .frame(width: 34, height: 34)
                                     .background(
                                         Circle()
-                                            .fill(active ? Color.accentColor.opacity(0.18) : Color.clear)
+                                            .fill(
+                                                selected
+                                                    ? (active ? Color.accentColor : Color.secondary.opacity(0.18))
+                                                    : (active ? Color.accentColor.opacity(0.18) : Color.clear)
+                                            )
                                     )
                                     .overlay {
-                                        if active {
+                                        if active && !selected {
                                             Circle().stroke(Color.accentColor, lineWidth: 1)
+                                        } else if selected && !active {
+                                            Circle().stroke(Color.secondary, lineWidth: 1)
                                         }
                                     }
                             }
                             .buttonStyle(.plain)
-                            .foregroundStyle(active ? Color.accentColor : Color.secondary)
+                            .foregroundStyle(selected && active ? Color.white : (active ? Color.accentColor : Color.secondary))
                             .disabled(!active)
                         } else {
                             Color.clear.frame(width: 34, height: 34)
@@ -1570,6 +1616,10 @@ private struct FlightExecutionCalendarV131View: View {
 
     private func executionDay(_ date: Date) -> Bool {
         request.dates.contains { moscowCalendar.isDate($0, inSameDayAs: date) }
+    }
+
+    private func selectedDay(_ date: Date) -> Bool {
+        moscowCalendar.isDate(request.selectedDate, inSameDayAs: date)
     }
 
     private func shiftMonth(_ delta: Int) {
