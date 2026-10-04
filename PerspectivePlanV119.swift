@@ -751,7 +751,12 @@ enum PerspectivePlanV119Parser {
     // MARK: - Content helpers
 
     private static func eventLabels(_ text: String) -> (title: String, detail: String?) {
-        let lines = text
+        let normalizedSource = text.replacingOccurrences(
+            of: #"\s*·\s*"#,
+            with: " ",
+            options: .regularExpression
+        )
+        let lines = normalizedSource
             .components(separatedBy: .newlines)
             .map { cleanLine($0) }
             .filter { !$0.isEmpty }

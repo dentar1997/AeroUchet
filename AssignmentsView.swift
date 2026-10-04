@@ -7,7 +7,6 @@ private enum AssignmentsSection: String, CaseIterable, Identifiable {
     case currentPlan = "Текущий"
     case importedPlan = "Перспективный"
     case workPlan = "План работ"
-    case test = "Test"
 
     var id: String { rawValue }
 }
@@ -48,8 +47,6 @@ struct AssignmentsView: View {
                     ImportedPlanAssignmentsView(store: store, planStore: planStore)
                 case .workPlan:
                     AccordWorkPlanView(store: store)
-                case .test:
-                    PerspectivePlanTestView()
                 }
             }
             .toolbarTitleDisplayMode(.inline)
@@ -283,6 +280,7 @@ private struct ImportedPlanAssignmentsView: View {
     @State private var showMessage = false
     @State private var pendingDraft: AssignmentImportDraft?
     @State private var selectedPerspectiveDuty: FlightDuty?
+    @State private var selectedPerspectiveItem: AssignmentPlanItem?
 
     private var items: [AssignmentPlanItem] {
         planStore.sourceItems(
@@ -396,11 +394,17 @@ private struct ImportedPlanAssignmentsView: View {
             }
         }
         .overlay {
-            if let duty = selectedPerspectiveDuty {
+            if let duty = selectedPerspectiveDuty,
+               let item = selectedPerspectiveItem {
                 PerspectiveDutyOverlayV129(
+                    item: item,
                     duty: duty,
                     store: store,
-                    onClose: { selectedPerspectiveDuty = nil }
+                    planStore: planStore,
+                    onClose: {
+                        selectedPerspectiveDuty = nil
+                        selectedPerspectiveItem = nil
+                    }
                 )
                 .zIndex(50)
             }
@@ -411,11 +415,16 @@ private struct ImportedPlanAssignmentsView: View {
         guard item.kind == .flight else { return }
         switch PerspectiveDutyBuilderV129.build(item: item) {
         case .ready(let duty):
+            selectedPerspectiveItem = item
             selectedPerspectiveDuty = duty
         case .missing(let reason):
             message = reason + " Сначала импортируй подходящее расписание в «Ещё» → «Расписание рейсов»."
             showMessage = true
+        case .routeMismatch(let reason):
+            message = reason + ". Карточка не открыта, проверь маршрут исходного плана и расписания."
+            showMessage = true
         case .mismatch(let duty, let expected, let actual):
+            selectedPerspectiveItem = item
             selectedPerspectiveDuty = duty
             message = "Расписание построило полётное время \(timeText(actual)), а в перспективном плане указано \(timeText(expected)). Карточка открыта для проверки."
             showMessage = true
@@ -517,7 +526,7 @@ private struct PerspectivePlanMonthCardsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        LazyVStack(spacing: 16) {
             ForEach(monthSections) { month in
                 monthCard(month)
             }
@@ -743,169 +752,6 @@ private struct PerspectivePlanMonthCardsView: View {
         formatter.timeZone = moscowTimeZone
         formatter.dateFormat = "dd.MM.yyyy"
         return formatter.string(from: date)
-    }
-}
-
-
-private struct PerspectivePlanTestView: View {
-    private let items: [AssignmentPlanItem] = Self.makeItems()
-
-    var body: some View {
-        List {
-            Section {
-                Text(
-                    "Искусственный пример для проверки компоновки: сначала рабочий рейс, затем перемещение в качестве пассажира. Данные в основной план не сохраняются."
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            }
-
-            PerspectivePlanMonthCardsView(
-                items: items,
-                status: { _ in nil },
-                statusColor: { _ in .secondary }
-            )
-            .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
-            .listRowBackground(Color.clear)
-        }
-    }
-
-    private static func makeItems() -> [AssignmentPlanItem] {
-        let sourceFlightStart = date(day: 3, hour: 10, minute: 0)
-        let sourceFlightEnd = date(day: 3, hour: 13, minute: 20)
-        let dutyStart = date(day: 3, hour: 9, minute: 0)
-        let dutyEnd = date(day: 3, hour: 13, minute: 50)
-        let passengerSourceStart = date(day: 3, hour: 15, minute: 10)
-        let passengerEnd = date(day: 3, hour: 17, minute: 0)
-        let passengerStart = date(day: 3, hour: 14, minute: 30)
-        let groupID = "test-working-then-passenger"
-
-        let passengerMinutes = max(
-            0,
-            Int(passengerEnd.timeIntervalSince(passengerStart) / 60)
-        )
-        let waiting = max(0, Int(passengerStart.timeIntervalSince(dutyEnd) / 60))
-        let linkedTotal = max(0, Int(dutyEnd.timeIntervalSince(dutyStart) / 60))
-            + waiting
-            + passengerMinutes
-
-        let flightMetadata = AssignmentV119Metadata(
-            sourceStart: sourceFlightStart,
-            sourceEnd: sourceFlightEnd,
-            passengerBasis: nil,
-            passengerMovementMinutes: nil,
-            linkedGroupID: groupID,
-            waitingMinutes: nil,
-            subsequentDutyReductionMinutes: nil,
-            linkedSequenceMinutes: linkedTotal,
-            legs: [
-                AssignmentV119LegMetadata(
-                    flightNumber: "SU 1000",
-                    departure: "Шереметьево (C)",
-                    arrival: "Самара (KUF)",
-                    aircraft: "A320"
-                )
-            ]
-        )
-
-        let passengerMetadata = AssignmentV119Metadata(
-            sourceStart: passengerSourceStart,
-            sourceEnd: passengerEnd,
-            passengerBasis: nil,
-            passengerMovementMinutes: passengerMinutes,
-            linkedGroupID: groupID,
-            waitingMinutes: waiting,
-            subsequentDutyReductionMinutes: nil,
-            linkedSequenceMinutes: linkedTotal,
-            legs: [
-                AssignmentV119LegMetadata(
-                    flightNumber: "SU 1001",
-                    departure: "Самара (KUF)",
-                    arrival: "Шереметьево (B)",
-                    aircraft: "A320"
-                )
-            ]
-        )
-
-        let flightLeg = AssignmentPlanLeg(
-            id: "test-flight-leg",
-            flightNumber: "SU 1000",
-            role: .workingPilot,
-            departure: "Шереметьево (C)",
-            arrival: "Самара (KUF)"
-        )
-        let passengerLeg = AssignmentPlanLeg(
-            id: "test-passenger-leg",
-            flightNumber: "SU 1001",
-            role: .passenger,
-            departure: "Самара (KUF)",
-            arrival: "Шереметьево (B)"
-        )
-
-        let flight = AssignmentPlanItem(
-            id: "test-flight",
-            source: .importedFile,
-            externalUID: nil,
-            kind: .flight,
-            start: dutyStart,
-            end: dutyEnd,
-            title: "Полётная смена",
-            flightNumber: "SU 1000",
-            flightNumbers: ["SU 1000"],
-            departure: "Шереметьево (C)",
-            arrival: "Самара (KUF)",
-            aircraft: "A320",
-            assignmentGroup: "Шереметьево (C) - Самара (KUF)",
-            importedAt: Date(),
-            detail: AssignmentV119MetadataCodec.encode(
-                humanDetail: nil,
-                metadata: flightMetadata
-            ),
-            flightLegs: [flightLeg],
-            plannedFlightMinutes: 200,
-            isAllDayRange: false,
-            originMonthKey: 202610
-        )
-
-        let passenger = AssignmentPlanItem(
-            id: "test-passenger",
-            source: .importedFile,
-            externalUID: nil,
-            kind: .passenger,
-            start: passengerStart,
-            end: passengerEnd,
-            title: "Перелёт пассажиром",
-            flightNumber: "SU 1001",
-            flightNumbers: ["SU 1001"],
-            departure: "Самара (KUF)",
-            arrival: "Шереметьево (B)",
-            aircraft: "A320",
-            assignmentGroup: "Самара (KUF) - Шереметьево (B)",
-            importedAt: Date(),
-            detail: AssignmentV119MetadataCodec.encode(
-                humanDetail: nil,
-                metadata: passengerMetadata
-            ),
-            flightLegs: [passengerLeg],
-            plannedFlightMinutes: nil,
-            isAllDayRange: false,
-            originMonthKey: 202610
-        )
-
-        return [flight, passenger]
-    }
-
-    private static func date(day: Int, hour: Int, minute: Int) -> Date {
-        moscowCalendar.date(
-            from: DateComponents(
-                timeZone: moscowTimeZone,
-                year: 2026,
-                month: 10,
-                day: day,
-                hour: hour,
-                minute: minute
-            )
-        ) ?? Date()
     }
 }
 

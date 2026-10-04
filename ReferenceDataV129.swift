@@ -60,7 +60,11 @@ final class AircraftReferenceStoreV129: ObservableObject {
     @Published private(set) var aircraft: [AircraftReferenceV129]
 
     private init() {
-        aircraft = Self.seed.sorted { $0.registration < $1.registration }
+        aircraft = Self.seed.sorted { left, right in
+            if left.registration == "RA-73772" { return true }
+            if right.registration == "RA-73772" { return false }
+            return left.registration < right.registration
+        }
     }
 
     func aircraft(for registration: String) -> AircraftReferenceV129? {
@@ -209,7 +213,7 @@ struct FlightScheduleEntryV129: Identifiable, Codable, Hashable {
 
     var identityKey: String {
         [
-            flightNumber,
+            FlightScheduleStoreV129.normalizedFlightNumber(flightNumber),
             FlightScheduleStoreV129.dayKey(validFrom),
             FlightScheduleStoreV129.dayKey(validTo),
             operatingWeekdays.map(String.init).joined(separator: ","),
@@ -249,11 +253,16 @@ struct FlightScheduleMatchV129: Identifiable, Hashable {
     }
 
     private static func code(_ code: String, terminal: String?) -> String {
-        guard let terminal,
-              !terminal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return code
+        let base = code.uppercased()
+        let terminalValue = terminal?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        guard base == "SVO",
+              let terminalValue,
+              ["D", "E", "F"].contains(terminalValue) else {
+            return base
         }
-        return "\(code)/\(terminal)"
+        return "\(base)/\(terminalValue)"
     }
 }
 
@@ -267,9 +276,11 @@ final class FlightScheduleStoreV129: ObservableObject {
 
     @Published private(set) var entries: [FlightScheduleEntryV129] = []
     @Published private(set) var imports: [FlightScheduleImportRecordV129] = []
+    private var entriesByFlightNumber: [String: [FlightScheduleEntryV129]] = [:]
 
     private init() {
         load()
+        rebuildIndex()
     }
 
     var coverageText: String {
@@ -325,6 +336,7 @@ final class FlightScheduleStoreV129: ObservableObject {
                 at: 0
             )
         }
+        rebuildIndex()
         save()
         return (added, updated, entries.count)
     }
@@ -332,6 +344,7 @@ final class FlightScheduleStoreV129: ObservableObject {
     func deleteAll() {
         entries = []
         imports = []
+        rebuildIndex()
         save()
     }
 
@@ -345,7 +358,7 @@ final class FlightScheduleStoreV129: ObservableObject {
         guard !number.isEmpty else { return [] }
         let depHint = Self.airportCode(departureHint)
         let arrHint = Self.airportCode(arrivalHint)
-        let candidates = entries.filter { $0.flightNumber == number }
+        let candidates = entriesByFlightNumber[number] ?? []
 
         var matches: [FlightScheduleMatchV129] = []
         for entry in candidates {
@@ -422,21 +435,45 @@ final class FlightScheduleStoreV129: ObservableObject {
         return withoutRoute.count == 1 ? withoutRoute[0] : nil
     }
 
-    static func normalizedFlightNumber(_ raw: String) -> String {
-        raw.uppercased()
+    nonisolated static func normalizedFlightNumber(_ raw: String) -> String {
+        let digits = raw.uppercased()
             .replacingOccurrences(of: "SU", with: "")
             .filter(\.isNumber)
+        guard let value = Int(digits) else { return "" }
+        return String(value)
     }
 
     static func airportCode(_ raw: String?) -> String? {
         guard let raw else { return nil }
-        let upper = raw.uppercased()
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let upper = trimmed.uppercased()
+
+        if upper.contains("ШЕРЕМЕТЬЕВО") || upper == "Ш" { return "SVO" }
+
         if let slash = upper.firstIndex(of: "/") {
             let value = String(upper[..<slash]).filter(\.isLetter)
-            return value.count == 3 ? value : nil
+            if value.count == 3 { return AirportDatabase.airport(for: value)?.iata ?? value }
         }
-        let value = upper.filter(\.isLetter)
-        return value.count == 3 ? value : nil
+
+        if let regex = try? NSRegularExpression(pattern: #"\(([A-Z]{3})(?:/[A-Z0-9]+)?\)"#),
+           let match = regex.firstMatch(
+                in: upper,
+                range: NSRange(location: 0, length: (upper as NSString).length)
+           ),
+           match.numberOfRanges >= 2 {
+            let value = (upper as NSString).substring(with: match.range(at: 1))
+            return AirportDatabase.airport(for: value)?.iata ?? value
+        }
+
+        let letters = upper.filter(\.isLetter)
+        if letters.count == 3 { return AirportDatabase.airport(for: letters)?.iata ?? letters }
+
+        let byName = AirportDatabase.airports.filter { airport in
+            airport.name.caseInsensitiveCompare(trimmed) == .orderedSame
+        }
+        if byName.count == 1 { return byName[0].iata }
+        return nil
     }
 
     nonisolated static func dayKey(_ date: Date) -> String {
@@ -464,6 +501,12 @@ final class FlightScheduleStoreV129: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: Self.importsKey),
            let values = try? JSONDecoder().decode([FlightScheduleImportRecordV129].self, from: data) {
             imports = values
+        }
+    }
+
+    private func rebuildIndex() {
+        entriesByFlightNumber = Dictionary(grouping: entries) { entry in
+            Self.normalizedFlightNumber(entry.flightNumber)
         }
     }
 
@@ -662,9 +705,11 @@ enum FlightScheduleXLSParserV129 {
 
     private static func normalizedFlight(_ value: String) -> String {
         let digits = value.filter(\.isNumber)
-        if !digits.isEmpty { return digits }
+        if !digits.isEmpty {
+            return FlightScheduleStoreV129.normalizedFlightNumber(digits)
+        }
         if let number = Double(value), number.isFinite {
-            return String(Int(number.rounded()))
+            return FlightScheduleStoreV129.normalizedFlightNumber(String(Int(number.rounded())))
         }
         return ""
     }
@@ -1035,13 +1080,6 @@ struct AircraftReferenceSettingsV129View: View {
                 TextField("Борт, фамилия или тип ВС", text: $search)
             }
 
-            Section("Типы ВС") {
-                Text("A-320 → A320 · A-320A → A320S · A-320N → A320N")
-                Text("A-321 → A321 · A-321B → A321S · A-321Q → A321N")
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
             Section("Воздушные суда · \(values.count)") {
                 ForEach(values) { aircraft in
                     VStack(alignment: .leading, spacing: 4) {
@@ -1071,6 +1109,62 @@ struct AircraftReferenceSettingsV129View: View {
 }
 
 
+struct FlightScheduleDatabaseV130View: View {
+    @ObservedObject private var store = FlightScheduleStoreV129.shared
+    @State private var search = ""
+
+    private var values: [FlightScheduleEntryV129] {
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return store.entries }
+        let normalizedNumber = FlightScheduleStoreV129.normalizedFlightNumber(query)
+        return store.entries.filter { entry in
+            (!normalizedNumber.isEmpty
+                && FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber) == normalizedNumber)
+                || entry.departure.localizedCaseInsensitiveContains(query)
+                || entry.arrival.localizedCaseInsensitiveContains(query)
+                || (AirportDatabase.airport(for: entry.departure)?.name.localizedCaseInsensitiveContains(query) ?? false)
+                || (AirportDatabase.airport(for: entry.arrival)?.name.localizedCaseInsensitiveContains(query) ?? false)
+                || entry.rawAircraftCode.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                TextField("Рейс, аэропорт или тип ВС", text: $search)
+                    .textInputAutocapitalization(.characters)
+            }
+
+            Section("Строки · \(values.count)") {
+                ForEach(values) { entry in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text(FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber))
+                                .font(.subheadline.weight(.semibold).monospacedDigit())
+                            Text("\(entry.departure) → \(entry.arrival)")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text(timeText(entry.flightMinutes))
+                                .font(.caption.monospacedDigit())
+                        }
+                        Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined()) · UTC \(clock(entry.departureMinutesUTC))–\(clock(entry.arrivalMinutesUTC)) · \(entry.rawAircraftCode)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .navigationTitle("База расписания")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func clock(_ minutes: Int) -> String {
+        String(format: "%02d:%02d", (minutes / 60) % 24, minutes % 60)
+    }
+}
+
+
 struct FlightScheduleSettingsV129View: View {
     @ObservedObject private var store = FlightScheduleStoreV129.shared
     @State private var showImporter = false
@@ -1084,6 +1178,13 @@ struct FlightScheduleSettingsV129View: View {
                 LabeledContent("Строк в базе", value: String(store.entries.count))
                 LabeledContent("Покрытие", value: store.coverageText)
                 LabeledContent("Импортов", value: String(store.imports.count))
+
+                NavigationLink {
+                    FlightScheduleDatabaseV130View()
+                } label: {
+                    Label("Открыть базу расписания", systemImage: "list.bullet.rectangle")
+                }
+                .disabled(store.entries.isEmpty)
             }
 
             Section {
@@ -1102,12 +1203,12 @@ struct FlightScheduleSettingsV129View: View {
             }
 
             if !store.imports.isEmpty {
-                Section("Загруженные файлы") {
+                Section("Загруженные расписания") {
                     ForEach(store.imports) { value in
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(value.sourceName)
+                            Text("\(FlightScheduleStoreV129.shortDay(value.validFrom))–\(FlightScheduleStoreV129.shortDay(value.validTo))")
                                 .font(.subheadline.weight(.semibold))
-                            Text("\(FlightScheduleStoreV129.shortDay(value.validFrom)) — \(FlightScheduleStoreV129.shortDay(value.validTo)) · \(value.rowCount) строк")
+                            Text("\(value.rowCount.formatted(.number.grouping(.automatic))) строк · импорт \(importDate(value.importedAt))")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -1144,5 +1245,13 @@ struct FlightScheduleSettingsV129View: View {
         } message: {
             Text("Будет очищена только локальная база расписания рейсов. История и планы не изменятся.")
         }
+    }
+
+    private func importDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "dd.MM.yyyy HH:mm"
+        return formatter.string(from: date)
     }
 }

@@ -610,8 +610,8 @@ struct FlightsView: View {
             flightNumber: number,
             departure: "SVO",
             arrival: "AER",
-            aircraft: AircraftFamilyV129.a320.rawValue,
-            registration: "",
+            aircraft: AircraftFamilyV129.a320S.rawValue,
+            registration: "RA-73772",
             plannedDeparture: formatClock(fallbackEngineOn),
             workStart: formatClock(fallbackTimes.workStart),
             engineOn: formatClock(fallbackEngineOn),
@@ -637,6 +637,8 @@ struct FlightsView: View {
             )
             leg.assignmentNumber = assignment
         }
+        leg.registration = "RA-73772"
+        leg = DutyAutofillV129.applyingAircraftReference(to: leg)
         return FlightDuty(id: UUID(), legs: [leg])
     }
 }
@@ -708,11 +710,13 @@ struct DutiesListView: View {
 }
 
 
-private struct DutyAssignmentOverlay: View {
+struct DutyAssignmentOverlay: View {
     let duty: FlightDuty
     @ObservedObject var store: AppStore
     let isCreating: Bool
     let onCreate: (([FlightLeg]) -> Void)?
+    let onUpdate: (([FlightLeg]) -> Void)?
+    let onDelete: (() -> Void)?
     let onClose: () -> Void
 
     init(
@@ -720,12 +724,16 @@ private struct DutyAssignmentOverlay: View {
         store: AppStore,
         isCreating: Bool = false,
         onCreate: (([FlightLeg]) -> Void)? = nil,
+        onUpdate: (([FlightLeg]) -> Void)? = nil,
+        onDelete: (() -> Void)? = nil,
         onClose: @escaping () -> Void
     ) {
         self.duty = duty
         self.store = store
         self.isCreating = isCreating
         self.onCreate = onCreate
+        self.onUpdate = onUpdate
+        self.onDelete = onDelete
         self.onClose = onClose
     }
 
@@ -770,7 +778,9 @@ private struct DutyAssignmentOverlay: View {
                         onEditModeChange: { editModeIsActive = $0 },
                         externalEditorDismissSignal: dismissEditorSignal,
                         isCreating: isCreating,
-                        onCreate: onCreate
+                        onCreate: onCreate,
+                        onUpdate: onUpdate,
+                        onDelete: onDelete
                     )
                     .environmentObject(store)
                     .frame(width: width)
@@ -1018,6 +1028,8 @@ struct DutyDetailView: View {
     let isCreating: Bool
     let isReadOnly: Bool
     let onCreate: (([FlightLeg]) -> Void)?
+    let onUpdate: (([FlightLeg]) -> Void)?
+    let onDelete: (() -> Void)?
 
     init(
         duty: FlightDuty,
@@ -1028,7 +1040,9 @@ struct DutyDetailView: View {
         externalEditorDismissSignal: Int = 0,
         isCreating: Bool = false,
         isReadOnly: Bool = false,
-        onCreate: (([FlightLeg]) -> Void)? = nil
+        onCreate: (([FlightLeg]) -> Void)? = nil,
+        onUpdate: (([FlightLeg]) -> Void)? = nil,
+        onDelete: (() -> Void)? = nil
     ) {
         self.duty = duty
         self.onClose = onClose
@@ -1039,6 +1053,8 @@ struct DutyDetailView: View {
         self.isCreating = isCreating
         self.isReadOnly = isReadOnly
         self.onCreate = onCreate
+        self.onUpdate = onUpdate
+        self.onDelete = onDelete
         _isEditing = State(initialValue: isCreating)
         _draft = State(initialValue: isCreating ? duty.legs : [])
         _original = State(initialValue: isCreating ? duty.legs : [])
@@ -1066,6 +1082,7 @@ struct DutyDetailView: View {
     @State private var editHistory: [DutyEditSnapshot] = []
     @State private var historyIndex = 0
     @State private var routeEditSide: RouteEditSide = .departure
+    @State private var externallySavedLegs: [FlightLeg]?
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private let timeColumns = Array(
@@ -1086,6 +1103,9 @@ struct DutyDetailView: View {
     private var current: FlightDuty {
         if isCreating, !draft.isEmpty {
             return FlightDuty(id: duty.id, legs: updatedLegs)
+        }
+        if let externallySavedLegs, !externallySavedLegs.isEmpty {
+            return FlightDuty(id: duty.id, legs: externallySavedLegs)
         }
         return store.duties.first { candidate in
             candidate.legs.contains { $0.id == duty.firstLeg.id }
@@ -1213,7 +1233,12 @@ struct DutyDetailView: View {
                                         focusedField = nil
                                         close()
                                     } else {
-                                        store.updateDutyLegs(updatedLegs)
+                                        if let onUpdate {
+                                            externallySavedLegs = updatedLegs
+                                            onUpdate(updatedLegs)
+                                        } else {
+                                            store.updateDutyLegs(updatedLegs)
+                                        }
                                         showReview = false
                                         focusedField = nil
                                         isEditing = false
@@ -1310,7 +1335,11 @@ struct DutyDetailView: View {
 
                                 Button("Удалить") {
                                     showDeleteConfirmation = false
-                                    store.deleteDutyLegs(ids: Set(duty.legs.map(\.id)))
+                                    if let onDelete {
+                                        onDelete()
+                                    } else {
+                                        store.deleteDutyLegs(ids: Set(duty.legs.map(\.id)))
+                                    }
                                     close()
                                 }
                                 .buttonStyle(.borderedProminent)
@@ -1476,9 +1505,10 @@ struct DutyDetailView: View {
         Binding(
             get: { editableLegNumber(draft[index], index: index) },
             set: { raw in
-                let digits = DutyAutofillV129.normalizedFlightNumber(raw)
+                let digits = String(raw.filter(\.isNumber).prefix(4))
                 draft[index].legNumber = digits
                 draft[index].flightNumber = digits
+                autofillSchedule(index: index)
             }
         )
     }
@@ -1497,6 +1527,9 @@ struct DutyDetailView: View {
             set: { newValue in
                 let digits = String(newValue.filter(\.isNumber).prefix(5))
                 draft[index].registration = "RA-" + digits
+                if digits.count == 5 {
+                    draft[index] = DutyAutofillV129.applyingAircraftReference(to: draft[index])
+                }
             }
         )
     }
@@ -1553,8 +1586,6 @@ struct DutyDetailView: View {
             editableLegNumber(draft[index], index: index)
         )
         guard !number.isEmpty else { return }
-        draft[index].legNumber = number
-        draft[index].flightNumber = number
 
         let previousEnd = index > 0 ? times(for: draft[index - 1]).engineOff : nil
         let reference = previousEnd ?? times(for: draft[index]).engineOn
@@ -1580,6 +1611,15 @@ struct DutyDetailView: View {
             totalCount: draft.count,
             previousEngineOff: previousEnd
         )
+    }
+
+    private func cycleAircraftType(_ index: Int) {
+        guard draft.indices.contains(index) else { return }
+        let values = AircraftFamilyV129.allCases
+        let current = AircraftFamilyV129.normalized(draft[index].aircraft) ?? .a320
+        let currentIndex = values.firstIndex(of: current) ?? 0
+        let next = values[(currentIndex + 1) % values.count]
+        selectAircraftType(next, index: index)
     }
 
     private func selectAircraftType(_ type: AircraftFamilyV129, index: Int) {
@@ -1793,7 +1833,7 @@ struct DutyDetailView: View {
             ForEach(duty.legs.indices, id: \.self) { index in
                 SwipeDeleteFlightCard(
                     isEnabled: isCreating
-                        && draft.count > 3
+                        && draft.count > 1
                         && index > 0
                         && focusedField == nil,
                     onDelete: {
@@ -1931,38 +1971,40 @@ struct DutyDetailView: View {
     }
 
     private func removeManualLeg(at index: Int) {
-        guard isCreating, draft.count > 3, index > 0, draft.indices.contains(index) else {
+        guard isCreating, draft.count > 1, index > 0, draft.indices.contains(index) else {
             return
         }
 
         focusedField = nil
         draft.remove(at: index)
 
+        var previousEngineOff: Date?
         for currentIndex in draft.indices {
             var leg = draft[currentIndex]
             let values = times(for: leg)
+            let workStart = currentIndex == 0
+                ? values.engineOn.addingTimeInterval(-60 * 60)
+                : (previousEngineOff ?? values.engineOn.addingTimeInterval(-60 * 60))
             let workEnd = currentIndex == draft.indices.last
-                ? (moscowCalendar.date(
-                    byAdding: .minute,
-                    value: 30,
-                    to: values.engineOff
-                ) ?? values.engineOff)
+                ? values.engineOff.addingTimeInterval(30 * 60)
                 : values.engineOff
 
             leg.portalTimes = PortalFlightTimes(
-                workStart: values.workStart,
+                workStart: workStart,
                 engineOn: values.engineOn,
                 takeoff: values.takeoff,
                 landing: values.landing,
                 engineOff: values.engineOff,
                 workEnd: workEnd
             )
-            leg.workStart = formatClock(values.workStart)
+            leg.date = formatDate(values.engineOn)
+            leg.workStart = formatClock(workStart)
             leg.engineOn = formatClock(values.engineOn)
             leg.takeoff = formatClock(values.takeoff)
             leg.landing = formatClock(values.landing)
             leg.engineOff = formatClock(values.engineOff)
             draft[currentIndex] = leg
+            previousEngineOff = values.engineOff
         }
     }
 
@@ -2287,23 +2329,9 @@ struct DutyDetailView: View {
 
     private func aircraftField(_ leg: FlightLeg, index: Int) -> some View {
         identityField("Тип ВС", field: .aircraft(index)) {
-            if isEditing {
-                Menu {
-                    ForEach(AircraftFamilyV129.allCases) { type in
-                        Button(type.rawValue) {
-                            selectAircraftType(type, index: index)
-                        }
-                    }
-                } label: {
-                    Text(AircraftFamilyV129.display(leg.aircraft))
-                        .font(.caption.bold())
-                        .lineLimit(1)
-                }
-                .buttonStyle(.plain)
-            } else {
-                Text(AircraftFamilyV129.display(leg.aircraft))
-                    .font(.caption.bold())
-            }
+            Text(AircraftFamilyV129.display(leg.aircraft))
+                .font(.caption.bold())
+                .lineLimit(1)
         }
     }
 
@@ -2550,6 +2578,8 @@ struct DutyDetailView: View {
             guard isEditing else { return }
             if case .flightKind(let index) = field {
                 toggleScheduleType(index)
+            } else if case .aircraft(let index) = field {
+                cycleAircraftType(index)
             } else {
                 focusedField = field
             }
