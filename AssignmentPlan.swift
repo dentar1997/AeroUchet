@@ -368,6 +368,11 @@ final class AssignmentPlanStore: ObservableObject {
         saveMetadata()
     }
 
+    func deleteItem(id: String) {
+        items.removeAll { $0.id == id }
+        saveItems()
+    }
+
     func removeFlightsSuperseded(by actualFlights: [FlightLeg]) {
         _ = actualFlights
         // Источники хранятся независимо. Приоритет применяется только при показе.

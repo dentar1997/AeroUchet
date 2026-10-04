@@ -9,6 +9,12 @@ struct PlanAssignmentRowV119: View {
     var conflictText: String?
     var perspectiveStyle = false
 
+    private var effectiveConflictText: String? {
+        if let conflictText { return conflictText }
+        guard perspectiveStyle, item.kind == .flight else { return nil }
+        return PerspectiveDutyBuilderV129.routeConflict(item: item)
+    }
+
     @ObservedObject private var appearanceStore = AssignmentAppearanceStore.shared
     @ObservedObject private var scheduleStore = FlightScheduleStoreV129.shared
 
@@ -67,7 +73,7 @@ struct PlanAssignmentRowV119: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if let conflictText {
+                if let conflictText = effectiveConflictText {
                     Label(conflictText, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.red)
@@ -80,7 +86,7 @@ struct PlanAssignmentRowV119: View {
                 Text(dateLabel)
                     .font(.caption)
                     .foregroundStyle(
-                        conflictText == nil
+                        effectiveConflictText == nil
                             ? Color.secondary
                             : Color.red
                     )
@@ -107,9 +113,9 @@ struct PlanAssignmentRowV119: View {
             }
         }
         .padding(.vertical, 7)
-        .padding(.horizontal, conflictText == nil ? 0 : 8)
+        .padding(.horizontal, effectiveConflictText == nil ? 0 : 8)
         .background {
-            if conflictText != nil {
+            if effectiveConflictText != nil {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color.red.opacity(0.10))
             }
@@ -380,7 +386,14 @@ struct PlanAssignmentRowV119: View {
             return nil
         }
         let aircraft = displayGroundAircraft?.uppercased()
-        let lines = raw
+        let cleanedRaw = perspectiveStyle
+            ? raw.replacingOccurrences(
+                of: #"\s*·\s*"#,
+                with: " ",
+                options: .regularExpression
+            )
+            : raw
+        let lines = cleanedRaw
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
