@@ -77,20 +77,28 @@ struct PlanAssignmentRowV119: View {
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text(dateLabel)
-                    .font(.caption)
-                    .foregroundStyle(conflictText == nil ? Color.secondary : Color.red)
+                    .font(perspectiveStyle ? .subheadline.weight(.semibold) : .caption)
+                    .foregroundStyle(
+                        conflictText == nil
+                            ? (perspectiveStyle ? Color.primary : Color.secondary)
+                            : Color.red
+                    )
                     .multilineTextAlignment(.trailing)
 
                 if let timeRange {
                     Text(timeRange)
-                        .font(.caption.monospacedDigit())
+                        .font(
+                            perspectiveStyle
+                                ? .subheadline.weight(.semibold).monospacedDigit()
+                                : .caption.monospacedDigit()
+                        )
                         .multilineTextAlignment(.trailing)
                 }
 
                 if let secondaryTimeRange {
                     Text(secondaryTimeRange)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.primary)
                         .multilineTextAlignment(.trailing)
                 }
 
@@ -135,9 +143,19 @@ struct PlanAssignmentRowV119: View {
 
             if let reduction = metadata?.subsequentDutyReductionMinutes,
                reduction > 0 {
-                Text("Продолжительность полётной смены уменьшить на \(timeText(reduction))")
+                Text("Макс. продолж. полётной смены уменьшена на \(timeText(reduction))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            if perspectiveStyle,
+               let total = metadata?.linkedSequenceMinutes,
+               total > 0 {
+                Text(
+                    "Полётная смена + перемещ. в кач. пассаж. = \(timeText(total)) ≤ макс. продолж. полётной смены + 02:00"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -180,13 +198,17 @@ struct PlanAssignmentRowV119: View {
                     .foregroundStyle(.secondary)
             }
 
-            if let waiting = metadata?.waitingMinutes, waiting > 0 {
+            if !perspectiveStyle,
+               let waiting = metadata?.waitingMinutes,
+               waiting > 0 {
                 Text("Время ожидания: \(timeText(waiting))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            if let total = metadata?.linkedSequenceMinutes, total > 0 {
+            if !perspectiveStyle,
+               let total = metadata?.linkedSequenceMinutes,
+               total > 0 {
                 Text(
                     "Смена + перемещение: \(timeText(total)) / лимит: норма смены + 2:00"
                 )
@@ -306,14 +328,29 @@ struct PlanAssignmentRowV119: View {
     }
 
     private var passengerCaption: String {
-        if perspectiveStyle {
-            if let movement = metadata?.passengerMovementMinutes, movement > 0 {
-                return "Перемещение в качестве пассажира: \(timeText(movement))"
-            }
-            return "Перемещение в качестве пассажира"
+        guard perspectiveStyle else {
+            let basis = metadata?.passengerBasis?.uppercased() ?? "ПО ЗАДАНИЮ"
+            return "ПЕРЕЛЁТ ПАССАЖИРОМ \(basis)"
         }
-        let basis = metadata?.passengerBasis?.uppercased() ?? "ПО ЗАДАНИЮ"
-        return "ПЕРЕЛЁТ ПАССАЖИРОМ \(basis)"
+
+        let movementText: String
+        if let movement = metadata?.passengerMovementMinutes, movement > 0 {
+            movementText = "Перемещение в качестве пассажира: \(timeText(movement))"
+        } else {
+            movementText = "Перемещение в качестве пассажира"
+        }
+
+        guard metadata?.linkedGroupID != nil,
+              let waiting = metadata?.waitingMinutes,
+              waiting > 0 else {
+            return movementText
+        }
+
+        let waitingText = "Время ожидания: \(timeText(waiting))"
+        if metadata?.linkedSequenceMinutes != nil {
+            return "\(waitingText) · \(movementText)"
+        }
+        return "\(movementText) · \(waitingText)"
     }
 
     private var sourcePassengerMinutes: Int? {
@@ -325,11 +362,8 @@ struct PlanAssignmentRowV119: View {
     }
 
     private var groundDetail: String? {
-        guard var raw = AssignmentV119MetadataCodec.humanDetail(item.detail) else {
+        guard let raw = AssignmentV119MetadataCodec.humanDetail(item.detail) else {
             return nil
-        }
-        if perspectiveStyle {
-            raw = raw.replacingOccurrences(of: " · ", with: "\n")
         }
         let aircraft = displayGroundAircraft?.uppercased()
         let lines = raw
@@ -342,7 +376,7 @@ struct PlanAssignmentRowV119: View {
                     && !line.uppercased().contains(aircraft)
             }
             .filter { $0.caseInsensitiveCompare(item.title) != .orderedSame }
-        let value = lines.joined(separator: "\n")
+        let value = lines.joined(separator: perspectiveStyle ? " " : "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
     }

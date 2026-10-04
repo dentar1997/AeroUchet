@@ -735,6 +735,15 @@ private struct PerspectivePlanTestView: View {
         let passengerStart = date(day: 3, hour: 14, minute: 30)
         let groupID = "test-working-then-passenger"
 
+        let passengerMinutes = max(
+            0,
+            Int(passengerEnd.timeIntervalSince(passengerStart) / 60)
+        )
+        let waiting = max(0, Int(passengerStart.timeIntervalSince(dutyEnd) / 60))
+        let linkedTotal = max(0, Int(dutyEnd.timeIntervalSince(dutyStart) / 60))
+            + waiting
+            + passengerMinutes
+
         let flightMetadata = AssignmentV119Metadata(
             sourceStart: sourceFlightStart,
             sourceEnd: sourceFlightEnd,
@@ -743,7 +752,7 @@ private struct PerspectivePlanTestView: View {
             linkedGroupID: groupID,
             waitingMinutes: nil,
             subsequentDutyReductionMinutes: nil,
-            linkedSequenceMinutes: nil,
+            linkedSequenceMinutes: linkedTotal,
             legs: [
                 AssignmentV119LegMetadata(
                     flightNumber: "SU 1000",
@@ -754,11 +763,6 @@ private struct PerspectivePlanTestView: View {
             ]
         )
 
-        let passengerMinutes = max(
-            0,
-            Int(passengerEnd.timeIntervalSince(passengerStart) / 60)
-        )
-        let waiting = max(0, Int(passengerStart.timeIntervalSince(dutyEnd) / 60))
         let passengerMetadata = AssignmentV119Metadata(
             sourceStart: passengerSourceStart,
             sourceEnd: passengerEnd,
@@ -767,9 +771,7 @@ private struct PerspectivePlanTestView: View {
             linkedGroupID: groupID,
             waitingMinutes: waiting,
             subsequentDutyReductionMinutes: nil,
-            linkedSequenceMinutes: max(0, Int(dutyEnd.timeIntervalSince(dutyStart) / 60))
-                + waiting
-                + passengerMinutes,
+            linkedSequenceMinutes: linkedTotal,
             legs: [
                 AssignmentV119LegMetadata(
                     flightNumber: "SU 1001",
