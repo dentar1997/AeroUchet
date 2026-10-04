@@ -422,8 +422,8 @@ enum PerspectivePlanV119Parser {
             let labels = eventLabels(content)
             guard !labels.title.isEmpty else { return [] }
             let kind = classify(labels.title + " " + (labels.detail ?? ""))
-            let aircraft = kind == .simulator
-                ? aircraftTypes(in: content).first.map(normalizedAircraft)
+            let aircraft: String? = kind == .simulator
+                ? normalizedAircraft(aircraftTypes(in: content).first)
                 : nil
             return [makeItem(
                 id: id + "|ground",
@@ -861,9 +861,6 @@ enum PerspectivePlanV119Parser {
             options: .regularExpression
         )
 
-        // Защищаем дефисы внутри названий аэропортов по общей базе,
-        // а не списком отдельных исключений. Поэтому Ханты-Мансийск,
-        // Горно-Алтайск, Южно-Сахалинск и другие названия не ломают маршрут.
         for airport in AirportDatabase.airports where airport.name.contains("-") {
             protected = protected.replacingOccurrences(
                 of: airport.name,
