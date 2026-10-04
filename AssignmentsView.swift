@@ -325,14 +325,13 @@ private struct ImportedPlanAssignmentsView: View {
                         Text("План из файла пока не импортирован.")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(items) { item in
-                            PlanAssignmentRowV119(
-                                item: item,
-                                status: status(for: item),
-                                statusColor: statusColor(for: item),
-                                conflictText: nil
-                            )
-                        }
+                        PerspectivePlanMonthCardsView(
+                            items: items,
+                            status: status(for:),
+                            statusColor: statusColor(for:)
+                        )
+                        .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
+                        .listRowBackground(Color.clear)
                     }
                 }
             }
@@ -463,6 +462,239 @@ private struct ImportedPlanAssignmentsView: View {
     private func reopenConflictResolution() {
         guard let archive = archiveStore.latestArchive else { return }
         pendingDraft = AssignmentImportDraft(archive: archive)
+    }
+}
+
+
+private struct PerspectivePlanMonthCardsView: View {
+    let items: [AssignmentPlanItem]
+    let status: (AssignmentPlanItem) -> String?
+    let statusColor: (AssignmentPlanItem) -> Color
+
+    private struct MonthSection: Identifiable {
+        let key: Int
+        let primary: [AssignmentPlanItem]
+        let carryovers: [AssignmentPlanItem]
+
+        var id: Int { key }
+    }
+
+    private struct AssignmentGroup: Identifiable {
+        let id: String
+        let items: [AssignmentPlanItem]
+        let start: Date
+    }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            ForEach(monthSections) { month in
+                monthCard(month)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var monthSections: [MonthSection] {
+        var keys = Set(items.map { sourceMonthKey($0) })
+
+        for item in items where item.isAllDay {
+            let includedEnd = moscowCalendar.date(byAdding: .day, value: -1, to: item.end) ?? item.end
+            var cursor = monthStart(for: item.start)
+            let last = monthStart(for: includedEnd)
+            var guardCount = 0
+            while cursor <= last, guardCount < 24 {
+                keys.insert(monthKey(cursor))
+                guard let next = moscowCalendar.date(byAdding: .month, value: 1, to: cursor) else {
+                    break
+                }
+                cursor = next
+                guardCount += 1
+            }
+        }
+
+        return keys.sorted().map { key in
+            let start = dateForMonthKey(key)
+            let end = start.flatMap { moscowCalendar.date(byAdding: .month, value: 1, to: $0) }
+
+            let primary = items
+                .filter { sourceMonthKey($0) == key }
+                .sorted { sourceStart($0) < sourceStart($1) }
+
+            let carryovers: [AssignmentPlanItem]
+            if let start, let end {
+                carryovers = items
+                    .filter { item in
+                        item.isAllDay
+                            && sourceMonthKey(item) < key
+                            && item.start < end
+                            && item.end > start
+                    }
+                    .sorted { $0.start < $1.start }
+            } else {
+                carryovers = []
+            }
+
+            return MonthSection(key: key, primary: primary, carryovers: carryovers)
+        }
+    }
+
+    @ViewBuilder
+    private func monthCard(_ month: MonthSection) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(monthTitle(month.key))
+                    .font(.headline)
+                Spacer()
+                Text("\(month.primary.count) назначений")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !month.carryovers.isEmpty {
+                VStack(spacing: 5) {
+                    ForEach(month.carryovers) { item in
+                        HStack(spacing: 7) {
+                            Image(systemName: "arrow.turn.down.right")
+                            Text(carryoverText(item))
+                                .lineLimit(2)
+                            Spacer(minLength: 0)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.secondary.opacity(0.07))
+                )
+            }
+
+            ForEach(assignmentGroups(month.primary)) { group in
+                VStack(spacing: 0) {
+                    ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                        PlanAssignmentRowV119(
+                            item: item,
+                            status: status(item),
+                            statusColor: statusColor(item),
+                            conflictText: nil,
+                            perspectiveStyle: true
+                        )
+                        .padding(.horizontal, 10)
+
+                        if index < group.items.count - 1 {
+                            Divider()
+                                .padding(.leading, 46)
+                        }
+                    }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.secondary.opacity(0.055))
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.secondary.opacity(0.12), lineWidth: 0.5)
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.secondary.opacity(0.035))
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.secondary.opacity(0.16), lineWidth: 0.7)
+        }
+    }
+
+    private func assignmentGroups(_ source: [AssignmentPlanItem]) -> [AssignmentGroup] {
+        var buckets: [String: [AssignmentPlanItem]] = [:]
+        var order: [String] = []
+
+        for item in source.sorted(by: { sourceStart($0) < sourceStart($1) }) {
+            let linkedID = AssignmentV119MetadataCodec.metadata(from: item.detail)?.linkedGroupID
+            let key = linkedID ?? "item|\(item.id)"
+            if buckets[key] == nil {
+                buckets[key] = []
+                order.append(key)
+            }
+            buckets[key, default: []].append(item)
+        }
+
+        return order.compactMap { key in
+            guard let values = buckets[key], !values.isEmpty else { return nil }
+            let sorted = values.sorted { sourceStart($0) < sourceStart($1) }
+            return AssignmentGroup(
+                id: key,
+                items: sorted,
+                start: sourceStart(sorted[0])
+            )
+        }
+        .sorted { $0.start < $1.start }
+    }
+
+    private func sourceStart(_ item: AssignmentPlanItem) -> Date {
+        AssignmentV119MetadataCodec.metadata(from: item.detail)?.sourceStart ?? item.start
+    }
+
+    private func sourceMonthKey(_ item: AssignmentPlanItem) -> Int {
+        monthKey(sourceStart(item))
+    }
+
+    private func monthKey(_ date: Date) -> Int {
+        let parts = moscowCalendar.dateComponents([.year, .month], from: date)
+        return (parts.year ?? 0) * 100 + (parts.month ?? 0)
+    }
+
+    private func monthStart(for date: Date) -> Date {
+        let parts = moscowCalendar.dateComponents([.year, .month], from: date)
+        return moscowCalendar.date(
+            from: DateComponents(
+                timeZone: moscowTimeZone,
+                year: parts.year,
+                month: parts.month,
+                day: 1
+            )
+        ) ?? date
+    }
+
+    private func dateForMonthKey(_ key: Int) -> Date? {
+        let year = key / 100
+        let month = key % 100
+        return moscowCalendar.date(
+            from: DateComponents(
+                timeZone: moscowTimeZone,
+                year: year,
+                month: month,
+                day: 1
+            )
+        )
+    }
+
+    private func monthTitle(_ key: Int) -> String {
+        guard let date = dateForMonthKey(key) else { return String(key) }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "LLLL yyyy"
+        let text = formatter.string(from: date)
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    private func carryoverText(_ item: AssignmentPlanItem) -> String {
+        let includedEnd = moscowCalendar.date(byAdding: .day, value: -1, to: item.end) ?? item.end
+        return "\(item.title) · продолжение до \(fullDate(includedEnd))"
+    }
+
+    private func fullDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "dd.MM.yyyy"
+        return formatter.string(from: date)
     }
 }
 
