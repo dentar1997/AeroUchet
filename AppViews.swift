@@ -1586,8 +1586,6 @@ struct DutyDetailView: View {
             editableLegNumber(draft[index], index: index)
         )
         guard !number.isEmpty else { return }
-        draft[index].legNumber = number
-        draft[index].flightNumber = number
 
         let previousEnd = index > 0 ? times(for: draft[index - 1]).engineOff : nil
         let reference = previousEnd ?? times(for: draft[index]).engineOn
