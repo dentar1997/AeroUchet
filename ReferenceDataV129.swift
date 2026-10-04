@@ -213,7 +213,7 @@ struct FlightScheduleEntryV129: Identifiable, Codable, Hashable {
 
     var identityKey: String {
         [
-            flightNumber,
+            FlightScheduleStoreV129.normalizedFlightNumber(flightNumber),
             FlightScheduleStoreV129.dayKey(validFrom),
             FlightScheduleStoreV129.dayKey(validTo),
             operatingWeekdays.map(String.init).joined(separator: ","),
@@ -453,7 +453,7 @@ final class FlightScheduleStoreV129: ObservableObject {
 
         if let slash = upper.firstIndex(of: "/") {
             let value = String(upper[..<slash]).filter(\.isLetter)
-            if value.count == 3 { return value }
+            if value.count == 3 { return AirportDatabase.airport(for: value)?.iata ?? value }
         }
 
         if let regex = try? NSRegularExpression(pattern: #"\(([A-Z]{3})(?:/[A-Z0-9]+)?\)"#),
@@ -462,11 +462,12 @@ final class FlightScheduleStoreV129: ObservableObject {
                 range: NSRange(location: 0, length: (upper as NSString).length)
            ),
            match.numberOfRanges >= 2 {
-            return (upper as NSString).substring(with: match.range(at: 1))
+            let value = (upper as NSString).substring(with: match.range(at: 1))
+            return AirportDatabase.airport(for: value)?.iata ?? value
         }
 
         let letters = upper.filter(\.isLetter)
-        if letters.count == 3 { return letters }
+        if letters.count == 3 { return AirportDatabase.airport(for: letters)?.iata ?? letters }
 
         let byName = AirportDatabase.airports.filter { airport in
             airport.name.caseInsensitiveCompare(trimmed) == .orderedSame
