@@ -435,7 +435,7 @@ final class FlightScheduleStoreV129: ObservableObject {
         return withoutRoute.count == 1 ? withoutRoute[0] : nil
     }
 
-    static func normalizedFlightNumber(_ raw: String) -> String {
+    nonisolated static func normalizedFlightNumber(_ raw: String) -> String {
         let digits = raw.uppercased()
             .replacingOccurrences(of: "SU", with: "")
             .filter(\.isNumber)
