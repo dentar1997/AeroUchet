@@ -277,10 +277,8 @@ final class ProductionCalendarCache:
             )
             
         } catch {
-            
-            print(
-                "Ошибка загрузки базы производственных календарей:",
-                error
+            StorageSafety.preserveUnreadable(
+                data, key: storageKey, title: "Производственные календари", error: error
             )
             
             

@@ -142,6 +142,7 @@ enum PortalFlightHistory {
                 workStart: formatClock(dates[0]), engineOn: formatClock(dates[1]),
                 takeoff: formatClock(dates[2]), landing: formatClock(dates[3]),
                 engineOff: formatClock(dates[4]), portalTimes: times,
+                portalKey: FlightLeg.portalKey(for: times),
                 assignmentNumber: text(4), scheduleType: schedule
             ))
         }

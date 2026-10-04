@@ -256,7 +256,9 @@ final class FlightNormStore: ObservableObject {
             versions = try JSONDecoder().decode([FlightNormVersion].self, from: data)
             sortVersions()
         } catch {
-            print("Ошибка загрузки нормативов:", error)
+            StorageSafety.preserveUnreadable(
+                data, key: storageKey, title: "Нормативы", error: error
+            )
         }
     }
 }

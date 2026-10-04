@@ -68,8 +68,9 @@ final class AssignmentImportArchiveStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode(AssignmentImportArchive.self, from: data) else {
+        guard let decoded = StorageSafety.decode(
+            AssignmentImportArchive.self, key: key, title: "Решения конфликтов импорта"
+        ) else {
             return
         }
         latestArchive = decoded

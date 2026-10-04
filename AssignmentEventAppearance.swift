@@ -338,11 +338,9 @@ final class AssignmentAppearanceStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
-              let decoded = try? JSONDecoder().decode(
-                [String: AssignmentIconStyle].self,
-                from: data
-              ) else {
+        guard let decoded = StorageSafety.decode(
+            [String: AssignmentIconStyle].self, key: defaultsKey, title: "Настройка событий"
+        ) else {
             return
         }
         styles = decoded

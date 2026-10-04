@@ -505,9 +505,7 @@ struct FlightsView: View {
                     showImportResult = true
                 }
             } message: {
-                let known = Set(store.flights.map { $0.historyKey })
-                let unique = Set(pendingFlights.map { $0.historyKey })
-                Text("\(verificationStatus) В файле \(pendingFlights.count) рейсов, новых: \(unique.subtracting(known).count).")
+                Text("\(verificationStatus) В файле \(pendingFlights.count) рейсов, новых: \(store.countNewImported(pendingFlights)).")
             }
             .alert("История рейсов", isPresented: $showImportResult) {
                 Button("OK", role: .cancel) { }
