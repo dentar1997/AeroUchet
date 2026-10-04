@@ -27,7 +27,8 @@ enum DutyAutofillV129 {
         let store = FlightScheduleStoreV129.shared
         var candidates: [String: FlightScheduleMatchV129] = [:]
 
-        for offset in -1...1 {
+        let offsets = notBefore == nil ? [0] : [0, 1]
+        for offset in offsets {
             guard let day = moscowCalendar.date(
                 byAdding: .day,
                 value: offset,
@@ -47,6 +48,9 @@ enum DutyAutofillV129 {
         var values = Array(candidates.values)
         if let notBefore {
             values = values.filter { $0.engineOn >= notBefore.addingTimeInterval(-5 * 60) }
+        }
+        if departureHint == nil && arrivalHint == nil && values.count != 1 {
+            return nil
         }
         return values.min {
             let left = abs($0.engineOn.timeIntervalSince(referenceDate))
@@ -99,8 +103,24 @@ enum DutyAutofillV129 {
 
         if let scheduleType = AircraftFamilyV129.normalized(match.entry.rawAircraftCode) {
             leg.aircraft = scheduleType.rawValue
+            leg.registration = aircraftReference(for: match)?.registration ?? "RA-"
         }
         return leg
+    }
+
+    static func aircraftReference(for match: FlightScheduleMatchV129) -> AircraftReferenceV129? {
+        guard let family = AircraftFamilyV129.normalized(match.entry.rawAircraftCode) else {
+            return nil
+        }
+        let seed = [
+            FlightScheduleStoreV129.normalizedFlightNumber(match.entry.flightNumber),
+            FlightScheduleStoreV129.dayKey(match.operatingDateUTC),
+            match.entry.departure,
+            match.entry.arrival,
+            match.entry.rawAircraftCode,
+            match.entry.configuration ?? ""
+        ].joined(separator: "|")
+        return AircraftReferenceStoreV129.shared.stableAircraft(for: family, seed: seed)
     }
 
     static func applyingAircraftReference(to source: FlightLeg) -> FlightLeg {
@@ -364,14 +384,11 @@ enum PerspectiveDutyBuilderV129 {
                 ? engineOff.addingTimeInterval(30 * 60)
                 : engineOff
 
-            let sourceAircraft = planLeg.aircraft ?? match.entry.rawAircraftCode
-            let reference = aircraftReference(
-                rawAircraft: sourceAircraft,
-                itemID: itemID + "|\(index)"
-            )
+            let sourceAircraft = match.entry.rawAircraftCode
+            let reference = DutyAutofillV129.aircraftReference(for: match)
             let aircraft = reference?.type.rawValue
                 ?? AircraftFamilyV129.display(sourceAircraft.replacingOccurrences(of: "-", with: ""))
-            let registration = reference?.registration ?? ""
+            let registration = reference?.registration ?? "RA-"
             let number = DutyAutofillV129.normalizedFlightNumber(planLeg.flightNumber)
             let times = PortalFlightTimes(
                 workStart: workStart,
@@ -405,28 +422,6 @@ enum PerspectiveDutyBuilderV129 {
             )
         }
         return FlightDuty(id: UUID(), legs: legs)
-    }
-
-    private static func aircraftReference(
-        rawAircraft: String,
-        itemID: String
-    ) -> AircraftReferenceV129? {
-        guard let family = AircraftFamilyV129.normalized(rawAircraft) else { return nil }
-        let store = AircraftReferenceStoreV129.shared
-
-        if family == .a320 || family == .a320S,
-           let tarasov = store.aircraft(for: "73772") {
-            return tarasov
-        }
-
-        let candidates = store.aircraft
-            .filter { $0.type == family }
-            .sorted { $0.registration < $1.registration }
-        guard !candidates.isEmpty else { return nil }
-        let seed = itemID.utf8.reduce(UInt64(1469598103934665603)) { partial, byte in
-            (partial ^ UInt64(byte)) &* 1099511628211
-        }
-        return candidates[Int(seed % UInt64(candidates.count))]
     }
 
     private static func shortDate(_ date: Date) -> String {

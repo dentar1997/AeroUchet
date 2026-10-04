@@ -313,6 +313,7 @@ struct PlanAssignmentRowV119: View {
 
     private func legText(_ leg: DisplayLeg) -> String {
         var parts = [leg.flightNumber]
+        var displayedAircraft = leg.aircraft
         if perspectiveStyle,
            !scheduleStore.entries.isEmpty,
            let match = PerspectiveDutyBuilderV129.scheduleDisplay(
@@ -330,17 +331,31 @@ struct PlanAssignmentRowV119: View {
                 terminal: match.entry.arrivalTerminal
             )
             parts.append("\(departure) → \(arrival)")
+            displayedAircraft = AircraftFamilyV129.display(match.entry.rawAircraftCode)
         } else if let departure = leg.departure,
                   let arrival = leg.arrival {
             parts.append("\(departure) → \(arrival)")
         }
-        if let aircraft = leg.aircraft, !aircraft.isEmpty {
+        if let aircraft = displayedAircraft, !aircraft.isEmpty {
             parts.append(AircraftFamilyV129.display(aircraft))
         }
         return parts.joined(separator: " · ")
     }
 
     private var displayedFlightMinutes: Int? {
+        if perspectiveStyle, !scheduleStore.entries.isEmpty, !displayLegs.isEmpty {
+            let values = displayLegs.compactMap { leg in
+                PerspectiveDutyBuilderV129.scheduleDisplay(
+                    flightNumber: leg.flightNumber,
+                    date: metadata?.sourceStart ?? item.start,
+                    departureHint: leg.departure,
+                    arrivalHint: leg.arrival
+                )?.entry.flightMinutes
+            }
+            if values.count == displayLegs.count {
+                return values.reduce(0, +)
+            }
+        }
         if let value = item.plannedFlightMinutes {
             return value
         }
@@ -503,8 +518,7 @@ struct PlanAssignmentRowV119: View {
     }
 
     private func displayFlightNumber(_ value: String) -> String {
-        let digits = value.filter(\.isNumber)
-        return digits.isEmpty ? value : digits
+        FlightScheduleStoreV129.displayFlightNumber(value)
     }
 
     private func expandAirport(_ value: String) -> String {

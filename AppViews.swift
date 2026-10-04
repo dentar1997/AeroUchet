@@ -1564,7 +1564,7 @@ struct DutyDetailView: View {
         let formatted = formattedRegistration(rawValue)
         guard formatted.hasPrefix("RA-") else { return false }
         let suffix = formatted.dropFirst(3)
-        return !suffix.isEmpty && suffix.allSatisfy(\.isNumber)
+        return suffix.count <= 5 && suffix.allSatisfy(\.isNumber)
     }
 
     private func handleEditorBlur(_ field: DutyFocusedField?) {
@@ -1604,13 +1604,17 @@ struct DutyDetailView: View {
             )
         }
         guard let match else { return }
-        draft[index] = DutyAutofillV129.applyingSchedule(
+        let enteredNumber = editableLegNumber(draft[index], index: index)
+        var updated = DutyAutofillV129.applyingSchedule(
             to: draft[index],
             match: match,
             index: index,
             totalCount: draft.count,
             previousEngineOff: previousEnd
         )
+        updated.legNumber = enteredNumber
+        updated.flightNumber = enteredNumber
+        draft[index] = updated
     }
 
     private func cycleAircraftType(_ index: Int) {
@@ -1627,7 +1631,7 @@ struct DutyDetailView: View {
         let current = AircraftFamilyV129.normalized(draft[index].aircraft)
         let hasRegistration = draft[index].registration.filter(\.isNumber).count == 5
         if hasRegistration, current != type {
-            draft[index].registration = ""
+            draft[index].registration = "RA-"
         }
         draft[index].aircraft = type.rawValue
         focusedField = nil
@@ -2292,7 +2296,7 @@ struct DutyDetailView: View {
     private func flightNumber(_ leg: FlightLeg, index: Int) -> some View {
         let textBinding: Binding<String> = isEditing
             ? legNumberBinding(index)
-            : .constant(editableLegNumber(leg, index: index))
+            : .constant(FlightScheduleStoreV129.displayFlightNumber(editableLegNumber(leg, index: index)))
         let activeBinding: Binding<Bool> = isEditing
             ? focusBinding(.legNumber(index))
             : .constant(false)
@@ -2360,6 +2364,7 @@ struct DutyDetailView: View {
                     restoreValue: original.indices.contains(index)
                         ? registrationComparisonKey(original[index].registration)
                         : staticDigits,
+                    clearOnFirstDelete: true,
                     highlightHorizontalPadding: 0
                 )
             } else {
