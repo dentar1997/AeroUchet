@@ -6,6 +6,7 @@ struct PlanAssignmentRowV119: View {
     var status: String?
     var statusColor: Color = .secondary
     var conflictText: String?
+    var perspectiveStyle = false
 
     @ObservedObject private var appearanceStore = AssignmentAppearanceStore.shared
 
@@ -53,7 +54,7 @@ struct PlanAssignmentRowV119: View {
                         .foregroundStyle(statusColor)
                 }
 
-                if metadata?.linkedGroupID != nil {
+                if metadata?.linkedGroupID != nil, !perspectiveStyle {
                     Label("Связанное событие", systemImage: "link")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -77,6 +78,13 @@ struct PlanAssignmentRowV119: View {
                 if let timeRange {
                     Text(timeRange)
                         .font(.caption.monospacedDigit())
+                        .multilineTextAlignment(.trailing)
+                }
+
+                if let secondaryTimeRange {
+                    Text(secondaryTimeRange)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.trailing)
                 }
 
@@ -144,23 +152,26 @@ struct PlanAssignmentRowV119: View {
             }
 
             Text(passengerCaption)
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(iconStyle.color.color)
+                .font(perspectiveStyle ? .caption : .caption2.weight(.bold))
+                .foregroundStyle(perspectiveStyle ? Color.secondary : iconStyle.color.color)
 
-            if let sourceStart = metadata?.sourceStart,
+            if !perspectiveStyle,
+               let sourceStart = metadata?.sourceStart,
                let sourceEnd = metadata?.sourceEnd {
                 Text("\(clock(sourceStart)) — \(clock(sourceEnd))")
                     .font(.caption.monospacedDigit())
             }
 
-            if let sourceMinutes = sourcePassengerMinutes,
+            if !perspectiveStyle,
+               let sourceMinutes = sourcePassengerMinutes,
                let movement = metadata?.passengerMovementMinutes {
                 Text(
                     "Перемещение в качестве пассажира: \(timeText(sourceMinutes)) + 0:40 = \(timeText(movement))"
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            } else if let movement = metadata?.passengerMovementMinutes {
+            } else if !perspectiveStyle,
+                      let movement = metadata?.passengerMovementMinutes {
                 Text("Перемещение в качестве пассажира: \(timeText(movement))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -187,10 +198,16 @@ struct PlanAssignmentRowV119: View {
             Text(item.title)
                 .font(.subheadline.weight(.semibold))
 
-            if let detail = AssignmentV119MetadataCodec.humanDetail(item.detail),
-               !detail.isEmpty,
-               detail.caseInsensitiveCompare(item.title) != .orderedSame {
+            if let detail = groundDetail {
                 Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let aircraft = normalizeAircraft(item.aircraft),
+               !aircraft.isEmpty,
+               eventType == .simulatorCTS {
+                Text("Тип ВС: \(aircraft)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -264,6 +281,9 @@ struct PlanAssignmentRowV119: View {
     }
 
     private var passengerCaption: String {
+        if perspectiveStyle {
+            return "Перемещение в качестве пассажира"
+        }
         let basis = metadata?.passengerBasis?.uppercased() ?? "ПО ЗАДАНИЮ"
         return "ПЕРЕЛЁТ ПАССАЖИРОМ \(basis)"
     }
@@ -276,8 +296,28 @@ struct PlanAssignmentRowV119: View {
         return max(0, Int(sourceEnd.timeIntervalSince(sourceStart) / 60))
     }
 
+    private var groundDetail: String? {
+        guard let raw = AssignmentV119MetadataCodec.humanDetail(item.detail) else {
+            return nil
+        }
+        let aircraft = normalizeAircraft(item.aircraft)?.uppercased()
+        let lines = raw
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { line in
+                guard let aircraft else { return true }
+                return normalizeAircraft(line)?.uppercased() != aircraft
+            }
+            .filter { $0.caseInsensitiveCompare(item.title) != .orderedSame }
+        let value = lines.joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
     private var shouldShowGroundDuration: Bool {
-        !item.isAllDay
+        guard !perspectiveStyle else { return false }
+        return !item.isAllDay
             && eventType != .dayOff
             && !item.isFlightLike
             && item.durationMinutes > 0
@@ -296,8 +336,8 @@ struct PlanAssignmentRowV119: View {
             return "\(fullDate(item.start)) — \(fullDate(includedEnd))"
         }
 
-        let start = displayIntervalStart
-        let end = displayIntervalEnd
+        let start = primaryIntervalStart
+        let end = primaryIntervalEnd
         if moscowCalendar.isDate(start, inSameDayAs: end) {
             return fullDate(start)
         }
@@ -306,6 +346,13 @@ struct PlanAssignmentRowV119: View {
 
     private var timeRange: String? {
         guard !item.isAllDay else { return nil }
+        if perspectiveStyle,
+           item.isFlightLike,
+           metadata?.sourceStart != nil,
+           metadata?.sourceEnd != nil {
+            return "\(clock(primaryIntervalStart)) — \(clock(primaryIntervalEnd))"
+        }
+
         // Для пассажирского перемещения исходное время вылета/прилёта уже
         // показано в теле карточки. Справа оставляем только дату, чтобы не
         // дублировать расчётное начало за 40 минут до вылета.
@@ -314,10 +361,30 @@ struct PlanAssignmentRowV119: View {
            metadata?.sourceEnd != nil {
             return nil
         }
-        return "\(clock(displayIntervalStart)) — \(clock(displayIntervalEnd))"
+        return "\(clock(primaryIntervalStart)) — \(clock(primaryIntervalEnd))"
     }
 
-    private var displayIntervalStart: Date {
+    private var secondaryTimeRange: String? {
+        guard perspectiveStyle,
+              !item.isAllDay,
+              item.isFlightLike,
+              metadata?.sourceStart != nil,
+              metadata?.sourceEnd != nil else {
+            return nil
+        }
+
+        if item.kind == .flight {
+            return "Полётная смена: \(compactRange(item.start, item.end))"
+        }
+        return "Перемещение: \(compactRange(item.start, item.end))"
+    }
+
+    private var primaryIntervalStart: Date {
+        if perspectiveStyle,
+           item.isFlightLike,
+           let sourceStart = metadata?.sourceStart {
+            return sourceStart
+        }
         if item.kind == .passenger,
            let sourceStart = metadata?.sourceStart {
             return sourceStart
@@ -325,7 +392,12 @@ struct PlanAssignmentRowV119: View {
         return item.start
     }
 
-    private var displayIntervalEnd: Date {
+    private var primaryIntervalEnd: Date {
+        if perspectiveStyle,
+           item.isFlightLike,
+           let sourceEnd = metadata?.sourceEnd {
+            return sourceEnd
+        }
         if item.kind == .passenger,
            let sourceEnd = metadata?.sourceEnd {
             return sourceEnd
@@ -333,11 +405,26 @@ struct PlanAssignmentRowV119: View {
         return item.end
     }
 
+    private func compactRange(_ start: Date, _ end: Date) -> String {
+        if moscowCalendar.isDate(start, inSameDayAs: end) {
+            return "\(clock(start)) — \(clock(end))"
+        }
+        return "\(shortDate(start)) \(clock(start)) — \(shortDate(end)) \(clock(end))"
+    }
+
     private func fullDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ru_RU")
         formatter.timeZone = moscowTimeZone
         formatter.dateFormat = "dd.MM.yyyy"
+        return formatter.string(from: date)
+    }
+
+    private func shortDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "dd.MM"
         return formatter.string(from: date)
     }
 
