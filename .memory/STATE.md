@@ -1,13 +1,13 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 04.10.2026 09:21 МСК · Claude. Обновлять при каждом изменении положения дел (см. [README.md](README.md), раздел 3).
+**Обновлено:** 04.10.2026 09:25 МСК · Claude. Обновлять при каждом изменении положения дел (см. [README.md](README.md), раздел 3).
 Перед работой с кодом сверить с живым `main`: этот файл мог отстать.
 
 ## Последние записи журнала
 <!-- 3 самых новых, новое сверху. Обновляет каждый ИИ после своей записи. -->
+- [2026-10-04_0925_claude_odna-instrukciya.md](log/2026-10-04_0925_claude_odna-instrukciya.md)
 - [2026-10-04_0921_claude_startovoe-soobshchenie.md](log/2026-10-04_0921_claude_startovoe-soobshchenie.md)
 - [2026-10-04_0915_claude_proverka-v125-i-voprosy.md](log/2026-10-04_0915_claude_proverka-v125-i-voprosy.md)
-- [2026-10-04_0906_claude_pr125-i-zashchita-dannyh.md](log/2026-10-04_0906_claude_pr125-i-zashchita-dannyh.md)
 
 ## Код
 - **`AppVersion` = 125** (04.10, автоверсия). С v122 номер поднимает автоматическая проверка после каждого изменения `.swift` в `main`; в `AppVersion.swift` — хеш, PR и дата.
