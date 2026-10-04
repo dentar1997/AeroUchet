@@ -1,0 +1,32 @@
+name: v130 patch
+
+on:
+  push:
+    branches:
+      - chatgpt/v130-live-edit-perspective
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v130-live-edit-perspective
+          fetch-depth: 0
+      - name: Apply v130 patch
+        run: python3 scripts/v130_patch.py
+      - name: Commit source changes
+        run: |
+          git config user.name "chatgpt-v130"
+          git config user.email "actions@users.noreply.github.com"
+          git add ReferenceDataV129.swift AssignmentPlan.swift PerspectivePlanV119.swift PlanAssignmentRowV119.swift AssignmentsView.swift AppViews.swift
+          if git diff --cached --quiet; then
+            echo "No source changes"
+            exit 0
+          fi
+          git commit -m "v130: live-автоподстановка и доработка перспективного плана"
+          git push origin HEAD:chatgpt/v130-live-edit-perspective
