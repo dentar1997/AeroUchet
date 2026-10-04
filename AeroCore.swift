@@ -91,6 +91,9 @@ struct FlightLeg: Identifiable, Codable, Equatable {
     var landing: String
     var engineOff: String
     var portalTimes: PortalFlightTimes?
+    /// Ключ строки из выгрузки портала. Не меняется при правке времени лега,
+    /// поэтому повторный импорт .xls узнаёт исправленный лег и не дублирует его.
+    var portalKey: String?
     var assignmentNumber: String?
     var legNumber: String?
     var scheduleType: FlightScheduleType?
@@ -111,6 +114,7 @@ struct FlightLeg: Identifiable, Codable, Equatable {
         landing: String,
         engineOff: String,
         portalTimes: PortalFlightTimes? = nil,
+        portalKey: String? = nil,
         assignmentNumber: String? = nil,
         legNumber: String? = nil,
         scheduleType: FlightScheduleType? = nil,
@@ -130,6 +134,7 @@ struct FlightLeg: Identifiable, Codable, Equatable {
         self.landing = landing
         self.engineOff = engineOff
         self.portalTimes = portalTimes
+        self.portalKey = portalKey
         self.assignmentNumber = assignmentNumber
         self.legNumber = legNumber
         self.scheduleType = scheduleType
@@ -699,19 +704,64 @@ final class AppStore: ObservableObject {
     }
     
     
-    func importFlights(_ candidates: [FlightLeg]) -> (added: Int, updated: Int) {
-        var updatedFlights = flights
-        var existing: [String: Int] = [:]
-        for (index, flight) in flights.enumerated() {
-            existing[flight.historyKey] = index
+    /// Сопоставляет строки выгрузки портала с уже сохранёнными легами.
+    /// 1) по ключу портала; 2) для легов, исправленных до появления `portalKey`, —
+    /// по номеру задания и рейса лега рядом по времени (D08), при равенстве — тот,
+    /// у которого совпадает маршрут. Каждый сохранённый лег используется один раз.
+    private func matchImported(_ candidates: [FlightLeg]) -> [Int?] {
+        var byKey: [String: Int] = [:]
+        for (index, flight) in flights.enumerated() { byKey[flight.historyKey] = index }
+        var claimed = Set<Int>()
+        var result = [Int?](repeating: nil, count: candidates.count)
+        for (position, candidate) in candidates.enumerated() {
+            if let index = byKey[candidate.historyKey], claimed.insert(index).inserted {
+                result[position] = index
+            }
         }
-        var known = Set(existing.keys)
+        for (position, candidate) in candidates.enumerated() where result[position] == nil {
+            guard let assignment = candidate.assignmentNumber, !assignment.isEmpty,
+                  let leg = candidate.legNumber,
+                  let start = candidate.portalTimes?.workStart else { continue }
+            let options = flights.indices.filter { index in
+                let saved = flights[index]
+                guard !claimed.contains(index),
+                      saved.assignmentNumber == assignment,
+                      saved.legNumber == leg,
+                      let savedStart = saved.portalTimes?.workStart else { return false }
+                return abs(savedStart.timeIntervalSince(start)) < 48 * 3600
+            }
+            let sameRoute = options.first {
+                flights[$0].departure == candidate.departure && flights[$0].arrival == candidate.arrival
+            }
+            if let index = sameRoute ?? (options.count == 1 ? options[0] : nil) {
+                claimed.insert(index)
+                result[position] = index
+            }
+        }
+        return result
+    }
+
+    func countNewImported(_ candidates: [FlightLeg]) -> Int {
+        let matches = matchImported(candidates)
+        var seen = Set<String>()
+        return candidates.indices.filter { position in
+            seen.insert(candidates[position].historyKey).inserted && matches[position] == nil
+        }.count
+    }
+
+    func importFlights(_ candidates: [FlightLeg]) -> (added: Int, updated: Int) {
+        let matches = matchImported(candidates)
+        var updatedFlights = flights
+        var known = Set(flights.map { $0.historyKey })
         var incoming: [FlightLeg] = []
         var refreshed = 0
-        for candidate in candidates {
+        for (position, candidate) in candidates.enumerated() {
             let key = candidate.historyKey
-            if let index = existing[key], updatedFlights[index].portalTimes != nil {
+            if let index = matches[position] {
+                known.insert(key)
+                guard updatedFlights[index].portalTimes != nil else { continue }
                 var saved = updatedFlights[index]
+                if saved.portalKey == nil, candidate.portalTimes != nil { saved.portalKey = key }
                 if saved.assignmentNumber == nil { saved.assignmentNumber = candidate.assignmentNumber }
                 if saved.legNumber == nil { saved.legNumber = candidate.legNumber }
                 if saved.scheduleType == nil { saved.scheduleType = candidate.scheduleType }
@@ -961,12 +1011,9 @@ final class AppStore: ObservableObject {
             return true
             
         } catch {
-            
-            print(
-                "ÐÑÐ¸Ð±ÐºÐ° Ð·Ð°Ð³ÑÑÐ·ÐºÐ¸ ÑÐµÐ¹ÑÐ¾Ð²:",
-                error
+            StorageSafety.preserveUnreadable(
+                data, key: flightsKey, title: "История рейсов", error: error
             )
-            
             return false
         }
     }
@@ -999,12 +1046,9 @@ final class AppStore: ObservableObject {
             return true
             
         } catch {
-            
-            print(
-                "ÐÑÐ¸Ð±ÐºÐ° Ð·Ð°Ð³ÑÑÐ·ÐºÐ¸ Ð¿Ð»Ð°Ð½Ð° ÑÐ°Ð±Ð¾Ñ:",
-                error
+            StorageSafety.preserveUnreadable(
+                data, key: workEventsKey, title: "План работ", error: error
             )
-            
             return false
         }
     }
@@ -1182,12 +1226,17 @@ func makeTimeline(
 
 
 extension FlightLeg {
+    static func portalKey(for source: PortalFlightTimes) -> String {
+        "portal|" + [source.workStart, source.engineOn, source.takeoff,
+                     source.landing, source.engineOff, source.workEnd]
+            .map { String(Int($0.timeIntervalSince1970 / 60)) }
+            .joined(separator: "|")
+    }
+
     var historyKey: String {
+        if let portalKey { return portalKey }
         if let source = portalTimes {
-            return "portal|" + [source.workStart, source.engineOn, source.takeoff,
-                                source.landing, source.engineOff, source.workEnd]
-                .map { String(Int($0.timeIntervalSince1970 / 60)) }
-                .joined(separator: "|")
+            return FlightLeg.portalKey(for: source)
         }
         let t = timeline
         return [flightNumber, departure, arrival, registration,

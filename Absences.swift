@@ -350,10 +350,8 @@ final class AbsenceStore:
                 )
             
         } catch {
-            
-            print(
-                "Ошибка загрузки отсутствий:",
-                error
+            StorageSafety.preserveUnreadable(
+                data, key: storageKey, title: "Отсутствия", error: error
             )
         }
     }

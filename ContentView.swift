@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var absenceStore = AbsenceStore()
     @StateObject private var calendarSync = ProductionCalendarSyncModel()
     @StateObject private var planStore = AssignmentPlanStore()
+    @State private var storageNotices: [String] = []
 
     var body: some View {
         TabView {
@@ -60,5 +61,24 @@ struct ContentView: View {
         }
         .environmentObject(store)
         .environmentObject(planStore)
+        .onAppear {
+            storageNotices = StorageSafety.pendingNotices()
+        }
+        .alert(
+            "Данные не прочитались",
+            isPresented: Binding(
+                get: { !storageNotices.isEmpty },
+                set: { shown in
+                    if !shown {
+                        StorageSafety.clearPendingNotices()
+                        storageNotices = []
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Не удалось прочитать: \(storageNotices.joined(separator: ", ")). Копия сохранена в резерв, ничего не удалено. Сообщи Claude до новых изменений.")
+        }
     }
 }

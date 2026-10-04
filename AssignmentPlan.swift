@@ -443,8 +443,9 @@ final class AssignmentPlanStore: ObservableObject {
         let defaults = UserDefaults.standard
         var migratedLegacyPlan = false
 
-        if let data = defaults.data(forKey: itemsKey),
-           let decoded = try? JSONDecoder().decode([AssignmentPlanItem].self, from: data) {
+        if let decoded = StorageSafety.decode(
+            [AssignmentPlanItem].self, key: itemsKey, title: "Назначения"
+        ) {
             items = decoded
         } else {
             let legacyData = defaults.data(forKey: legacyV2ItemsKey)
