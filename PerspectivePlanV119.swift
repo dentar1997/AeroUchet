@@ -729,9 +729,11 @@ enum PerspectivePlanV119Parser {
                 rightMeta.waitingMinutes = gapMinutes > 0 ? gapMinutes : nil
                 let passengerMinutes = rightMeta.passengerMovementMinutes
                     ?? items[index + 1].durationMinutes
-                rightMeta.linkedSequenceMinutes = items[index].durationMinutes
+                let total = items[index].durationMinutes
                     + gapMinutes
                     + passengerMinutes
+                leftMeta.linkedSequenceMinutes = total
+                rightMeta.linkedSequenceMinutes = total
             }
 
             items[index].detail = AssignmentV119MetadataCodec.replacingMetadata(
@@ -760,7 +762,7 @@ enum PerspectivePlanV119Parser {
         let title = canonicalTitle(first)
         let detail = lines.dropFirst()
             .filter { normalizedText($0) != normalizedText(title) }
-            .joined(separator: "\n")
+            .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return (title, detail.isEmpty ? nil : detail)
     }
@@ -842,15 +844,20 @@ enum PerspectivePlanV119Parser {
     private static func routeLine(in text: String) -> String? {
         text.components(separatedBy: .newlines).first { raw in
             let line = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            let lower = line.lowercased()
-            return line.contains("-")
+            let normalizedLine = line.replacingOccurrences(
+                of: #"[‐‑‒–—]"#,
+                with: "-",
+                options: .regularExpression
+            )
+            let lower = normalizedLine.lowercased()
+            return normalizedLine.contains("-")
                 && !lower.contains("su")
                 && !lower.contains("a-3")
                 && !lower.contains("a3")
                 && !lower.contains("b-7")
                 && !lower.contains("ч ")
                 && !lower.contains("планируем")
-                && regex(in: line, pattern: #"\b\d{1,2}:\d{2}\b"#).isEmpty
+                && regex(in: normalizedLine, pattern: #"\b\d{1,2}:\d{2}\b"#).isEmpty
         }
     }
 
@@ -860,11 +867,27 @@ enum PerspectivePlanV119Parser {
             with: "-",
             options: .regularExpression
         )
+        protected = protected.replacingOccurrences(
+            of: #"\s*-\s*"#,
+            with: "-",
+            options: .regularExpression
+        )
 
         for airport in AirportDatabase.airports where airport.name.contains("-") {
+            let airportName = airport.name
+                .replacingOccurrences(
+                    of: #"[‐‑‒–—]"#,
+                    with: "-",
+                    options: .regularExpression
+                )
+                .replacingOccurrences(
+                    of: #"\s*-\s*"#,
+                    with: "-",
+                    options: .regularExpression
+                )
             protected = protected.replacingOccurrences(
-                of: airport.name,
-                with: airport.name.replacingOccurrences(of: "-", with: "§"),
+                of: airportName,
+                with: airportName.replacingOccurrences(of: "-", with: "§"),
                 options: [.caseInsensitive]
             )
         }
