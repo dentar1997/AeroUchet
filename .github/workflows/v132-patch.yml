@@ -1,0 +1,32 @@
+name: v132 patch
+
+on:
+  push:
+    branches:
+      - chatgpt/v132-perspective-performance
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: "${{ github.event.head_commit.message != 'v132: apply patch' }}"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v132-perspective-performance
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Apply patch
+        run: python scripts/v132_patch.py
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add AssignmentsView.swift PlanAssignmentRowV119.swift PerspectiveDutyBridgeV129.swift
+          git diff --cached --quiet && exit 0
+          git commit -m 'v132: apply patch'
+          git push
