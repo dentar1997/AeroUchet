@@ -1,0 +1,38 @@
+name: v130 ci fix
+
+on:
+  push:
+    branches:
+      - chatgpt/v130-live-edit-perspective
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/v130-live-edit-perspective
+          fetch-depth: 0
+      - name: Fix actor isolation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('ReferenceDataV129.swift')
+          s = p.read_text()
+          old = '    static func normalizedFlightNumber(_ raw: String) -> String {'
+          new = '    nonisolated static func normalizedFlightNumber(_ raw: String) -> String {'
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one match, found {s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Commit
+        run: |
+          git config user.name "chatgpt-v130"
+          git config user.email "actions@users.noreply.github.com"
+          git add ReferenceDataV129.swift
+          git commit -m "v130: исправить actor isolation нормализации рейса"
+          git push origin HEAD:chatgpt/v130-live-edit-perspective
