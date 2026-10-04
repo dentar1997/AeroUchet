@@ -1,0 +1,266 @@
+name: Temporary schedule calendar patch
+
+on:
+  push:
+    branches:
+      - fix/schedule-execution-calendar-v133
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/schedule-execution-calendar-v133
+      - name: Patch schedule execution calendar
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('ReferenceDataV129.swift')
+          text = path.read_text()
+
+          old = '''                DatePicker(
+                      "Дата",
+                      selection: $selectedDate,
+                      displayedComponents: .date
+                  )
+                  .labelsHidden()
+                  .datePickerStyle(.compact)
+'''
+          new = '''                if exactSearchNumber != nil,
+                     routeCandidates.count == 1,
+                     let route = routeCandidates.first {
+                      Button {
+                          openExecutionCalendar(for: route)
+                      } label: {
+                          HStack(spacing: 6) {
+                              Image(systemName: "calendar")
+                              Text(selectedDateButtonTitle)
+                                  .font(.subheadline.monospacedDigit())
+                          }
+                      }
+                      .buttonStyle(.bordered)
+                  } else {
+                      DatePicker(
+                          "Дата",
+                          selection: $selectedDate,
+                          displayedComponents: .date
+                      )
+                      .labelsHidden()
+                      .datePickerStyle(.compact)
+                  }
+'''
+          assert text.count(old) == 1, 'top DatePicker block not found uniquely'
+          text = text.replace(old, new, 1)
+
+          old = '''                            Button("Календарь выполнения") {
+                                  let dates = executionDates(for: route.entries)
+                                  calendarRequest = FlightScheduleCalendarRequestV131(
+                                      flightNumber: route.flightNumber,
+                                      departure: route.departure,
+                                      arrival: route.arrival,
+                                      dates: dates
+                                  )
+                              }
+'''
+          new = '''                            Button("Календарь выполнения") {
+                                  openExecutionCalendar(for: route)
+                              }
+'''
+          assert text.count(old) == 1, 'route calendar button block not found uniquely'
+          text = text.replace(old, new, 1)
+
+          old = '''    private var selectedDateTitle: String {
+          let formatter = DateFormatter()
+          formatter.locale = Locale(identifier: "ru_RU")
+          formatter.timeZone = moscowTimeZone
+          formatter.dateFormat = "d MMMM yyyy"
+          return formatter.string(from: selectedDate)
+      }
+'''
+          new = '''    private var selectedDateTitle: String {
+          let formatter = DateFormatter()
+          formatter.locale = Locale(identifier: "ru_RU")
+          formatter.timeZone = moscowTimeZone
+          formatter.dateFormat = "d MMMM yyyy"
+          return formatter.string(from: selectedDate)
+      }
+
+      private var selectedDateButtonTitle: String {
+          let formatter = DateFormatter()
+          formatter.locale = Locale(identifier: "ru_RU")
+          formatter.timeZone = moscowTimeZone
+          formatter.dateFormat = "dd.MM.yyyy"
+          return formatter.string(from: selectedDate)
+      }
+'''
+          assert text.count(old) == 1, 'selectedDateTitle block not found uniquely'
+          text = text.replace(old, new, 1)
+
+          old = '''    private func executionDates(for entries: [FlightScheduleEntryV129]) -> [Date] {
+          var result = Set<Date>()
+'''
+          new = '''    private func openExecutionCalendar(for route: FlightScheduleRouteCandidateV131) {
+          let dates = executionDates(for: route.entries)
+          calendarRequest = FlightScheduleCalendarRequestV131(
+              flightNumber: route.flightNumber,
+              departure: route.departure,
+              arrival: route.arrival,
+              dates: dates,
+              selectedDate: selectedDate
+          )
+      }
+
+      private func executionDates(for entries: [FlightScheduleEntryV129]) -> [Date] {
+          var result = Set<Date>()
+'''
+          assert text.count(old) == 1, 'executionDates start not found uniquely'
+          text = text.replace(old, new, 1)
+
+          old = '''private struct FlightScheduleCalendarRequestV131: Identifiable {
+      let flightNumber: String
+      let departure: String
+      let arrival: String
+      let dates: [Date]
+      var id: String { "\\(FlightScheduleStoreV129.normalizedFlightNumber(flightNumber))|\\(departure)|\\(arrival)" }
+  }
+'''
+          new = '''private struct FlightScheduleCalendarRequestV131: Identifiable {
+      let flightNumber: String
+      let departure: String
+      let arrival: String
+      let dates: [Date]
+      let selectedDate: Date
+      var id: String { "\\(FlightScheduleStoreV129.normalizedFlightNumber(flightNumber))|\\(departure)|\\(arrival)" }
+  }
+'''
+          assert text.count(old) == 1, 'calendar request struct not found uniquely'
+          text = text.replace(old, new, 1)
+
+          old = '''    init(request: FlightScheduleCalendarRequestV131, onSelect: @escaping (Date) -> Void) {
+          self.request = request
+          self.onSelect = onSelect
+          let seed = request.dates.first ?? Date()
+          _month = State(initialValue: Self.monthStart(seed))
+      }
+'''
+          new = '''    init(request: FlightScheduleCalendarRequestV131, onSelect: @escaping (Date) -> Void) {
+          self.request = request
+          self.onSelect = onSelect
+          let selectedMonth = Self.monthStart(request.selectedDate)
+          let firstMonth = request.dates.first.map(Self.monthStart)
+          let lastMonth = request.dates.last.map(Self.monthStart)
+          let seed: Date
+          if let firstMonth, let lastMonth,
+             selectedMonth >= firstMonth,
+             selectedMonth <= lastMonth {
+              seed = request.selectedDate
+          } else {
+              seed = request.dates.first ?? request.selectedDate
+          }
+          _month = State(initialValue: Self.monthStart(seed))
+      }
+'''
+          assert text.count(old) == 1, 'calendar init not found uniquely'
+          text = text.replace(old, new, 1)
+
+          old = '''                    ForEach(Array(monthCells.enumerated()), id: \\.offset) { _, date in
+                          if let date {
+                              let active = executionDay(date)
+                              Button {
+                                  guard active else { return }
+                                  onSelect(date)
+                                  dismiss()
+                              } label: {
+                                  Text(String(moscowCalendar.component(.day, from: date)))
+                                      .font(.subheadline.weight(active ? .semibold : .regular))
+                                      .frame(width: 34, height: 34)
+                                      .background(
+                                          Circle()
+                                              .fill(active ? Color.accentColor.opacity(0.18) : Color.clear)
+                                      )
+                                      .overlay {
+                                          if active {
+                                              Circle().stroke(Color.accentColor, lineWidth: 1)
+                                          }
+                                      }
+                              }
+                              .buttonStyle(.plain)
+                              .foregroundStyle(active ? Color.accentColor : Color.secondary)
+                              .disabled(!active)
+                          } else {
+                              Color.clear.frame(width: 34, height: 34)
+                          }
+                      }
+'''
+          new = '''                    ForEach(Array(monthCells.enumerated()), id: \\.offset) { _, date in
+                          if let date {
+                              let active = executionDay(date)
+                              let selected = selectedDay(date)
+                              Button {
+                                  guard active else { return }
+                                  onSelect(date)
+                                  dismiss()
+                              } label: {
+                                  Text(String(moscowCalendar.component(.day, from: date)))
+                                      .font(.subheadline.weight(active ? .semibold : .regular))
+                                      .frame(width: 34, height: 34)
+                                      .background(
+                                          Circle()
+                                              .fill(
+                                                  selected
+                                                      ? (active ? Color.accentColor : Color.secondary.opacity(0.18))
+                                                      : (active ? Color.accentColor.opacity(0.18) : Color.clear)
+                                              )
+                                      )
+                                      .overlay {
+                                          if active && !selected {
+                                              Circle().stroke(Color.accentColor, lineWidth: 1)
+                                          } else if selected && !active {
+                                              Circle().stroke(Color.secondary, lineWidth: 1)
+                                          }
+                                      }
+                              }
+                              .buttonStyle(.plain)
+                              .foregroundStyle(selected && active ? Color.white : (active ? Color.accentColor : Color.secondary))
+                              .disabled(!active)
+                          } else {
+                              Color.clear.frame(width: 34, height: 34)
+                          }
+                      }
+'''
+          assert text.count(old) == 1, 'calendar day rendering block not found uniquely'
+          text = text.replace(old, new, 1)
+
+          old = '''    private func executionDay(_ date: Date) -> Bool {
+          request.dates.contains { moscowCalendar.isDate($0, inSameDayAs: date) }
+      }
+'''
+          new = '''    private func executionDay(_ date: Date) -> Bool {
+          request.dates.contains { moscowCalendar.isDate($0, inSameDayAs: date) }
+      }
+
+      private func selectedDay(_ date: Date) -> Bool {
+          moscowCalendar.isDate(request.selectedDate, inSameDayAs: date)
+      }
+'''
+          assert text.count(old) == 1, 'executionDay block not found uniquely'
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          Path('.github/workflows/temp-patch-schedule-calendar.yml').unlink()
+          PY
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ReferenceDataV129.swift .github/workflows/temp-patch-schedule-calendar.yml
+          git commit -m "Fix schedule execution calendar"
+          git push origin HEAD:fix/schedule-execution-calendar-v133
