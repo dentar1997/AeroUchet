@@ -4,6 +4,13 @@ import Foundation
 
 @MainActor
 enum DutyAutofillV129 {
+    private enum CachedScheduleMatch {
+        case missing
+        case value(FlightScheduleMatchV129)
+    }
+
+    private static var scheduleMatchCache: [String: CachedScheduleMatch] = [:]
+
     static func normalizedFlightNumber(_ raw: String) -> String {
         let digits = String(raw.filter(\.isNumber).prefix(4))
         guard let number = Int(digits) else { return "" }
@@ -25,8 +32,22 @@ enum DutyAutofillV129 {
         arrivalHint: String? = nil
     ) -> FlightScheduleMatchV129? {
         let store = FlightScheduleStoreV129.shared
-        var candidates: [String: FlightScheduleMatchV129] = [:]
+        let cacheKey = scheduleMatchCacheKey(
+            store: store,
+            flightNumber: flightNumber,
+            referenceDate: referenceDate,
+            notBefore: notBefore,
+            departureHint: departureHint,
+            arrivalHint: arrivalHint
+        )
+        if let cached = scheduleMatchCache[cacheKey] {
+            switch cached {
+            case .missing: return nil
+            case .value(let match): return match
+            }
+        }
 
+        var candidates: [String: FlightScheduleMatchV129] = [:]
         let offsets = notBefore == nil ? [0] : [0, 1]
         for offset in offsets {
             guard let day = moscowCalendar.date(
@@ -50,14 +71,46 @@ enum DutyAutofillV129 {
             values = values.filter { $0.engineOn >= notBefore.addingTimeInterval(-5 * 60) }
         }
         if departureHint == nil && arrivalHint == nil && values.count != 1 {
+            cacheScheduleMatch(nil, for: cacheKey)
             return nil
         }
-        return values.min {
+        let result = values.min {
             let left = abs($0.engineOn.timeIntervalSince(referenceDate))
             let right = abs($1.engineOn.timeIntervalSince(referenceDate))
             if left == right { return $0.engineOn < $1.engineOn }
             return left < right
         }
+        cacheScheduleMatch(result, for: cacheKey)
+        return result
+    }
+
+    private static func scheduleMatchCacheKey(
+        store: FlightScheduleStoreV129,
+        flightNumber: String,
+        referenceDate: Date,
+        notBefore: Date?,
+        departureHint: String?,
+        arrivalHint: String?
+    ) -> String {
+        let generation = Int((store.imports.first?.importedAt.timeIntervalSinceReferenceDate ?? 0).rounded())
+        let referenceMinute = Int((referenceDate.timeIntervalSinceReferenceDate / 60).rounded())
+        let notBeforeMinute = notBefore.map { Int(($0.timeIntervalSinceReferenceDate / 60).rounded()) } ?? -1
+        return [
+            String(store.entries.count),
+            String(generation),
+            normalizedFlightNumber(flightNumber),
+            String(referenceMinute),
+            String(notBeforeMinute),
+            FlightScheduleStoreV129.airportCode(departureHint) ?? "",
+            FlightScheduleStoreV129.airportCode(arrivalHint) ?? ""
+        ].joined(separator: "|")
+    }
+
+    private static func cacheScheduleMatch(_ match: FlightScheduleMatchV129?, for key: String) {
+        if scheduleMatchCache.count > 4096 {
+            scheduleMatchCache.removeAll(keepingCapacity: true)
+        }
+        scheduleMatchCache[key] = match.map(CachedScheduleMatch.value) ?? .missing
     }
 
     static func applyingSchedule(
@@ -202,19 +255,27 @@ enum PerspectiveDutyBuilderV129 {
         let aircraft: String?
     }
 
+    private static var buildCache: [String: Result] = [:]
+
     static func build(item: AssignmentPlanItem) -> Result {
         if let saved = PerspectiveDutyOverrideStoreV130.shared.legs(for: item.id) {
             return .ready(FlightDuty(id: UUID(), legs: saved))
         }
 
-        if let conflict = routeConflict(item: item) {
-            return .routeMismatch(conflict)
+        let key = buildCacheKey(item)
+        if let cached = buildCache[key] { return cached }
+        func finish(_ result: Result) -> Result {
+            if Self.buildCache.count > 1024 {
+                Self.buildCache.removeAll(keepingCapacity: true)
+            }
+            Self.buildCache[key] = result
+            return result
         }
 
         let metadata = AssignmentV119MetadataCodec.metadata(from: item.detail)
         let planLegs = resolvedPlanLegs(item: item, metadata: metadata)
         guard !planLegs.isEmpty else {
-            return .missing("В назначении не удалось определить номера рейсов.")
+            return finish(.missing("В назначении не удалось определить номера рейсов."))
         }
 
         let sourceStart = metadata?.sourceStart ?? item.start
@@ -226,14 +287,30 @@ enum PerspectiveDutyBuilderV129 {
             let depHint = FlightScheduleStoreV129.airportCode(planLeg.departure)
             let arrHint = FlightScheduleStoreV129.airportCode(planLeg.arrival)
             let match: FlightScheduleMatchV129?
+
             if depHint != nil || arrHint != nil {
-                match = DutyAutofillV129.scheduleMatch(
+                if let strict = DutyAutofillV129.scheduleMatch(
                     flightNumber: planLeg.flightNumber,
                     referenceDate: reference,
                     notBefore: previousEnd,
                     departureHint: depHint,
                     arrivalHint: arrHint
-                )
+                ) {
+                    match = strict
+                } else if let plain = DutyAutofillV129.scheduleMatch(
+                    flightNumber: planLeg.flightNumber,
+                    referenceDate: reference,
+                    notBefore: previousEnd
+                ) {
+                    let number = DutyAutofillV129.normalizedFlightNumber(planLeg.flightNumber)
+                    let expected = "\(depHint ?? "?") → \(arrHint ?? "?")"
+                    let actual = "\(plain.entry.departure) → \(plain.entry.arrival)"
+                    return finish(.routeMismatch(
+                        "Рейс \(number): маршрут плана \(expected), в расписании \(actual)"
+                    ))
+                } else {
+                    match = nil
+                }
             } else {
                 match = DutyAutofillV129.scheduleMatch(
                     flightNumber: planLeg.flightNumber,
@@ -243,9 +320,9 @@ enum PerspectiveDutyBuilderV129 {
             }
 
             guard let match else {
-                return .missing(
+                return finish(.missing(
                     "В загруженном расписании не найден рейс \(DutyAutofillV129.normalizedFlightNumber(planLeg.flightNumber)) рядом с \(shortDate(reference))."
-                )
+                ))
             }
             selected.append((planLeg, match))
             previousEnd = match.engineOff
@@ -259,48 +336,31 @@ enum PerspectiveDutyBuilderV129 {
         if let expected = item.plannedFlightMinutes,
            expected > 0,
            expected != duty.flightMinutes {
-            return .mismatch(duty, expected: expected, actual: duty.flightMinutes)
+            return finish(.mismatch(duty, expected: expected, actual: duty.flightMinutes))
         }
-        return .ready(duty)
+        return finish(.ready(duty))
     }
 
     static func routeConflict(item: AssignmentPlanItem) -> String? {
-        let metadata = AssignmentV119MetadataCodec.metadata(from: item.detail)
-        let planLegs = resolvedPlanLegs(item: item, metadata: metadata)
-        guard !planLegs.isEmpty else { return nil }
-
-        let sourceStart = metadata?.sourceStart ?? item.start
-        var previousEnd: Date?
-
-        for planLeg in planLegs {
-            let depHint = FlightScheduleStoreV129.airportCode(planLeg.departure)
-            let arrHint = FlightScheduleStoreV129.airportCode(planLeg.arrival)
-            guard depHint != nil || arrHint != nil else { continue }
-
-            let reference = previousEnd ?? sourceStart
-            if let strict = DutyAutofillV129.scheduleMatch(
-                flightNumber: planLeg.flightNumber,
-                referenceDate: reference,
-                notBefore: previousEnd,
-                departureHint: depHint,
-                arrivalHint: arrHint
-            ) {
-                previousEnd = strict.engineOff
-                continue
-            }
-
-            if let plain = DutyAutofillV129.scheduleMatch(
-                flightNumber: planLeg.flightNumber,
-                referenceDate: reference,
-                notBefore: previousEnd
-            ) {
-                let number = DutyAutofillV129.normalizedFlightNumber(planLeg.flightNumber)
-                let expected = "\(depHint ?? "?") → \(arrHint ?? "?")"
-                let actual = "\(plain.entry.departure) → \(plain.entry.arrival)"
-                return "Рейс \(number): маршрут плана \(expected), в расписании \(actual)"
-            }
+        if case .routeMismatch(let conflict) = build(item: item) {
+            return conflict
         }
         return nil
+    }
+
+    private static func buildCacheKey(_ item: AssignmentPlanItem) -> String {
+        let store = FlightScheduleStoreV129.shared
+        let generation = Int((store.imports.first?.importedAt.timeIntervalSinceReferenceDate ?? 0).rounded())
+        return [
+            String(store.entries.count),
+            String(generation),
+            item.id,
+            String(Int(item.start.timeIntervalSinceReferenceDate.rounded())),
+            String(Int(item.end.timeIntervalSinceReferenceDate.rounded())),
+            item.flightNumber ?? "",
+            item.departure ?? "",
+            item.arrival ?? ""
+        ].joined(separator: "|")
     }
 
     static func scheduleDisplay(

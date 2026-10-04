@@ -290,6 +290,40 @@ private struct ImportedPlanAssignmentsView: View {
         )
     }
 
+    private var perspectiveMonthKeys: [Int] {
+        func key(_ date: Date) -> Int {
+            let parts = moscowCalendar.dateComponents([.year, .month], from: date)
+            return (parts.year ?? 0) * 100 + (parts.month ?? 0)
+        }
+        func sourceStart(_ item: AssignmentPlanItem) -> Date {
+            AssignmentV119MetadataCodec.metadata(from: item.detail)?.sourceStart ?? item.start
+        }
+        func monthStart(_ date: Date) -> Date {
+            let parts = moscowCalendar.dateComponents([.year, .month], from: date)
+            return moscowCalendar.date(from: DateComponents(
+                timeZone: moscowTimeZone,
+                year: parts.year,
+                month: parts.month,
+                day: 1
+            )) ?? date
+        }
+
+        var keys = Set(items.map { key(sourceStart($0)) })
+        for item in items where item.isAllDay {
+            let includedEnd = moscowCalendar.date(byAdding: .day, value: -1, to: item.end) ?? item.end
+            var cursor = monthStart(item.start)
+            let last = monthStart(includedEnd)
+            var guardCount = 0
+            while cursor <= last, guardCount < 24 {
+                keys.insert(key(cursor))
+                guard let next = moscowCalendar.date(byAdding: .month, value: 1, to: cursor) else { break }
+                cursor = next
+                guardCount += 1
+            }
+        }
+        return keys.sorted()
+    }
+
     var body: some View {
         Group {
             List {
@@ -327,14 +361,18 @@ private struct ImportedPlanAssignmentsView: View {
                         Text("План из файла пока не импортирован.")
                             .foregroundStyle(.secondary)
                     } else {
-                        PerspectivePlanMonthCardsView(
-                            items: items,
-                            status: status(for:),
-                            statusColor: statusColor(for:),
-                            onFlightTap: openPerspectiveDuty
-                        )
-                        .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
-                        .listRowBackground(Color.clear)
+                        ForEach(perspectiveMonthKeys, id: \.self) { monthKey in
+                            PerspectivePlanMonthCardsView(
+                                items: items,
+                                onlyMonthKey: monthKey,
+                                status: status(for:),
+                                statusColor: statusColor(for:),
+                                onFlightTap: openPerspectiveDuty
+                            )
+                            .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                        }
                     }
                 }
             }
@@ -507,6 +545,7 @@ private struct ImportedPlanAssignmentsView: View {
 
 private struct PerspectivePlanMonthCardsView: View {
     let items: [AssignmentPlanItem]
+    let onlyMonthKey: Int
     let status: (AssignmentPlanItem) -> String?
     let statusColor: (AssignmentPlanItem) -> Color
     var onFlightTap: ((AssignmentPlanItem) -> Void)? = nil
@@ -535,47 +574,29 @@ private struct PerspectivePlanMonthCardsView: View {
     }
 
     private var monthSections: [MonthSection] {
-        var keys = Set(items.map { sourceMonthKey($0) })
+        let key = onlyMonthKey
+        let start = dateForMonthKey(key)
+        let end = start.flatMap { moscowCalendar.date(byAdding: .month, value: 1, to: $0) }
 
-        for item in items where item.isAllDay {
-            let includedEnd = moscowCalendar.date(byAdding: .day, value: -1, to: item.end) ?? item.end
-            var cursor = monthStart(for: item.start)
-            let last = monthStart(for: includedEnd)
-            var guardCount = 0
-            while cursor <= last, guardCount < 24 {
-                keys.insert(monthKey(cursor))
-                guard let next = moscowCalendar.date(byAdding: .month, value: 1, to: cursor) else {
-                    break
+        let primary = items
+            .filter { sourceMonthKey($0) == key }
+            .sorted { sourceStart($0) < sourceStart($1) }
+
+        let carryovers: [AssignmentPlanItem]
+        if let start, let end {
+            carryovers = items
+                .filter { item in
+                    item.isAllDay
+                        && sourceMonthKey(item) < key
+                        && item.start < end
+                        && item.end > start
                 }
-                cursor = next
-                guardCount += 1
-            }
+                .sorted { $0.start < $1.start }
+        } else {
+            carryovers = []
         }
 
-        return keys.sorted().map { key in
-            let start = dateForMonthKey(key)
-            let end = start.flatMap { moscowCalendar.date(byAdding: .month, value: 1, to: $0) }
-
-            let primary = items
-                .filter { sourceMonthKey($0) == key }
-                .sorted { sourceStart($0) < sourceStart($1) }
-
-            let carryovers: [AssignmentPlanItem]
-            if let start, let end {
-                carryovers = items
-                    .filter { item in
-                        item.isAllDay
-                            && sourceMonthKey(item) < key
-                            && item.start < end
-                            && item.end > start
-                    }
-                    .sorted { $0.start < $1.start }
-            } else {
-                carryovers = []
-            }
-
-            return MonthSection(key: key, primary: primary, carryovers: carryovers)
-        }
+        return [MonthSection(key: key, primary: primary, carryovers: carryovers)]
     }
 
     @ViewBuilder
