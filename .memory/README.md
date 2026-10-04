@@ -82,7 +82,7 @@ Claude, ChatGPT, Copilot и любой другой ИИ работают с **�
 | [UI_RULES.md](UI_RULES.md) | Принятые и отвергнутые решения по интерфейсу | Задача про интерфейс |
 | [FEATURES.md](FEATURES.md) | Путь каждой функции через версии (A1–A15) | Задача касается старой функции |
 | [HISTORY_INDEX.md](HISTORY_INDEX.md) | Все PR и версии со статусом проверки | Нужна версия ↔ PR |
-| [CODE_CHANGES.md](CODE_CHANGES.md) | Сквозная нумерация изменений кода до версий: П001–П171 | Нужно изменение до v58 |
+| [CODE_CHANGES.md](CODE_CHANGES.md) | Сквозная нумерация изменений кода до версий: Pre001–Pre171 | Нужно изменение до v58 |
 | [BACKLOG.md](BACKLOG.md) | Открытые вопросы и задачи на потом | Планирование |
 | [HISTORY.md](HISTORY.md), [LESSONS.md](LESSONS.md) | История по этапам, баги и уроки | По необходимости |
 | [archive/](archive/) | Старые входы: COPILOT_CONTEXT, Workflow-бутстрап, OPTIMIZATION_NOTES | Только для справки |
