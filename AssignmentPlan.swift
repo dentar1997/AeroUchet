@@ -104,10 +104,11 @@ struct AssignmentPlanItem: Identifiable, Codable, Equatable {
             }
         }
 
+        // Номера из разных источников: «SU 0010» (план) и «10» (история) — один рейс (D38).
         return Set(
             values
-                .flatMap { extractFlightNumbers($0) }
-                .map { normalizedFlightNumber($0) }
+                .flatMap { canonicalFlightNumbers(in: $0) }
+                .filter { !$0.isEmpty }
         )
     }
 
@@ -481,8 +482,7 @@ final class AssignmentPlanStore: ObservableObject {
     }
 
     private func saveItems() {
-        guard let data = try? JSONEncoder().encode(items) else { return }
-        UserDefaults.standard.set(data, forKey: itemsKey)
+        StorageSafety.store(items, key: itemsKey, title: "Назначения")
     }
 
     private func saveMetadata() {
@@ -553,20 +553,20 @@ private func isSupersededByHistory(
             return false
         }
 
-        var numbers = extractFlightNumbers(flight.flightNumber)
+        // В истории портала номер без «SU» («1110/1111») — раньше он не распознавался
+        // и выполненный рейс не скрывал плановый (аудит 05.10, п. 19).
+        var numbers = canonicalFlightNumbers(in: flight.flightNumber)
         if let leg = flight.legNumber {
-            numbers.append(contentsOf: extractFlightNumbers(leg))
+            numbers.append(contentsOf: canonicalFlightNumbers(in: leg))
         }
-        let actual = Set(numbers.map(normalizedFlightNumber))
+        let actual = Set(numbers.filter { !$0.isEmpty })
         return !actual.isEmpty && !actual.isDisjoint(with: plannedNumbers)
     }
 }
 
 
 private func normalizedFlightNumber(_ value: String) -> String {
-    let upper = value.uppercased().replacingOccurrences(of: " ", with: "")
-    let withoutSU = upper.hasPrefix("SU") ? String(upper.dropFirst(2)) : upper
-    return withoutSU.filter(\.isNumber)
+    canonicalFlightNumber(value)
 }
 
 
@@ -694,9 +694,20 @@ enum AssignmentPlanImporter {
         guard let startText = event["DTSTART"],
               let endText = event["DTEND"],
               let start = parseICSDate(startText),
-              let end = parseICSDate(endText),
+              var end = parseICSDate(endText),
               end >= start else {
             return nil
+        }
+        // Портал присылает выходные как 00:00:00–23:59:59 со временем, а не как «весь день».
+        // Такое событие считаем событием на весь день (аудит 05.10, п. 13).
+        var isAllDayRange = startText.count == 8 && endText.count == 8
+        if !isAllDayRange, isWholeDays(start: start, end: end) {
+            isAllDayRange = true
+            end = moscowCalendar.date(
+                byAdding: .day,
+                value: 1,
+                to: moscowCalendar.startOfDay(for: end)
+            ) ?? end
         }
 
         let summary = event["SUMMARY"] ?? "Назначение"
@@ -743,7 +754,7 @@ enum AssignmentPlanImporter {
             detail: cleanICSDescription(description, summary: title),
             flightLegs: legs.isEmpty ? nil : legs,
             plannedFlightMinutes: nil,
-            isAllDayRange: startText.count == 8 && endText.count == 8,
+            isAllDayRange: isAllDayRange,
             originMonthKey: nil
         )
     }
@@ -1424,6 +1435,13 @@ enum AssignmentPlanImporter {
             }
         }
         return result
+    }
+
+    /// 00:00 начала суток … 23:59(:59) тех же или следующих суток.
+    private static func isWholeDays(start: Date, end: Date) -> Bool {
+        guard start == moscowCalendar.startOfDay(for: start) else { return false }
+        let parts = moscowCalendar.dateComponents([.hour, .minute], from: end)
+        return parts.hour == 23 && parts.minute == 59 && end > start
     }
 
     private static func parseICSDate(_ value: String) -> Date? {

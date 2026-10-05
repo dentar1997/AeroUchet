@@ -959,7 +959,7 @@ enum PerspectivePlanV119Parser {
     }
 
     private static func normalizedFlight(_ value: String) -> String {
-        value.uppercased().filter(\.isNumber)
+        canonicalFlightNumber(value)
     }
 
     private static func exactTimes(in text: String) -> [String] {

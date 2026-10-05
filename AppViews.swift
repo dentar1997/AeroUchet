@@ -129,7 +129,7 @@ struct HomeView: View {
                                 "Рабочее всего",
                             value:
                                 timeText(
-                                    totals.workMinutes
+                                    seconds: totals.workSeconds
                                 ),
                             icon:
                                 "briefcase.fill"
@@ -153,7 +153,7 @@ struct HomeView: View {
                                 "Рабочее — земля",
                             value:
                                 timeText(
-                                    totals.groundWorkMinutes
+                                    seconds: totals.groundWorkSeconds
                                 ),
                             icon:
                                 "building.2"
@@ -592,7 +592,9 @@ struct FlightsView: View {
     }
 
     private func makeManualDuty() -> FlightDuty {
-        let reference = Date()
+        // Время в заданиях — с точностью до минуты: секунды «сейчас» не берём (аудит 05.10, п. 6).
+        let now = Date()
+        let reference = moscowCalendar.dateInterval(of: .minute, for: now)?.start ?? now
         let assignment = nextManualAssignmentNumber()
         let number = "1110"
         let fallbackEngineOn = moscowCalendar.date(byAdding: .minute, value: 60, to: reference) ?? reference
@@ -1506,8 +1508,12 @@ struct DutyDetailView: View {
             get: { editableLegNumber(draft[index], index: index) },
             set: { raw in
                 let digits = String(raw.filter(\.isNumber).prefix(4))
+                guard digits != editableLegNumber(draft[index], index: index) else { return }
                 draft[index].legNumber = digits
-                draft[index].flightNumber = digits
+                // У лега с портала общий номер задания («1110/1111») — факт, его не переписываем.
+                if !isPortalFact(index) {
+                    draft[index].flightNumber = digits
+                }
                 autofillSchedule(index: index)
             }
         )
@@ -1580,12 +1586,33 @@ struct DutyDetailView: View {
         }
     }
 
+    /// Лег истории, пришедший с портала: времена, маршрут, тип и борт — факт.
+    /// Расписание их не переписывает (D34, аудит 05.10, п. 22).
+    private func isPortalFact(_ index: Int) -> Bool {
+        guard !isCreating, onUpdate == nil, draft.indices.contains(index) else { return false }
+        let leg = draft[index]
+        if leg.portalKey != nil { return true }
+        let assignment = (leg.assignmentNumber ?? "").replacingOccurrences(of: " ", with: "")
+        return !(assignment.hasPrefix("Manual") || assignment.hasPrefix("ManuA"))
+    }
+
     private func autofillSchedule(index: Int) {
         guard draft.indices.contains(index) else { return }
         let number = DutyAutofillV129.normalizedFlightNumber(
             editableLegNumber(draft[index], index: index)
         )
         guard !number.isEmpty else { return }
+
+        // История: факт с портала не трогаем; ручное задание — только если номер реально сменили.
+        if !isCreating, onUpdate == nil {
+            if isPortalFact(index) { return }
+            if original.indices.contains(index),
+               DutyAutofillV129.normalizedFlightNumber(
+                   editableLegNumber(original[index], index: index)
+               ) == number {
+                return
+            }
+        }
 
         let previousEnd = index > 0 ? times(for: draft[index - 1]).engineOff : nil
         let reference = previousEnd ?? times(for: draft[index]).engineOn
@@ -2111,7 +2138,7 @@ struct DutyDetailView: View {
             dutyTotalCell(
                 title: "Полётная смена",
                 total: duty.workMinutes,
-                night: duty.workNightMinutes
+                night: nil
             )
 
             dutyTotalCell(
@@ -2134,7 +2161,7 @@ struct DutyDetailView: View {
     private func dutyTotalCell(
         title: String,
         total: Int,
-        night: Int
+        night: Int?
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
@@ -2151,25 +2178,30 @@ struct DutyDetailView: View {
         .onTapGesture { focusedField = nil }
     }
 
-    private func timeAndNight(total: Int, night: Int) -> some View {
+    /// Ночь показывается только у полётного и лётного времени (D36).
+    private func timeAndNight(total: Int, night: Int?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(timeText(total))
                 .font(.caption.bold())
                 .monospacedDigit()
                 .foregroundStyle(.primary)
 
-            Text("· ночь")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            if let night {
+                Text("· ночь")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-            Text(timeText(night))
-                .font(.caption.bold())
-                .monospacedDigit()
-                .foregroundStyle(.primary)
+                Text(timeText(night))
+                    .font(.caption.bold())
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+            }
         }
         .lineLimit(1)
         .minimumScaleFactor(0.8)
-        .accessibilityLabel("\(timeText(total)), ночь \(timeText(night))")
+        .accessibilityLabel(
+            night.map { "\(timeText(total)), ночь \(timeText($0))" } ?? timeText(total)
+        )
     }
 
     // Уровень 2: отдельная карточка каждого лега.
@@ -2214,10 +2246,7 @@ struct DutyDetailView: View {
                 legValueCard(
                     title: "Рабочее время",
                     total: minutesBetween(leg.timeline.workStart, workEnd),
-                    night: nightMinutes(
-                        from: leg.timeline.workStart,
-                        to: workEnd
-                    )
+                    night: nil
                 )
 
                 legValueCard(
@@ -3066,7 +3095,7 @@ struct DutyDetailView: View {
     private func legValueCard(
         title: String,
         total: Int,
-        night: Int
+        night: Int?
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
@@ -4048,7 +4077,7 @@ struct WorkEventRow: View {
                     
                     Text(
                         timeText(
-                            event.creditedMinutes
+                            seconds: event.creditedSeconds
                         )
                     )
                     .bold()
@@ -4215,17 +4244,7 @@ struct WorkEventDetailView: View {
                             "В зачёт",
                         value:
                             timeText(
-                                current.creditedMinutes
-                            )
-                    )
-                    
-                    
-                    FlightInfoRow(
-                        name:
-                            "Ночное",
-                        value:
-                            timeText(
-                                current.creditedNightMinutes
+                                seconds: current.creditedSeconds
                             )
                     )
                 }

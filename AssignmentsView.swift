@@ -63,7 +63,7 @@ private struct FlightHistoryAssignmentsView: View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Label(
-                    "История полётов · \(store.importedFlightHistoryCount) легов",
+                    "История полётов · \(store.flightHistoryCount) легов",
                     systemImage: "checkmark.seal.fill"
                 )
                 .font(.subheadline.weight(.semibold))
@@ -76,7 +76,7 @@ private struct FlightHistoryAssignmentsView: View {
                     Label("Удалить историю", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
-                .disabled(store.importedFlightHistoryCount == 0)
+                .disabled(store.flightHistoryCount == 0)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -86,16 +86,16 @@ private struct FlightHistoryAssignmentsView: View {
             FlightsView(store: store)
         }
         .alert(
-            "Удалить импортированную историю полётов?",
+            "Удалить всю историю полётов?",
             isPresented: $showDeleteConfirmation
         ) {
             Button("Отмена", role: .cancel) { }
             Button("Удалить", role: .destructive) {
-                store.deleteImportedFlightHistory()
+                store.deleteAllFlightHistory()
             }
         } message: {
             Text(
-                "Будут удалены только \(store.importedFlightHistoryCount) легов из импортированной истории. Ручные задания Manual, текущий план, импортированный план и план работ останутся на месте."
+                "Будут удалены все \(store.flightHistoryCount) легов истории, в том числе ручные задания Manual. Текущий план, перспективный план и план работ останутся на месте."
             )
         }
     }

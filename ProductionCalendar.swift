@@ -602,9 +602,9 @@ final class ProductionCalendarCache:
             
         } catch {
             
-            print(
-                "Ошибка сохранения базы производственных календарей:",
-                error
+            StorageSafety.reportSaveFailure(
+                title: "Производственный календарь",
+                error: error
             )
             
             

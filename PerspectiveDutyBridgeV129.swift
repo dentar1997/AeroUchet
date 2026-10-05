@@ -12,9 +12,7 @@ enum DutyAutofillV129 {
     private static var scheduleMatchCache: [String: CachedScheduleMatch] = [:]
 
     static func normalizedFlightNumber(_ raw: String) -> String {
-        let digits = String(raw.filter(\.isNumber).prefix(4))
-        guard let number = Int(digits) else { return "" }
-        return String(number)
+        canonicalFlightNumber(String(raw.filter(\.isNumber).prefix(4)))
     }
 
     static func pairedFlightNumber(after raw: String) -> String? {
@@ -208,11 +206,10 @@ final class PerspectiveDutyOverrideStoreV130: ObservableObject {
     @Published private(set) var values: [String: [FlightLeg]] = [:]
 
     private init() {
-        guard let data = UserDefaults.standard.data(forKey: Self.key),
-              let decoded = try? JSONDecoder().decode([String: [FlightLeg]].self, from: data) else {
-            return
-        }
-        values = decoded
+        // Ручные правки перспективных карточек не восстановить — резерв обязателен (п. 17).
+        values = StorageSafety.decode(
+            [String: [FlightLeg]].self, key: Self.key, title: "Правки перспективного плана"
+        ) ?? [:]
     }
 
     func legs(for itemID: String) -> [FlightLeg]? {
@@ -232,9 +229,7 @@ final class PerspectiveDutyOverrideStoreV130: ObservableObject {
     }
 
     private func persist() {
-        if let data = try? JSONEncoder().encode(values) {
-            UserDefaults.standard.set(data, forKey: Self.key)
-        }
+        StorageSafety.store(values, key: Self.key, title: "Правки перспективного плана")
     }
 }
 
