@@ -1,11 +1,11 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 05.10.2026 08:00 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 05.10.2026 09:00 МСК · Claude. Перед работой с кодом сверить с живым `main`.
 
 ## Последние записи журнала
+- [2026-10-05_0900_claude_audit-start.md](log/2026-10-05_0900_claude_audit-start.md)
 - [2026-10-05_0800_chatgpt_v134-import-winter-ra-verified.md](log/2026-10-05_0800_chatgpt_v134-import-winter-ra-verified.md)
 - [2026-10-05_0758_chatgpt_citrix-ipad-delegated-claude.md](log/2026-10-05_0758_chatgpt_citrix-ipad-delegated-claude.md)
-- [2026-10-05_0354_chatgpt_citrix-workplan-sync.md](log/2026-10-05_0354_chatgpt_citrix-workplan-sync.md)
 
 ## Код
 - **`AppVersion` = 134**. PR #143, squash merge `2bf00ee`; `AppVersion.swift`: sourceCommit `2bf00ee`, PR #143, 05.10.2026 03:42.
@@ -143,6 +143,7 @@
 - Процессный аудит 5/5 завершён; открыты отдельные решения по versioning/Quality/Privacy Guard и cleanup памяти/веток.
 
 ## Что дальше
+- **Сейчас (05.10 09:00): Claude ведёт аудит кода и перепроверку решений ChatGPT** по [AUDIT_TASK.md](AUDIT_TASK.md), итоги — `AUDIT_2026-10-05.md` для Дениса. Календарь, тормоза перспективного плана и Citrix — после аудита.
 - Календарь расписания, производительность перспективного плана и iPad-only Citrix-синхронизацию дальше разбирает Claude; ChatGPT их не трогает без новой явной просьбы.
 - Главный функциональный незакрытый блок — **FlightNorms: автоматическое расчётное время в плановых карточках**.
 - Синхронизацию расписания делать позже вместе с общей синхронизацией источников/планов.
