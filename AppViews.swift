@@ -128,8 +128,8 @@ struct HomeView: View {
                             title:
                                 "Рабочее всего",
                             value:
-                                timeText(
-                                    seconds: totals.workSeconds
+                                durationText(
+                                    totals.workSeconds
                                 ),
                             icon:
                                 "briefcase.fill"
@@ -152,8 +152,8 @@ struct HomeView: View {
                             title:
                                 "Рабочее — земля",
                             value:
-                                timeText(
-                                    seconds: totals.groundWorkSeconds
+                                durationText(
+                                    totals.groundWorkSeconds
                                 ),
                             icon:
                                 "building.2"
@@ -4079,8 +4079,8 @@ struct WorkEventRow: View {
                 if event.hasValidStoredDates {
                     
                     Text(
-                        timeText(
-                            seconds: event.creditedSeconds
+                        durationText(
+                            event.creditedSeconds
                         )
                     )
                     .bold()
@@ -4246,8 +4246,8 @@ struct WorkEventDetailView: View {
                         name:
                             "В зачёт",
                         value:
-                            timeText(
-                                seconds: current.creditedSeconds
+                            durationText(
+                                current.creditedSeconds
                             )
                     )
                 }

@@ -132,8 +132,8 @@ struct AccountingView: View {
                             title:
                                 "Всего рабочего",
                             value:
-                                timeText(
-                                    seconds: totals.workSeconds
+                                durationText(
+                                    totals.workSeconds
                                 ),
                             icon:
                                 "briefcase.fill"
@@ -157,8 +157,8 @@ struct AccountingView: View {
                             title:
                                 "Наземная работа",
                             value:
-                                timeText(
-                                    seconds: totals.groundWorkSeconds
+                                durationText(
+                                    totals.groundWorkSeconds
                                 ),
                             icon:
                                 "building.2"
@@ -171,8 +171,8 @@ struct AccountingView: View {
                             ? "Переработка"
                             : "Недоработка",
                             value:
-                                timeText(
-                                    seconds: abs(balanceSeconds)
+                                durationText(
+                                    abs(balanceSeconds)
                                 ),
                             icon:
                                 balanceSeconds >= 0
@@ -1057,8 +1057,8 @@ struct GroundWorkRow:
             
             
             Text(
-                timeText(
-                    seconds: seconds
+                durationText(
+                    seconds
                 )
             )
             .bold()

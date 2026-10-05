@@ -1730,7 +1730,7 @@ func isWeekend(
 // MARK: - Форматирование
 
 /// Время с секундами только если они есть (D37): 02:00 или 02:00:15.
-func timeText(seconds: Int) -> String {
+func durationText(_ seconds: Int) -> String {
     let value = max(0, seconds)
     let base = String(format: "%02d:%02d", value / 3600, (value % 3600) / 60)
     let rest = value % 60

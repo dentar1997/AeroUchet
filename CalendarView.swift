@@ -2394,8 +2394,8 @@ struct CalendarDayTotalsCard: View {
                 title:
                     "Рабочее всего",
                 value:
-                    timeText(
-                        seconds: totals.workSeconds
+                    durationText(
+                        totals.workSeconds
                     )
             )
             
@@ -2414,8 +2414,8 @@ struct CalendarDayTotalsCard: View {
                 title:
                     "Рабочее — земля",
                 value:
-                    timeText(
-                        seconds: totals.groundWorkSeconds
+                    durationText(
+                        totals.groundWorkSeconds
                     )
             )
             
@@ -2756,8 +2756,8 @@ struct CalendarWorkEventRow: View {
             
             
             Text(
-                timeText(
-                    seconds: event.creditedSeconds
+                durationText(
+                    event.creditedSeconds
                 )
             )
             .bold()
