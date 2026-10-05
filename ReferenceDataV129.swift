@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 
@@ -279,6 +280,17 @@ struct FlightScheduleImportRecordV129: Identifiable, Codable, Hashable {
     let validTo: Date
     let rowCount: Int
     let sourceName: String
+    let fingerprint: String?
+    let entryKeys: [String]?
+}
+
+
+struct FlightScheduleImportSummaryV134 {
+    let added: Int
+    let updated: Int
+    let removed: Int
+    let total: Int
+    let unchanged: Bool
 }
 
 
@@ -340,12 +352,59 @@ final class FlightScheduleStoreV129: ObservableObject {
     }
 
     @discardableResult
-    func importXLS(data: Data, sourceName: String) throws -> (added: Int, updated: Int, total: Int) {
+    func importXLS(data: Data, sourceName: String) throws -> FlightScheduleImportSummaryV134 {
         let parsed = try FlightScheduleXLSParserV129.parse(data)
+        guard let from = parsed.map(\.validFrom).min(),
+              let to = parsed.map(\.validTo).max() else {
+            throw FlightScheduleXLSParserV129.ImportError.invalid("В расписании нет строк")
+        }
+
+        let fingerprint = Self.scheduleFingerprint(parsed)
+        let alreadyLoaded = imports.contains { record in
+            if record.fingerprint == fingerprint { return true }
+            guard record.fingerprint == nil else { return false }
+            let keys = importKeys(for: record)
+            let values = entries.filter { keys.contains($0.identityKey) }
+            return !values.isEmpty && Self.scheduleFingerprint(values) == fingerprint
+        }
+        if alreadyLoaded {
+            return FlightScheduleImportSummaryV134(
+                added: 0,
+                updated: 0,
+                removed: 0,
+                total: entries.count,
+                unchanged: true
+            )
+        }
+
+        let replacementIndex = imports.firstIndex { record in
+            let sameCoverage = Self.dayKey(record.validFrom) == Self.dayKey(from)
+                && Self.dayKey(record.validTo) == Self.dayKey(to)
+            let sameSourceAndOverlap = record.sourceName == sourceName
+                && record.validFrom <= to
+                && record.validTo >= from
+            return sameCoverage || sameSourceAndOverlap
+        }
+
+        let newKeys = Set(parsed.map(\.identityKey))
+        let oldKeys = replacementIndex.map { importKeys(for: imports[$0]) } ?? []
+        let protectedKeys = Set(
+            imports.enumerated()
+                .filter { pair in
+                    guard let replacementIndex else { return true }
+                    return pair.offset != replacementIndex
+                }
+                .flatMap { Array(importKeys(for: $0.element)) }
+        )
+
         var byKey = Dictionary(uniqueKeysWithValues: entries.map { ($0.identityKey, $0) })
+        var removed = 0
+        for key in oldKeys where !newKeys.contains(key) && !protectedKeys.contains(key) {
+            if byKey.removeValue(forKey: key) != nil { removed += 1 }
+        }
+
         var added = 0
         var updated = 0
-
         for value in parsed {
             if let old = byKey[value.identityKey] {
                 if old != value {
@@ -358,35 +417,49 @@ final class FlightScheduleStoreV129: ObservableObject {
             }
         }
 
-        entries = byKey.values.sorted {
-            if $0.flightNumber == $1.flightNumber {
-                if $0.validFrom == $1.validFrom { return $0.departure < $1.departure }
-                return $0.validFrom < $1.validFrom
-            }
-            return ($0.flightNumber.localizedStandardCompare($1.flightNumber) == .orderedAscending)
+        let record = FlightScheduleImportRecordV129(
+            id: replacementIndex.map { imports[$0].id } ?? UUID(),
+            importedAt: Date(),
+            validFrom: from,
+            validTo: to,
+            rowCount: parsed.count,
+            sourceName: sourceName,
+            fingerprint: fingerprint,
+            entryKeys: newKeys.sorted()
+        )
+        if let replacementIndex {
+            imports[replacementIndex] = record
+        } else {
+            imports.insert(record, at: 0)
         }
 
-        if let from = parsed.map(\.validFrom).min(),
-           let to = parsed.map(\.validTo).max() {
-            let signature = "\(Self.dayKey(from))|\(Self.dayKey(to))|\(parsed.count)|\(sourceName)"
-            imports.removeAll {
-                "\(Self.dayKey($0.validFrom))|\(Self.dayKey($0.validTo))|\($0.rowCount)|\($0.sourceName)" == signature
-            }
-            imports.insert(
-                FlightScheduleImportRecordV129(
-                    id: UUID(),
-                    importedAt: Date(),
-                    validFrom: from,
-                    validTo: to,
-                    rowCount: parsed.count,
-                    sourceName: sourceName
-                ),
-                at: 0
-            )
-        }
+        entries = sortedEntries(Array(byKey.values))
         rebuildIndex()
         save()
-        return (added, updated, entries.count)
+        return FlightScheduleImportSummaryV134(
+            added: added,
+            updated: updated,
+            removed: removed,
+            total: entries.count,
+            unchanged: false
+        )
+    }
+
+    func deleteImport(id: UUID) {
+        guard let index = imports.firstIndex(where: { $0.id == id }) else { return }
+        let targetKeys = importKeys(for: imports[index])
+        let protectedKeys = Set(
+            imports.enumerated()
+                .filter { $0.offset != index }
+                .flatMap { Array(importKeys(for: $0.element)) }
+        )
+        entries.removeAll { entry in
+            targetKeys.contains(entry.identityKey) && !protectedKeys.contains(entry.identityKey)
+        }
+        imports.remove(at: index)
+        entries = sortedEntries(entries)
+        rebuildIndex()
+        save()
     }
 
     func deleteAll() {
@@ -394,6 +467,44 @@ final class FlightScheduleStoreV129: ObservableObject {
         imports = []
         rebuildIndex()
         save()
+    }
+
+    private func importKeys(for record: FlightScheduleImportRecordV129) -> Set<String> {
+        if let keys = record.entryKeys { return Set(keys) }
+        return Set(entries.filter { entry in
+            entry.validFrom >= record.validFrom && entry.validTo <= record.validTo
+        }.map(\.identityKey))
+    }
+
+    private func sortedEntries(_ values: [FlightScheduleEntryV129]) -> [FlightScheduleEntryV129] {
+        values.sorted {
+            if $0.flightNumber == $1.flightNumber {
+                if $0.validFrom == $1.validFrom { return $0.departure < $1.departure }
+                return $0.validFrom < $1.validFrom
+            }
+            return $0.flightNumber.localizedStandardCompare($1.flightNumber) == .orderedAscending
+        }
+    }
+
+    private static func scheduleFingerprint(_ values: [FlightScheduleEntryV129]) -> String {
+        let canonical = values.sorted { $0.identityKey < $1.identityKey }.map { value in
+            [
+                value.identityKey,
+                value.departureTerminal ?? "",
+                String(value.departureMinutesUTC),
+                value.arrivalTerminal ?? "",
+                String(value.arrivalMinutesUTC),
+                value.rawAircraftCode,
+                value.configuration ?? "",
+                String(value.flightMinutes)
+            ].joined(separator: "|")
+        }.joined(separator: "\n")
+
+        var hash = UInt64(1469598103934665603)
+        for byte in canonical.utf8 {
+            hash = (hash ^ UInt64(byte)) &* 1099511628211
+        }
+        return String(format: "%016llx", hash)
     }
 
     func matches(
@@ -1170,7 +1281,7 @@ struct FlightScheduleDatabaseV130View: View {
     @State private var selectedDate = moscowCalendar.startOfDay(for: Date())
     @State private var group: FlightScheduleAircraftGroupV131 = .all
     @State private var expandedEntryID: String?
-    @State private var calendarRequest: FlightScheduleCalendarRequestV131?
+    @State private var calendarRequest: FlightScheduleCalendarRequestV134?
 
     private var exactSearchNumber: String? {
         let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1229,47 +1340,33 @@ struct FlightScheduleDatabaseV130View: View {
         .sorted { ($0.departure, $0.arrival) < ($1.departure, $1.arrival) }
     }
 
-    private var selectedDateTitle: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.timeZone = moscowTimeZone
-        formatter.dateFormat = "d MMMM yyyy"
-        return formatter.string(from: selectedDate)
-    }
-
     private var selectedDateButtonTitle: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.timeZone = moscowTimeZone
-        formatter.dateFormat = "dd.MM.yyyy"
-        return formatter.string(from: selectedDate)
-    }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "ru_RU")
+    formatter.timeZone = moscowTimeZone
+    formatter.dateFormat = "d MMM yyyy"
+    return formatter.string(from: selectedDate).replacingOccurrences(of: ".", with: "")
+}
 
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
-                if exactSearchNumber != nil,
-                   routeCandidates.count == 1,
-                   let route = routeCandidates.first {
-                    Button {
-                        openExecutionCalendar(for: route)
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "calendar")
-                            Text(selectedDateButtonTitle)
-                                .font(.subheadline.monospacedDigit())
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                } else {
-                    DatePicker(
-                        "Дата",
-                        selection: $selectedDate,
-                        displayedComponents: .date
-                    )
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-                }
+                Button {
+            openDateCalendar()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "calendar")
+                Text(selectedDateButtonTitle)
+                    .font(.subheadline.monospacedDigit())
+            }
+        }
+        .buttonStyle(.bordered)
+        .popover(item: $calendarRequest) { request in
+            FlightExecutionCalendarV134View(request: request) { date in
+                selectedDate = date
+                calendarRequest = nil
+            }
+        }
 
                 Picker("Семейство ВС", selection: $group) {
                     ForEach(FlightScheduleAircraftGroupV131.allCases) { value in
@@ -1286,16 +1383,12 @@ struct FlightScheduleDatabaseV130View: View {
             .padding(.top, 8)
 
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(selectedDateTitle.capitalized)
-                        .font(.subheadline.weight(.semibold))
-                    Text("Дата вылета по Москве · \(values.count) строк")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 12)
+        Text("Дата вылета по Москве · \(values.count) строк")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        Spacer()
+    }
+    .padding(.horizontal, 12)
 
             if values.isEmpty,
                exactSearchNumber != nil,
@@ -1353,11 +1446,7 @@ struct FlightScheduleDatabaseV130View: View {
         }
         .navigationTitle("База расписания")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $calendarRequest) { request in
-            FlightExecutionCalendarV131View(request: request) { date in
-                selectedDate = date
-            }
-        }
+
     }
 
     @ViewBuilder
@@ -1423,13 +1512,24 @@ struct FlightScheduleDatabaseV130View: View {
         return false
     }
 
+    private func openDateCalendar() {
+    if exactSearchNumber != nil,
+       routeCandidates.count == 1,
+       let route = routeCandidates.first {
+        openExecutionCalendar(for: route)
+        return
+    }
+    calendarRequest = FlightScheduleCalendarRequestV134(
+        title: nil,
+        executionDates: nil,
+        selectedDate: selectedDate
+    )
+}
+
     private func openExecutionCalendar(for route: FlightScheduleRouteCandidateV131) {
-        let dates = executionDates(for: route.entries)
-        calendarRequest = FlightScheduleCalendarRequestV131(
-            flightNumber: route.flightNumber,
-            departure: route.departure,
-            arrival: route.arrival,
-            dates: dates,
+        calendarRequest = FlightScheduleCalendarRequestV134(
+            title: "Рейс \(FlightScheduleStoreV129.displayFlightNumber(route.flightNumber)) · \(route.departure) → \(route.arrival)",
+            executionDates: executionDates(for: route.entries),
             selectedDate: selectedDate
         )
     }
@@ -1473,175 +1573,149 @@ private struct FlightScheduleRouteCandidateV131: Identifiable {
 }
 
 
-private struct FlightScheduleCalendarRequestV131: Identifiable {
-    let flightNumber: String
-    let departure: String
-    let arrival: String
-    let dates: [Date]
+private struct FlightScheduleCalendarRequestV134: Identifiable {
+    let id = UUID()
+    let title: String?
+    let executionDates: [Date]?
     let selectedDate: Date
-    var id: String { "\(FlightScheduleStoreV129.normalizedFlightNumber(flightNumber))|\(departure)|\(arrival)" }
 }
 
 
-private struct FlightExecutionCalendarV131View: View {
-    let request: FlightScheduleCalendarRequestV131
+private struct FlightExecutionCalendarV134View: View {
+    let request: FlightScheduleCalendarRequestV134
     let onSelect: (Date) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var month: Date
-
-    init(request: FlightScheduleCalendarRequestV131, onSelect: @escaping (Date) -> Void) {
-        self.request = request
-        self.onSelect = onSelect
-        let selectedMonth = Self.monthStart(request.selectedDate)
-        let firstMonth = request.dates.first.map(Self.monthStart)
-        let lastMonth = request.dates.last.map(Self.monthStart)
-        let seed: Date
-        if let firstMonth, let lastMonth,
-           selectedMonth >= firstMonth,
-           selectedMonth <= lastMonth {
-            seed = request.selectedDate
-        } else {
-            seed = request.dates.first ?? request.selectedDate
-        }
-        _month = State(initialValue: Self.monthStart(seed))
-    }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                HStack {
-                    Button {
-                        shiftMonth(-1)
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .disabled(!canShift(-1))
+        VStack(spacing: 8) {
+            if let title = request.title {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
-                    Spacer()
-                    Text(monthTitle)
-                        .font(.headline)
-                    Spacer()
+            SystemScheduleCalendarV134(
+                selectedDate: request.selectedDate,
+                executionDates: request.executionDates,
+                onSelect: onSelect
+            )
+            .frame(width: 360, height: 350)
 
-                    Button {
-                        shiftMonth(1)
-                    } label: {
-                        Image(systemName: "chevron.right")
-                    }
-                    .disabled(!canShift(1))
-                }
-
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 8) {
-                    ForEach(["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"], id: \.self) { title in
-                        Text(title)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    ForEach(Array(monthCells.enumerated()), id: \.offset) { _, date in
-                        if let date {
-                            let active = executionDay(date)
-                            let selected = selectedDay(date)
-                            Button {
-                                guard active else { return }
-                                onSelect(date)
-                                dismiss()
-                            } label: {
-                                Text(String(moscowCalendar.component(.day, from: date)))
-                                    .font(.subheadline.weight(active ? .semibold : .regular))
-                                    .frame(width: 34, height: 34)
-                                    .background(
-                                        Circle()
-                                            .fill(
-                                                selected
-                                                    ? (active ? Color.accentColor : Color.secondary.opacity(0.18))
-                                                    : (active ? Color.accentColor.opacity(0.18) : Color.clear)
-                                            )
-                                    )
-                                    .overlay {
-                                        if active && !selected {
-                                            Circle().stroke(Color.accentColor, lineWidth: 1)
-                                        } else if selected && !active {
-                                            Circle().stroke(Color.secondary, lineWidth: 1)
-                                        }
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(selected && active ? Color.white : (active ? Color.accentColor : Color.secondary))
-                            .disabled(!active)
-                        } else {
-                            Color.clear.frame(width: 34, height: 34)
-                        }
-                    }
-                }
-
-                Text("Отмечены только дни выполнения рейса для выбранного фильтра ВС и загруженного покрытия расписания.")
-                    .font(.caption)
+            if request.executionDates != nil {
+                Text("Бирюзовая точка — день выполнения рейса по загруженному расписанию и текущему фильтру ВС.")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(16)
-            .navigationTitle("Рейс \(FlightScheduleStoreV129.displayFlightNumber(request.flightNumber)) · \(request.departure) → \(request.arrival)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Готово") { dismiss() }
-                }
-            }
         }
-        .presentationDetents([.medium])
-    }
-
-    private var monthTitle: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.timeZone = moscowTimeZone
-        formatter.dateFormat = "LLLL yyyy"
-        return formatter.string(from: month).capitalized
-    }
-
-    private var monthCells: [Date?] {
-        let start = Self.monthStart(month)
-        let weekday = moscowCalendar.component(.weekday, from: start)
-        let mondayOffset = (weekday + 5) % 7
-        let range = moscowCalendar.range(of: .day, in: .month, for: start) ?? 1..<2
-        var result = Array<Date?>(repeating: nil, count: mondayOffset)
-        for day in range {
-            if let date = moscowCalendar.date(byAdding: .day, value: day - 1, to: start) {
-                result.append(date)
-            }
-        }
-        while result.count % 7 != 0 { result.append(nil) }
-        return result
-    }
-
-    private func executionDay(_ date: Date) -> Bool {
-        request.dates.contains { moscowCalendar.isDate($0, inSameDayAs: date) }
-    }
-
-    private func selectedDay(_ date: Date) -> Bool {
-        moscowCalendar.isDate(request.selectedDate, inSameDayAs: date)
-    }
-
-    private func shiftMonth(_ delta: Int) {
-        if let next = moscowCalendar.date(byAdding: .month, value: delta, to: month) {
-            month = Self.monthStart(next)
-        }
-    }
-
-    private func canShift(_ delta: Int) -> Bool {
-        guard let target = moscowCalendar.date(byAdding: .month, value: delta, to: month),
-              let first = request.dates.first,
-              let last = request.dates.last else { return false }
-        let candidate = Self.monthStart(target)
-        return candidate >= Self.monthStart(first) && candidate <= Self.monthStart(last)
-    }
-
-    private static func monthStart(_ date: Date) -> Date {
-        let components = moscowCalendar.dateComponents([.year, .month], from: date)
-        return moscowCalendar.date(from: components) ?? moscowCalendar.startOfDay(for: date)
+        .padding(12)
+        .frame(width: 384)
     }
 }
 
+
+private struct SystemScheduleCalendarV134: UIViewRepresentable {
+    let selectedDate: Date
+    let executionDates: [Date]?
+    let onSelect: (Date) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSelect: onSelect)
+    }
+
+    func makeUIView(context: Context) -> UICalendarView {
+        let view = UICalendarView()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "ru_RU")
+        calendar.timeZone = moscowTimeZone
+        view.calendar = calendar
+        view.locale = Locale(identifier: "ru_RU")
+        view.timeZone = moscowTimeZone
+        view.tintColor = .systemTeal
+        view.wantsDateDecorations = true
+        view.delegate = context.coordinator
+
+        let selection = UICalendarSelectionSingleDate(delegate: context.coordinator)
+        view.selectionBehavior = selection
+        context.coordinator.selection = selection
+        context.coordinator.calendar = calendar
+        update(view: view, coordinator: context.coordinator, animated: false)
+        return view
+    }
+
+    func updateUIView(_ uiView: UICalendarView, context: Context) {
+        context.coordinator.onSelect = onSelect
+        update(view: uiView, coordinator: context.coordinator, animated: false)
+    }
+
+    private func update(view: UICalendarView, coordinator: Coordinator, animated: Bool) {
+        let newComponents = (executionDates ?? []).map { coordinator.dayComponents(for: $0) }
+        let oldComponents = coordinator.executionComponents
+        coordinator.executionComponents = newComponents
+        coordinator.restrictToExecutionDates = executionDates != nil
+        coordinator.executionDayKeys = Set(newComponents.map { coordinator.key(for: $0) })
+
+        let selected = coordinator.dayComponents(for: selectedDate)
+        coordinator.selection?.selectedDate = selected
+        var visible = selected
+        visible.day = nil
+        view.setVisibleDateComponents(visible, animated: animated)
+
+        let reload = oldComponents + newComponents
+        if !reload.isEmpty {
+            view.reloadDecorations(forDateComponents: reload, animated: false)
+        }
+    }
+
+    final class Coordinator: NSObject, UICalendarViewDelegate, UICalendarSelectionSingleDateDelegate {
+        var onSelect: (Date) -> Void
+        var selection: UICalendarSelectionSingleDate?
+        var calendar = moscowCalendar
+        var restrictToExecutionDates = false
+        var executionDayKeys = Set<String>()
+        var executionComponents: [DateComponents] = []
+
+        init(onSelect: @escaping (Date) -> Void) {
+            self.onSelect = onSelect
+        }
+
+        func dayComponents(for date: Date) -> DateComponents {
+            calendar.dateComponents([.calendar, .timeZone, .year, .month, .day], from: date)
+        }
+
+        func key(for components: DateComponents) -> String {
+            guard let year = components.year,
+                  let month = components.month,
+                  let day = components.day else { return "" }
+            return String(format: "%04d-%02d-%02d", year, month, day)
+        }
+
+        func calendarView(
+            _ calendarView: UICalendarView,
+            decorationFor dateComponents: DateComponents
+        ) -> UICalendarView.Decoration? {
+            guard executionDayKeys.contains(key(for: dateComponents)) else { return nil }
+            return .default(color: .systemTeal, size: .large)
+        }
+
+        func dateSelection(
+            _ selection: UICalendarSelectionSingleDate,
+            canSelectDate dateComponents: DateComponents?
+        ) -> Bool {
+            guard restrictToExecutionDates else { return true }
+            guard let dateComponents else { return false }
+            return executionDayKeys.contains(key(for: dateComponents))
+        }
+
+        func dateSelection(
+            _ selection: UICalendarSelectionSingleDate,
+            didSelectDate dateComponents: DateComponents?
+        ) {
+            guard let dateComponents,
+                  let date = calendar.date(from: dateComponents) else { return }
+            onSelect(calendar.startOfDay(for: date))
+        }
+    }
+}
 
 
 struct FlightScheduleSettingsV129View: View {
@@ -1650,6 +1724,7 @@ struct FlightScheduleSettingsV129View: View {
     @State private var message = ""
     @State private var showMessage = false
     @State private var showDelete = false
+    @State private var pendingDeleteImport: FlightScheduleImportRecordV129?
 
     var body: some View {
         List {
@@ -1673,7 +1748,7 @@ struct FlightScheduleSettingsV129View: View {
                     Label("Импортировать расписание", systemImage: "square.and.arrow.down")
                 }
 
-                Button("Удалить расписание", role: .destructive) {
+                Button("Удалить все расписания", role: .destructive) {
                     showDelete = true
                 }
                 .disabled(store.entries.isEmpty)
@@ -1684,14 +1759,23 @@ struct FlightScheduleSettingsV129View: View {
             if !store.imports.isEmpty {
                 Section("Загруженные расписания") {
                     ForEach(store.imports) { value in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("\(FlightScheduleStoreV129.shortDay(value.validFrom))–\(FlightScheduleStoreV129.shortDay(value.validTo))")
-                                .font(.subheadline.weight(.semibold))
-                            Text("\(value.rowCount.formatted(.number.grouping(.automatic))) строк · импорт \(importDate(value.importedAt))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(FlightScheduleStoreV129.shortDay(value.validFrom))–\(FlightScheduleStoreV129.shortDay(value.validTo))")
+                            .font(.subheadline.weight(.semibold))
+                        Text("\(value.rowCount.formatted(.number.grouping(.automatic))) строк · импорт \(importDate(value.importedAt))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+                    Spacer()
+                    Button(role: .destructive) {
+                        pendingDeleteImport = value
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
                 }
             }
         }
@@ -1707,7 +1791,11 @@ struct FlightScheduleSettingsV129View: View {
                 defer { if access { url.stopAccessingSecurityScopedResource() } }
                 let data = try Data(contentsOf: url)
                 let summary = try store.importXLS(data: data, sourceName: url.lastPathComponent)
-                message = "Импорт завершён. Добавлено: \(summary.added), обновлено: \(summary.updated). В базе: \(summary.total) строк."
+        if summary.unchanged {
+            message = "Это расписание уже загружено. Обновлений нет."
+        } else {
+            message = "Импорт завершён. Добавлено: \(summary.added), обновлено: \(summary.updated), удалено устаревших: \(summary.removed). В базе: \(summary.total) строк."
+        }
             } catch {
                 message = error.localizedDescription
             }
@@ -1724,6 +1812,26 @@ struct FlightScheduleSettingsV129View: View {
         } message: {
             Text("Будет очищена только локальная база расписания рейсов. История и планы не изменятся.")
         }
+    .alert(
+        "Удалить выбранное расписание?",
+        isPresented: Binding(
+            get: { pendingDeleteImport != nil },
+            set: { if !$0 { pendingDeleteImport = nil } }
+        )
+    ) {
+        Button("Отмена", role: .cancel) { pendingDeleteImport = nil }
+        Button("Удалить", role: .destructive) {
+            if let value = pendingDeleteImport {
+                store.deleteImport(id: value.id)
+            }
+            pendingDeleteImport = nil
+        }
+    } message: {
+        if let value = pendingDeleteImport {
+            Text("\(FlightScheduleStoreV129.shortDay(value.validFrom))–\(FlightScheduleStoreV129.shortDay(value.validTo)) будет удалено из локальной базы.")
+        }
+    }
+
     }
 
     private func importDate(_ date: Date) -> String {
