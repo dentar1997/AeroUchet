@@ -209,24 +209,33 @@ expect(
     "home reserve credited work across midnight"
 )
 
-let creditedNightDayOne = creditedNightMinutesInDay(
-    start: reserveStart,
-    end: reserveEnd,
-    divisor: 4,
-    day: reserveStart
-)
-
-let creditedNightDayTwo = creditedNightMinutesInDay(
-    start: reserveStart,
-    end: reserveEnd,
-    divisor: 4,
-    day: reserveEnd
-)
+let reserveSecondsTotal =
+    creditedSecondsInDay(start: reserveStart, end: reserveEnd, divisor: 4, day: reserveStart)
+    + creditedSecondsInDay(start: reserveStart, end: reserveEnd, divisor: 4, day: reserveEnd)
 
 expect(
-    creditedNightDayOne + creditedNightDayTwo,
-    120,
-    "home reserve credited night current rule"
+    reserveSecondsTotal,
+    3 * 3600,
+    "home reserve credited seconds across midnight"
+)
+
+let shortReserveStart = makeDate(2026, 9, 24, 9, 0)
+let shortReserveEnd = makeDate(2026, 9, 24, 17, 1)
+
+expect(
+    creditedSecondsInDay(start: shortReserveStart, end: shortReserveEnd, divisor: 4, day: shortReserveStart),
+    2 * 3600 + 15,
+    "home reserve 8:01 / 4 = 2:00:15 (D37)"
+)
+
+let oddReserveStart = makeDate(2026, 9, 24, 23, 59)
+let oddReserveEnd = makeDate(2026, 9, 25, 0, 2)
+
+expect(
+    creditedSecondsInDay(start: oddReserveStart, end: oddReserveEnd, divisor: 4, day: oddReserveStart)
+    + creditedSecondsInDay(start: oddReserveStart, end: oddReserveEnd, divisor: 4, day: oddReserveEnd),
+    45,
+    "home reserve split by midnight keeps total seconds"
 )
 
 expect(

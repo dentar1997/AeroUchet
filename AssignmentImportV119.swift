@@ -60,8 +60,7 @@ final class AssignmentImportArchiveStore: ObservableObject {
 
     func save(_ archive: AssignmentImportArchive) {
         latestArchive = archive
-        guard let data = try? JSONEncoder().encode(archive) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        StorageSafety.store(archive, key: key, title: "Решения конфликтов импорта")
     }
 
     func clear() {
@@ -708,7 +707,7 @@ final class AssignmentImportDraft: ObservableObject, Identifiable {
             ?? item.flightLegs?.map(\.flightNumber)
             ?? item.flightNumber.map { [$0] }
             ?? []
-        return Set(values.map { $0.filter(\.isNumber) }.filter { !$0.isEmpty })
+        return Set(values.map(canonicalFlightNumber).filter { !$0.isEmpty })
     }
 
     private static func normalizedText(_ value: String) -> String {

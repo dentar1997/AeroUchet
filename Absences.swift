@@ -297,30 +297,7 @@ final class AbsenceStore:
     
     
     private func save() {
-        
-        do {
-            
-            let data =
-            try JSONEncoder()
-                .encode(
-                    absences
-                )
-            
-            
-            UserDefaults.standard
-                .set(
-                    data,
-                    forKey:
-                        storageKey
-                )
-            
-        } catch {
-            
-            print(
-                "Ошибка сохранения отсутствий:",
-                error
-            )
-        }
+        StorageSafety.store(absences, key: storageKey, title: "Отсутствия")
     }
     
     

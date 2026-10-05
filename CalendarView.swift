@@ -2394,8 +2394,8 @@ struct CalendarDayTotalsCard: View {
                 title:
                     "Рабочее всего",
                 value:
-                    timeText(
-                        totals.workMinutes
+                    durationText(
+                        totals.workSeconds
                     )
             )
             
@@ -2414,8 +2414,8 @@ struct CalendarDayTotalsCard: View {
                 title:
                     "Рабочее — земля",
                 value:
-                    timeText(
-                        totals.groundWorkMinutes
+                    durationText(
+                        totals.groundWorkSeconds
                     )
             )
             
@@ -2459,36 +2459,6 @@ struct CalendarDayTotalsCard: View {
                 value:
                     timeText(
                         totals.airNightMinutes
-                    )
-            )
-            
-            
-            CalendarTotalRow(
-                title:
-                    "Рабочая ночь",
-                value:
-                    timeText(
-                        totals.workNightMinutes
-                    )
-            )
-            
-            
-            CalendarTotalRow(
-                title:
-                    "Рабочая ночь — рейсы",
-                value:
-                    timeText(
-                        totals.flightWorkNightMinutes
-                    )
-            )
-            
-            
-            CalendarTotalRow(
-                title:
-                    "Рабочая ночь — земля",
-                value:
-                    timeText(
-                        totals.groundWorkNightMinutes
                     )
             )
         }
@@ -2786,8 +2756,8 @@ struct CalendarWorkEventRow: View {
             
             
             Text(
-                timeText(
-                    event.creditedMinutes
+                durationText(
+                    event.creditedSeconds
                 )
             )
             .bold()

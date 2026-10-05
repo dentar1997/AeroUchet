@@ -55,6 +55,40 @@ enum StorageSafety {
         }
     }
 
+    /// Сообщение интерфейсу: данные не сохранились (аудит 05.10, п. 5).
+    static let saveFailedNotification = Notification.Name("AeroUchet.storageSaveFailed")
+
+    /// Кодирует и сохраняет значение. Если кодирование не удалось, прежние данные
+    /// остаются нетронутыми, а интерфейс показывает предупреждение.
+    @discardableResult
+    static func store<T: Encodable>(
+        _ value: T,
+        key: String,
+        title: String,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        do {
+            let data = try JSONEncoder().encode(value)
+            defaults.set(data, forKey: key)
+            return true
+        } catch {
+            reportSaveFailure(title: title, error: error)
+            return false
+        }
+    }
+
+    static func reportSaveFailure(title: String, error: Error) {
+        print("Не удалось сохранить «\(title)»:", error)
+        let post = {
+            NotificationCenter.default.post(
+                name: saveFailedNotification,
+                object: nil,
+                userInfo: ["title": title]
+            )
+        }
+        if Thread.isMainThread { post() } else { DispatchQueue.main.async(execute: post) }
+    }
+
     private static func writeFileCopy(_ data: Data, name: String) {
         let manager = FileManager.default
         guard let documents = manager.urls(for: .documentDirectory, in: .userDomainMask).first else {

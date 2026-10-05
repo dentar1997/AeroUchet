@@ -7,6 +7,7 @@ struct ContentView: View {
     @StateObject private var calendarSync = ProductionCalendarSyncModel()
     @StateObject private var planStore = AssignmentPlanStore()
     @State private var storageNotices: [String] = []
+    @State private var saveFailures: [String] = []
 
     var body: some View {
         TabView {
@@ -79,6 +80,22 @@ struct ContentView: View {
             Button("OK", role: .cancel) { }
         } message: {
             Text("Не удалось прочитать: \(storageNotices.joined(separator: ", ")). Копия сохранена в резерв, ничего не удалено. Сообщи Claude до новых изменений.")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: StorageSafety.saveFailedNotification)) { note in
+            guard let title = note.userInfo?["title"] as? String,
+                  !saveFailures.contains(title) else { return }
+            saveFailures.append(title)
+        }
+        .alert(
+            "Данные не сохранились",
+            isPresented: Binding(
+                get: { !saveFailures.isEmpty && storageNotices.isEmpty },
+                set: { shown in if !shown { saveFailures = [] } }
+            )
+        ) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Не удалось сохранить: \(saveFailures.joined(separator: ", ")). Прежние сохранённые данные не тронуты. Сообщи Claude до новых изменений.")
         }
     }
 }

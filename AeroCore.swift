@@ -143,6 +143,37 @@ struct FlightLeg: Identifiable, Codable, Equatable {
 }
 
 
+// MARK: - Номер рейса (D38)
+
+/// Канонический номер рейса: без «SU» и ведущих нулей.
+/// «SU 0010», «0010», «010» и «10» — один и тот же рейс во всех источниках.
+func canonicalFlightNumber(_ raw: String) -> String {
+    let digits = raw.uppercased()
+        .replacingOccurrences(of: "SU", with: "")
+        .filter(\.isNumber)
+    guard !digits.isEmpty else { return "" }
+    let trimmed = digits.drop { $0 == "0" }
+    return trimmed.isEmpty ? "0" : String(trimmed)
+}
+
+
+/// Все номера рейсов в поле номера: «SU 1110 / SU 1111», «1110/1111», «0010».
+func canonicalFlightNumbers(in text: String) -> [String] {
+    var result: [String] = []
+    var current = ""
+    for character in text.uppercased().replacingOccurrences(of: "SU", with: " ") {
+        if character.isNumber {
+            current.append(character)
+        } else if !current.isEmpty {
+            result.append(canonicalFlightNumber(current))
+            current = ""
+        }
+    }
+    if !current.isEmpty { result.append(canonicalFlightNumber(current)) }
+    return result
+}
+
+
 // MARK: - Хронология лега
 
 struct FlightTimeline {
@@ -327,28 +358,14 @@ struct WorkEvent: Identifiable, Codable, Equatable {
     }
     
     
+    /// Зачётное время в секундах. Секунды нужны только при делении (D37):
+    /// резерв дома 8:01 / 4 = 2:00:15.
+    var creditedSeconds: Int {
+        rawMinutes * 60 / max(1, type.creditDivisor)
+    }
+
     var creditedMinutes: Int {
-        
-        rawMinutes
-        /
-        type.creditDivisor
-    }
-    
-    
-    var rawNightMinutes: Int {
-        
-        nightMinutes(
-            from: startDate,
-            to: endDate
-        )
-    }
-    
-    
-    var creditedNightMinutes: Int {
-        
-        rawNightMinutes
-        /
-        type.creditDivisor
+        creditedSeconds / 60
     }
 }
 
@@ -424,10 +441,6 @@ struct FlightDuty: Identifiable {
 
     var workMinutes: Int {
         workIntervals.reduce(0) { $0 + minutesBetween($1.start, $1.end) }
-    }
-
-    var workNightMinutes: Int {
-        workIntervals.reduce(0) { $0 + nightMinutes(from: $1.start, to: $1.end) }
     }
 
     var restMinutes: Int {
@@ -521,69 +534,40 @@ struct FlightDuty: Identifiable {
 // MARK: - Итоги одного дня
 
 struct DailyTimeTotals {
-    
+
     var flightMinutes = 0
     var airMinutes = 0
-    
+
     var flightWorkMinutes = 0
-    var groundWorkMinutes = 0
-    
+    /// Наземная работа в секундах: резерв дома делится на 4 с точностью до секунды (D37).
+    var groundWorkSeconds = 0
+
     var flightNightMinutes = 0
     var airNightMinutes = 0
-    
-    var flightWorkNightMinutes = 0
-    var groundWorkNightMinutes = 0
-    
-    
+
+    var groundWorkMinutes: Int {
+        groundWorkSeconds / 60
+    }
+
+    var workSeconds: Int {
+        flightWorkMinutes * 60 + groundWorkSeconds
+    }
+
     var workMinutes: Int {
-        
-        flightWorkMinutes
-        +
-        groundWorkMinutes
+        workSeconds / 60
     }
-    
-    
-    var workNightMinutes: Int {
-        
-        flightWorkNightMinutes
-        +
-        groundWorkNightMinutes
-    }
-    
-    
+
     static var zero: DailyTimeTotals {
-        
         DailyTimeTotals()
     }
-    
-    
-    mutating func add(
-        _ other: DailyTimeTotals
-    ) {
-        
-        flightMinutes +=
-        other.flightMinutes
-        
-        airMinutes +=
-        other.airMinutes
-        
-        flightWorkMinutes +=
-        other.flightWorkMinutes
-        
-        groundWorkMinutes +=
-        other.groundWorkMinutes
-        
-        flightNightMinutes +=
-        other.flightNightMinutes
-        
-        airNightMinutes +=
-        other.airNightMinutes
-        
-        flightWorkNightMinutes +=
-        other.flightWorkNightMinutes
-        
-        groundWorkNightMinutes +=
-        other.groundWorkNightMinutes
+
+    mutating func add(_ other: DailyTimeTotals) {
+        flightMinutes += other.flightMinutes
+        airMinutes += other.airMinutes
+        flightWorkMinutes += other.flightWorkMinutes
+        groundWorkSeconds += other.groundWorkSeconds
+        flightNightMinutes += other.flightNightMinutes
+        airNightMinutes += other.airNightMinutes
     }
 }
 
@@ -777,16 +761,6 @@ final class AppStore: ObservableObject {
         return (incoming.count, refreshed)
     }
 
-    func addFlight(
-        _ flight: FlightLeg
-    ) {
-        
-        flights.insert(
-            flight,
-            at: 0
-        )
-    }
-
     func addDutyLegs(_ legs: [FlightLeg]) {
         guard !legs.isEmpty else { return }
         flights = legs + flights
@@ -872,16 +846,6 @@ final class AppStore: ObservableObject {
     }
     
     
-    func deleteFlight(
-        id: UUID
-    ) {
-        
-        flights.removeAll {
-            $0.id == id
-        }
-    }
-    
-    
     func deleteWorkEvent(
         id: UUID
     ) {
@@ -931,59 +895,15 @@ final class AppStore: ObservableObject {
     
     
     private func saveFlights() {
-        
-        do {
-            
-            let data =
-            try JSONEncoder()
-                .encode(
-                    flights
-                )
-            
-            
-            UserDefaults.standard.set(
-                data,
-                forKey:
-                    flightsKey
-            )
-            
-        } catch {
-            
-            print(
-                "ÐÑÐ¸Ð±ÐºÐ° ÑÐ¾ÑÑÐ°Ð½ÐµÐ½Ð¸Ñ ÑÐµÐ¹ÑÐ¾Ð²:",
-                error
-            )
-        }
+        StorageSafety.store(flights, key: flightsKey, title: "История рейсов")
     }
-    
-    
+
+
     private func saveWorkEvents() {
-        
-        do {
-            
-            let data =
-            try JSONEncoder()
-                .encode(
-                    workEvents
-                )
-            
-            
-            UserDefaults.standard.set(
-                data,
-                forKey:
-                    workEventsKey
-            )
-            
-        } catch {
-            
-            print(
-                "ÐÑÐ¸Ð±ÐºÐ° ÑÐ¾ÑÑÐ°Ð½ÐµÐ½Ð¸Ñ Ð¿Ð»Ð°Ð½Ð° ÑÐ°Ð±Ð¾Ñ:",
-                error
-            )
-        }
+        StorageSafety.store(workEvents, key: workEventsKey, title: "План работ")
     }
-    
-    
+
+
     private func loadFlights() -> Bool {
         
         guard
@@ -1283,13 +1203,6 @@ extension FlightLeg {
         return minutesBetween(t.workStart, end)
     }
 
-    var workNightMinutes: Int {
-        guard let t = validatedTimeline else { return 0 }
-        let end = t.workEnd
-            ?? moscowCalendar.date(byAdding: .minute, value: 30, to: t.engineOff)!
-        return nightMinutes(from: t.workStart, to: end)
-    }
-
     var calculatedMinutes: Int? {
         if let calculatedMinutesOverride {
             return max(0, calculatedMinutesOverride)
@@ -1512,17 +1425,6 @@ private func buildAppDerivedData(
             )
             
             
-            totals.flightWorkNightMinutes +=
-            nightMinutesInDay(
-                from:
-                    period.start,
-                to:
-                    period.end,
-                day:
-                    day
-            )
-            
-            
             dailyIndex[key] =
             totals
         }
@@ -1561,29 +1463,12 @@ private func buildAppDerivedData(
             ?? .zero
             
             
-            totals.groundWorkMinutes +=
-            creditedWorkMinutes(
-                start:
-                    item.start,
-                end:
-                    item.end,
-                type:
-                    item.event.type,
-                day:
-                    day
-            )
-            
-            
-            totals.groundWorkNightMinutes +=
-            creditedNightMinutes(
-                start:
-                    item.start,
-                end:
-                    item.end,
-                type:
-                    item.event.type,
-                day:
-                    day
+            totals.groundWorkSeconds +=
+            creditedWorkSeconds(
+                start: item.start,
+                end: item.end,
+                type: item.event.type,
+                day: day
             )
             
             
@@ -1662,512 +1547,34 @@ private func buildFlightDuties(
 }
 
 
-func buildFlightDuties(
-    from flights: [FlightLeg]
-) -> [FlightDuty] {
-    
-    let prepared:
-    [(flight: FlightLeg, timeline: FlightTimeline)] =
-    flights
-        .compactMap {
-            flight
-            -> (flight: FlightLeg, timeline: FlightTimeline)? in
-            
-            guard
-                let timeline =
-                    makeValidatedTimeline(
-                        for:
-                            flight
-                    )
-            else {
-                return nil
-            }
-            
-            
-            return (
-                flight:
-                    flight,
-                timeline:
-                    timeline
-            )
-        }
-        .sorted {
-            $0.timeline.workStart
-            <
-            $1.timeline.workStart
-        }
-    
-    
-    guard !prepared.isEmpty
-    else {
-        return []
-    }
-    
-    
-    var result:
-    [FlightDuty] = []
-    
-    
-    var current:
-    [(flight: FlightLeg, timeline: FlightTimeline)] = []
-    
-    
-    for item in prepared {
-        
-        if current.isEmpty {
-            
-            current =
-            [item]
-            
-            continue
-        }
-        
-        
-        let previous =
-        current.last!
-        
-        
-        let difference =
-        signedMinutesBetween(
-            previous.timeline.engineOff,
-            item.timeline.workStart
-        )
-        
-        
-        let routeContinues =
-        previous.flight.arrival
-        ==
-        item.flight.departure
-        
-        
-        if routeContinues
-            &&
-            difference >= -5
-            &&
-            difference <= 5 {
-            
-            current.append(
-                item
-            )
-            
-        } else {
-            
-            result.append(
-                FlightDuty(
-                    id:
-                        current.first!.flight.id,
-                    legs:
-                        current.map {
-                            $0.flight
-                        }
-                )
-            )
-            
-            
-            current =
-            [item]
-        }
-    }
-    
-    
-    if !current.isEmpty {
-        
-        result.append(
-            FlightDuty(
-                id:
-                    current.first!.flight.id,
-                legs:
-                    current.map {
-                        $0.flight
-                    }
-            )
-        )
-    }
-    
-    
-    return result.sorted {
-        
-        $0.start
-        >
-        $1.start
-    }
-}
+// MARK: - Зачёт наземной работы по суткам (резерв дома — 1/4, D37)
 
-
-// MARK: - Учёт домашнего резерва по суткам
-
-func creditedWorkMinutes(
+func creditedWorkSeconds(
     start: Date,
     end: Date,
     type: WorkEventType,
     day: Date
 ) -> Int {
-    
-    creditedMinutesInDay(
-        start:
-            start,
-        end:
-            end,
-        divisor:
-            type.creditDivisor,
-        day:
-            day
+    creditedSecondsInDay(
+        start: start,
+        end: end,
+        divisor: type.creditDivisor,
+        day: day
     )
 }
 
-func creditedWorkMinutes(
+
+func creditedWorkSeconds(
     event: WorkEvent,
     day: Date
 ) -> Int {
-    
-    guard
-        let range =
-            event.validatedDateRange
-    else {
-        return 0
-    }
-    
-    
-    return creditedWorkMinutes(
-        start:
-            range.start,
-        end:
-            range.end,
-        type:
-            event.type,
-        day:
-            day
+    guard let range = event.validatedDateRange else { return 0 }
+    return creditedWorkSeconds(
+        start: range.start,
+        end: range.end,
+        type: event.type,
+        day: day
     )
-}
-
-
-func creditedNightMinutes(
-    start: Date,
-    end: Date,
-    type: WorkEventType,
-    day: Date
-) -> Int {
-    
-    creditedNightMinutesInDay(
-        start:
-            start,
-        end:
-            end,
-        divisor:
-            type.creditDivisor,
-        day:
-            day
-    )
-}
-
-func creditedNightMinutes(
-    event: WorkEvent,
-    day: Date
-) -> Int {
-    
-    guard
-        let range =
-            event.validatedDateRange
-    else {
-        return 0
-    }
-    
-    
-    return creditedNightMinutes(
-        start:
-            range.start,
-        end:
-            range.end,
-        type:
-            event.type,
-        day:
-            day
-    )
-}
-
-
-// MARK: - Дневной индекс
-
-func buildDailyIndex(
-    flights: [FlightLeg],
-    duties: [FlightDuty],
-    workEvents: [WorkEvent]
-) -> [Int: DailyTimeTotals] {
-    
-    var result:
-    [Int: DailyTimeTotals] = [:]
-    
-    
-    for flight in flights {
-        
-        guard
-            let timeline =
-                flight.validatedTimeline
-        else {
-            continue
-        }
-        
-        
-        for day in touchedDays(
-            from:
-                timeline.engineOn,
-            to:
-                timeline.engineOff
-        ) {
-            
-            let key =
-            dayKey(
-                day
-            )
-            
-            
-            var totals =
-            result[key]
-            ?? .zero
-            
-            
-            totals.flightMinutes +=
-            minutesInDay(
-                from:
-                    timeline.engineOn,
-                to:
-                    timeline.engineOff,
-                day:
-                    day
-            )
-            
-            
-            totals.airMinutes +=
-            minutesInDay(
-                from:
-                    timeline.takeoff,
-                to:
-                    timeline.landing,
-                day:
-                    day
-            )
-            
-            
-            totals.flightNightMinutes +=
-            nightMinutesInDay(
-                from:
-                    timeline.engineOn,
-                to:
-                    timeline.engineOff,
-                day:
-                    day
-            )
-            
-            
-            totals.airNightMinutes +=
-            nightMinutesInDay(
-                from:
-                    timeline.takeoff,
-                to:
-                    timeline.landing,
-                day:
-                    day
-            )
-            
-            
-            result[key] =
-            totals
-        }
-    }
-    
-    
-    for duty in duties {
-        for period in duty.workIntervals {
-        for day in touchedDays(
-            from:
-                period.start,
-            to:
-                period.end
-        ) {
-            
-            let key =
-            dayKey(
-                day
-            )
-            
-            
-            var totals =
-            result[key]
-            ?? .zero
-            
-            
-            totals.flightWorkMinutes +=
-            minutesInDay(
-                from:
-                    period.start,
-                to:
-                    period.end,
-                day:
-                    day
-            )
-            
-            
-            totals.flightWorkNightMinutes +=
-            nightMinutesInDay(
-                from:
-                    period.start,
-                to:
-                    period.end,
-                day:
-                    day
-            )
-            
-            
-            result[key] =
-            totals
-        }
-        }
-    }
-    
-    
-    for event in workEvents {
-        
-        guard
-            let range =
-                event.validatedDateRange
-        else {
-            continue
-        }
-        
-        
-        for day in touchedDays(
-            from:
-                range.start,
-            to:
-                range.end
-        ) {
-            
-            let key =
-            dayKey(
-                day
-            )
-            
-            
-            var totals =
-            result[key]
-            ?? .zero
-            
-            
-            totals.groundWorkMinutes +=
-            creditedWorkMinutes(
-                event:
-                    event,
-                day:
-                    day
-            )
-            
-            
-            totals.groundWorkNightMinutes +=
-            creditedNightMinutes(
-                event:
-                    event,
-                day:
-                    day
-            )
-            
-            
-            result[key] =
-            totals
-        }
-    }
-    
-    
-    return result
-}
-
-
-// MARK: - Индексы событий
-
-func buildFlightsByDay(
-    flights: [FlightLeg]
-) -> [Int: [FlightLeg]] {
-    
-    var result:
-    [Int: [FlightLeg]] = [:]
-    
-    
-    for flight in flights {
-        
-        guard
-            let timeline =
-                flight.validatedTimeline
-        else {
-            continue
-        }
-        
-        
-        for day in touchedDays(
-            from:
-                timeline.engineOn,
-            to:
-                timeline.engineOff
-        ) {
-            
-            result[
-                dayKey(day),
-                default: []
-            ]
-                .append(
-                    flight
-                )
-        }
-    }
-    
-    
-    return result
-}
-
-
-func buildWorkEventsByDay(
-    events: [WorkEvent]
-) -> [Int: [WorkEvent]] {
-    
-    var result:
-    [Int: [WorkEvent]] = [:]
-    
-    
-    for event in events {
-        
-        guard
-            let range =
-                event.validatedDateRange
-        else {
-            continue
-        }
-        
-        
-        let start =
-        range.start
-        
-        
-        let end =
-        range.end
-        
-        
-        for day in touchedDays(
-            from:
-                start,
-            to:
-                end
-        ) {
-            
-            result[
-                dayKey(day),
-                default: []
-            ]
-                .append(
-                    event
-                )
-        }
-    }
-    
-    
-    return result
 }
 
 
@@ -2321,6 +1728,15 @@ func isWeekend(
 
 
 // MARK: - Форматирование
+
+/// Время с секундами только если они есть (D37): 02:00 или 02:00:15.
+func durationText(_ seconds: Int) -> String {
+    let value = max(0, seconds)
+    let base = String(format: "%02d:%02d", value / 3600, (value % 3600) / 60)
+    let rest = value % 60
+    return rest == 0 ? base : base + String(format: ":%02d", rest)
+}
+
 
 func timeText(
     _ minutes: Int

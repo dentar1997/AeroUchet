@@ -422,32 +422,22 @@ func creditedMinutesInDay(
 }
 
 
-func creditedNightMinutesInDay(
+/// Зачётные секунды в сутках при делении (D37). Время событий — с точностью
+/// до минуты, поэтому делим накопленные секунды: 8:01 / 4 = 2:00:15.
+/// Остаток распределяется по суткам без потери: сумма по суткам = целое / divisor.
+func creditedSecondsInDay(
     start: Date,
     end: Date,
     divisor: Int,
     day: Date
 ) -> Int {
-    
-    guard divisor > 0
-    else {
-        return 0
-    }
-    
-    
-    let rawNight =
-    nightMinutesInDay(
-        from:
-            start,
-        to:
-            end,
-        day:
-            day
-    )
-    
-    
-    return
-    rawNight
-    /
-    divisor
+    guard divisor > 0 else { return 0 }
+    let dayStart = moscowCalendar.startOfDay(for: day)
+    let dayEnd = moscowCalendar.date(byAdding: .day, value: 1, to: dayStart)!
+    let segmentStart = max(start, dayStart)
+    let segmentEnd = min(end, dayEnd)
+    guard segmentEnd > segmentStart else { return 0 }
+    let before = minutesBetween(start, segmentStart) * 60
+    let after = minutesBetween(start, segmentEnd) * 60
+    return after / divisor - before / divisor
 }

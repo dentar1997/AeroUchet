@@ -347,8 +347,7 @@ final class AssignmentAppearanceStore: ObservableObject {
     }
 
     private func save() {
-        guard let data = try? JSONEncoder().encode(styles) else { return }
-        UserDefaults.standard.set(data, forKey: defaultsKey)
+        StorageSafety.store(styles, key: defaultsKey, title: "Настройка событий")
     }
 }
 

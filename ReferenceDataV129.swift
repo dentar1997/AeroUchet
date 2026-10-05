@@ -595,11 +595,7 @@ final class FlightScheduleStoreV129: ObservableObject {
     }
 
     nonisolated static func normalizedFlightNumber(_ raw: String) -> String {
-        let digits = raw.uppercased()
-            .replacingOccurrences(of: "SU", with: "")
-            .filter(\.isNumber)
-        guard let value = Int(digits) else { return "" }
-        return String(value)
+        canonicalFlightNumber(raw)
     }
 
     nonisolated static func displayFlightNumber(_ raw: String) -> String {
@@ -660,14 +656,13 @@ final class FlightScheduleStoreV129: ObservableObject {
     }
 
     private func load() {
-        if let data = UserDefaults.standard.data(forKey: Self.entriesKey),
-           let values = try? JSONDecoder().decode([FlightScheduleEntryV129].self, from: data) {
-            entries = values
-        }
-        if let data = UserDefaults.standard.data(forKey: Self.importsKey),
-           let values = try? JSONDecoder().decode([FlightScheduleImportRecordV129].self, from: data) {
-            imports = values
-        }
+        // Нечитаемые данные уходят в резерв, а не затираются (аудит 05.10, п. 17).
+        entries = StorageSafety.decode(
+            [FlightScheduleEntryV129].self, key: Self.entriesKey, title: "Расписание рейсов"
+        ) ?? []
+        imports = StorageSafety.decode(
+            [FlightScheduleImportRecordV129].self, key: Self.importsKey, title: "Импорты расписания"
+        ) ?? []
     }
 
     private func rebuildIndex() {
@@ -677,12 +672,8 @@ final class FlightScheduleStoreV129: ObservableObject {
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(entries) {
-            UserDefaults.standard.set(data, forKey: Self.entriesKey)
-        }
-        if let data = try? JSONEncoder().encode(imports) {
-            UserDefaults.standard.set(data, forKey: Self.importsKey)
-        }
+        StorageSafety.store(entries, key: Self.entriesKey, title: "Расписание рейсов")
+        StorageSafety.store(imports, key: Self.importsKey, title: "Импорты расписания")
     }
 }
 

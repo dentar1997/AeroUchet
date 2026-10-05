@@ -239,12 +239,7 @@ final class FlightNormStore: ObservableObject {
     }
     
     private func save() {
-        do {
-            let data = try JSONEncoder().encode(versions)
-            UserDefaults.standard.set(data, forKey: storageKey)
-        } catch {
-            print("Ошибка сохранения нормативов:", error)
-        }
+        StorageSafety.store(versions, key: storageKey, title: "Нормативы")
     }
     
     private func load() {

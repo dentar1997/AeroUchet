@@ -80,10 +80,10 @@ struct AccountingView: View {
         )
         
         
-        let balance =
-        totals.workMinutes
+        let balanceSeconds =
+        totals.workSeconds
         -
-        adjustedNorm
+        adjustedNorm * 60
         
         
         NavigationStack {
@@ -132,9 +132,8 @@ struct AccountingView: View {
                             title:
                                 "Всего рабочего",
                             value:
-                                timeText(
-                                    totals
-                                        .workMinutes
+                                durationText(
+                                    totals.workSeconds
                                 ),
                             icon:
                                 "briefcase.fill"
@@ -158,9 +157,8 @@ struct AccountingView: View {
                             title:
                                 "Наземная работа",
                             value:
-                                timeText(
-                                    totals
-                                        .groundWorkMinutes
+                                durationText(
+                                    totals.groundWorkSeconds
                                 ),
                             icon:
                                 "building.2"
@@ -169,17 +167,15 @@ struct AccountingView: View {
                         
                         AccountingCard(
                             title:
-                                balance >= 0
+                                balanceSeconds >= 0
                             ? "Переработка"
                             : "Недоработка",
                             value:
-                                timeText(
-                                    abs(
-                                        balance
-                                    )
+                                durationText(
+                                    abs(balanceSeconds)
                                 ),
                             icon:
-                                balance >= 0
+                                balanceSeconds >= 0
                             ? "arrow.up.circle.fill"
                             : "arrow.down.circle.fill"
                         )
@@ -260,45 +256,6 @@ struct AccountingView: View {
                                 ),
                             icon:
                                 "moon.circle.fill"
-                        )
-                        
-                        
-                        AccountingCard(
-                            title:
-                                "Рабочая ночь",
-                            value:
-                                timeText(
-                                    totals
-                                        .workNightMinutes
-                                ),
-                            icon:
-                                "moon.stars.fill"
-                        )
-                        
-                        
-                        AccountingCard(
-                            title:
-                                "Рабочая ночь — рейсы",
-                            value:
-                                timeText(
-                                    totals
-                                        .flightWorkNightMinutes
-                                ),
-                            icon:
-                                "airplane.departure"
-                        )
-                        
-                        
-                        AccountingCard(
-                            title:
-                                "Рабочая ночь — земля",
-                            value:
-                                timeText(
-                                    totals
-                                        .groundWorkNightMinutes
-                                ),
-                            icon:
-                                "building.2"
                         )
                     }
                 }
@@ -1011,8 +968,8 @@ struct GroundWorkBreakdown:
                         .allCases
                 ) { type in
                     
-                    let minutes =
-                    workEventMinutesInMonth(
+                    let seconds =
+                    workEventSecondsInMonth(
                         type:
                             type,
                         month:
@@ -1025,8 +982,8 @@ struct GroundWorkBreakdown:
                     GroundWorkRow(
                         type:
                             type,
-                        minutes:
-                            minutes
+                        seconds:
+                            seconds
                     )
                     
                     
@@ -1069,7 +1026,7 @@ struct GroundWorkRow:
     let type:
     WorkEventType
     
-    let minutes:
+    let seconds:
     Int
     
     
@@ -1100,8 +1057,8 @@ struct GroundWorkRow:
             
             
             Text(
-                timeText(
-                    minutes
+                durationText(
+                    seconds
                 )
             )
             .bold()
@@ -1116,43 +1073,18 @@ struct GroundWorkRow:
 
 // MARK: - Наземная работа одного типа за месяц
 
-func workEventMinutesInMonth(
+func workEventSecondsInMonth(
     type: WorkEventType,
     month: Date,
-    events:
-    [WorkEvent]
+    events: [WorkEvent]
 ) -> Int {
-    
-    var total =
-    0
-    
-    
-    let selected =
-    events.filter {
-        
-        $0.type
-        ==
-        type
-    }
-    
-    
-    for day in daysInMonth(
-        month
-    ) {
-        
+    let selected = events.filter { $0.type == type }
+    var total = 0
+    for day in daysInMonth(month) {
         for event in selected {
-            
-            total +=
-            creditedWorkMinutes(
-                event:
-                    event,
-                day:
-                    day
-            )
+            total += creditedWorkSeconds(event: event, day: day)
         }
     }
-    
-    
     return total
 }
 
