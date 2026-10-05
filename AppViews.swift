@@ -2178,6 +2178,11 @@ struct DutyDetailView: View {
         .onTapGesture { focusedField = nil }
     }
 
+    private func accessibilityTimeText(total: Int, night: Int?) -> String {
+        guard let night else { return timeText(total) }
+        return "\(timeText(total)), ночь \(timeText(night))"
+    }
+
     /// Ночь показывается только у полётного и лётного времени (D36).
     private func timeAndNight(total: Int, night: Int?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -2199,9 +2204,7 @@ struct DutyDetailView: View {
         }
         .lineLimit(1)
         .minimumScaleFactor(0.8)
-        .accessibilityLabel(
-            night.map { "\(timeText(total)), ночь \(timeText($0))" } ?? timeText(total)
-        )
+        .accessibilityLabel(accessibilityTimeText(total: total, night: night))
     }
 
     // Уровень 2: отдельная карточка каждого лега.

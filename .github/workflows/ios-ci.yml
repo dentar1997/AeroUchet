@@ -38,13 +38,19 @@ jobs:
       - name: Build for iOS Simulator
         run: |
           set -o pipefail
-          xcodebuild \
+          # Ошибки компилятора выводим аннотациями: их видно в PR без скачивания логов.
+          if ! xcodebuild \
             -scheme "АэроУчёт" \
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             -showBuildTimingSummary \
-            build
+            build 2>&1 | tee "$RUNNER_TEMP/build.log"; then
+            grep -E "error: " "$RUNNER_TEMP/build.log" | sort -u | head -40 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit 1
+          fi
 
       - name: Static analyze
         run: |
