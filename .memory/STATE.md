@@ -1,17 +1,18 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 05.10.2026 22:44 МСК · Claude. Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 05.10.2026 23:30 МСК · Claude. Перед работой с кодом сверить с живым `main`.
 
 ## Последние записи журнала
+- [2026-10-05_2330_claude_paket-a-pr144.md](log/2026-10-05_2330_claude_paket-a-pr144.md)
+- [2026-10-05_2246_claude_paket-a-nachalo.md](log/2026-10-05_2246_claude_paket-a-nachalo.md)
 - [2026-10-05_2244_claude_audit-otvety-2.md](log/2026-10-05_2244_claude_audit-otvety-2.md)
-- [2026-10-05_2230_claude_audit-otvety.md](log/2026-10-05_2230_claude_audit-otvety.md)
-- [2026-10-05_0940_claude_audit-itogi.md](log/2026-10-05_0940_claude_audit-itogi.md)
 
 ## Код
 - **`AppVersion` = 134**. PR #143, squash merge `2bf00ee`; `AppVersion.swift`: sourceCommit `2bf00ee`, PR #143, 05.10.2026 03:42.
 - v134: системный `UICalendarView` для расписания + управление импортированными snapshot расписания.
 - PR #143: Core time regression ✅ · Build iOS Simulator ✅ · Static analyze ✅ · Package/Upload ✅ · Quality ✅ · Privacy Guard ✅.
 - Предыдущий пакет: v133 / PR #142, squash merge `29e94be`.
+- **PR #144 (пакет A аудита 05.10) открыт, ждёт CI** — у GitHub сбой Actions. После слияния — **v135**. Что проверить на iPad — [ITOGI_CLAUDE_2026-10-05.md](ITOGI_CLAUDE_2026-10-05.md), раздел 5.
 - Новый код — только после нового слова **«Программируй»**.
 
 ## Подтверждено на iPad
