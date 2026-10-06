@@ -7,3 +7,4 @@ enum AppVersion {
     static let pullRequest = 149 // 0 — изменение без PR
     static let date = "06.10.2026 12:17"
 }
+
