@@ -29,7 +29,29 @@ enum AssignmentV119MetadataCodec {
     private static let prefix = "[[AU119:"
     private static let suffix = "]]"
 
+    private final class CachedMetadata {
+        let value: AssignmentV119Metadata?
+        init(_ value: AssignmentV119Metadata?) { self.value = value }
+    }
+
+    /// Разобранные метаданные запоминаются: раньше base64-JSON разбирался заново
+    /// при каждой отрисовке каждой строки и каждой сортировке (аудит 05.10, п. 16, 23).
+    private static let metadataCache: NSCache<NSString, CachedMetadata> = {
+        let cache = NSCache<NSString, CachedMetadata>()
+        cache.countLimit = 4000
+        return cache
+    }()
+
     static func metadata(from detail: String?) -> AssignmentV119Metadata? {
+        guard let detail else { return nil }
+        let key = detail as NSString
+        if let cached = metadataCache.object(forKey: key) { return cached.value }
+        let value = decodeMetadata(from: detail)
+        metadataCache.setObject(CachedMetadata(value), forKey: key)
+        return value
+    }
+
+    private static func decodeMetadata(from detail: String?) -> AssignmentV119Metadata? {
         guard let detail,
               let prefixRange = detail.range(of: prefix),
               let suffixRange = detail.range(
@@ -84,11 +106,14 @@ enum AssignmentV119MetadataCodec {
 
 private enum PerspectivePlanV119ParserError: LocalizedError {
     case unexpectedFormat
+    case lostFlights(page: Int, found: Int, parsed: Int)
 
     var errorDescription: String? {
         switch self {
         case .unexpectedFormat:
             return "Формат перспективного плана изменился или документ распознан не полностью. Импорт отменён, чтобы не потерять назначения."
+        case .lostFlights(let page, let found, let parsed):
+            return "Страница \(page): в документе \(found) номеров рейсов, а в строках таблицы распознано \(parsed). Импорт отменён, чтобы не потерять рейсы."
         }
     }
 }
@@ -96,8 +121,17 @@ private enum PerspectivePlanV119ParserError: LocalizedError {
 
 enum PerspectivePlanV119Parser {
     static func parseFile(url: URL) throws -> AssignmentPlanSnapshot {
+        try parseFileWithRowContent(url: url).snapshot
+    }
+
+    /// Разбор с текстом содержимого каждой строки таблицы («страница|строка»).
+    /// Текст отдаётся уточнению маршрутов и примечаний, чтобы PDF не рисовать второй раз (п. 9).
+    static func parseFileWithRowContent(
+        url: URL
+    ) throws -> (snapshot: AssignmentPlanSnapshot, rowContent: [String: String]) {
         guard url.pathExtension.lowercased() == "pdf" else {
-            return try AssignmentPlanImporter.parseFile(url: url)
+            let snapshot = try AssignmentPlanImporter.parseFile(url: url)
+            return (snapshot, [:])
         }
         guard let document = PDFDocument(url: url) else {
             throw AssignmentPlanImportError.unreadableFile
@@ -108,7 +142,8 @@ enum PerspectivePlanV119Parser {
             .prefix(10)
             .joined(separator: " ")
         guard headerText.localizedCaseInsensitiveContains("перспективный план") else {
-            return try AssignmentPlanImporter.parseFile(url: url)
+            let snapshot = try AssignmentPlanImporter.parseFile(url: url)
+            return (snapshot, [:])
         }
         guard let year = firstYear(in: headerText),
               let scopeMonthKey = scopeMonthKey(in: headerText, year: year) else {
@@ -118,6 +153,7 @@ enum PerspectivePlanV119Parser {
         var rawItems: [AssignmentPlanItem] = []
         var inheritedDate: Date?
         var parsedAssignmentRows = 0
+        var rowContent: [String: String] = [:]
 
         for pageIndex in 0..<document.pageCount {
             guard let page = document.page(at: pageIndex) else {
@@ -127,6 +163,10 @@ enum PerspectivePlanV119Parser {
             guard !rows.isEmpty else {
                 throw PerspectivePlanV119ParserError.unexpectedFormat
             }
+            // Контроль страницы (п. 11): каждый номер рейса на странице должен
+            // оказаться в какой-то строке таблицы — иначе строка потерялась бы молча.
+            let pageFlightCount = flightNumbers(in: page.string ?? "").count
+            var rowFlightCount = 0
 
             for (rowIndex, row) in rows.enumerated() {
                 let dateText = text(
@@ -160,6 +200,10 @@ enum PerspectivePlanV119Parser {
                 let combinedText = dateText + " " + timeText + " " + contentText
                 if combinedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     continue
+                }
+                rowFlightCount += flightNumbers(in: combinedText).count
+                if !contentText.isEmpty {
+                    rowContent["\(pageIndex)|\(rowIndex)"] = contentText
                 }
                 if isHeaderRow(combinedText) {
                     continue
@@ -213,6 +257,14 @@ enum PerspectivePlanV119Parser {
                 rawItems.append(contentsOf: items)
                 parsedAssignmentRows += 1
             }
+
+            if pageFlightCount > rowFlightCount {
+                throw PerspectivePlanV119ParserError.lostFlights(
+                    page: pageIndex + 1,
+                    found: pageFlightCount,
+                    parsed: rowFlightCount
+                )
+            }
         }
 
         guard parsedAssignmentRows > 0, !rawItems.isEmpty else {
@@ -220,10 +272,13 @@ enum PerspectivePlanV119Parser {
         }
 
         let linked = linkPassengerAndWorkingEvents(rawItems.sorted { $0.start < $1.start })
-        return AssignmentPlanSnapshot(
-            items: linked,
-            generatedAt: nil,
-            scopeMonthKey: scopeMonthKey
+        return (
+            AssignmentPlanSnapshot(
+                items: linked,
+                generatedAt: nil,
+                scopeMonthKey: scopeMonthKey
+            ),
+            rowContent
         )
     }
 

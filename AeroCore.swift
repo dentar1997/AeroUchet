@@ -635,6 +635,7 @@ final class AppStore: ObservableObject {
     private var cachedFlightsByDay: [Int: [FlightLeg]] = [:]
     private var cachedWorkEventsByDay: [Int: [WorkEvent]] = [:]
     private var cachedLatestActivityDate: Date?
+    private(set) var historyFlightKeys: Set<String> = []
     
     
     private let flightsKey =
@@ -891,6 +892,8 @@ final class AppStore: ObservableObject {
         
         cachedLatestActivityDate =
         derived.latestActivityDate
+
+        historyFlightKeys = makeHistoryFlightKeys(flights)
     }
     
     
@@ -1245,6 +1248,31 @@ extension FlightLeg {
                 timeline.landing
         )
     }
+}
+
+
+// MARK: - Индекс выполненных рейсов
+
+/// «день|номер» для рейсов истории с портала. План сверяется с историей по этому
+/// индексу, а не перебором всех легов в каждой строке списка (аудит 05.10, п. 16).
+func historyFlightKey(day: Date, number: String) -> String {
+    "\(dayKey(day))|\(number)"
+}
+
+
+private func makeHistoryFlightKeys(_ flights: [FlightLeg]) -> Set<String> {
+    var keys = Set<String>()
+    for flight in flights {
+        guard let engineOn = flight.portalTimes?.engineOn else { continue }
+        var numbers = canonicalFlightNumbers(in: flight.flightNumber)
+        if let leg = flight.legNumber {
+            numbers.append(contentsOf: canonicalFlightNumbers(in: leg))
+        }
+        for number in numbers where !number.isEmpty {
+            keys.insert(historyFlightKey(day: engineOn, number: number))
+        }
+    }
+    return keys
 }
 
 

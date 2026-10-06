@@ -187,7 +187,10 @@ enum AssignmentPlanImportError: LocalizedError {
 final class AssignmentPlanStore: ObservableObject {
     static let calendarURLKey = "pilotPlanCalendarURL"
 
-    @Published private(set) var items: [AssignmentPlanItem] = []
+    @Published private(set) var items: [AssignmentPlanItem] = [] {
+        didSet { cachedCalendarItems = nil }
+    }
+    private var cachedCalendarItems: [AssignmentPlanItem]?
     @Published private(set) var lastCalendarRefresh: Date?
     @Published private(set) var lastFileImport: Date?
     @Published private(set) var calendarHealth: CalendarFeedHealth = .notChecked
@@ -216,9 +219,12 @@ final class AssignmentPlanStore: ObservableObject {
     }
 
     var calendarSourceItems: [AssignmentPlanItem] {
-        items
+        if let cachedCalendarItems { return cachedCalendarItems }
+        let value = items
             .filter { $0.source == .subscribedCalendar }
             .sorted { $0.start < $1.start }
+        cachedCalendarItems = value
+        return value
     }
 
     var importedSourceItems: [AssignmentPlanItem] {
@@ -274,6 +280,14 @@ final class AssignmentPlanStore: ObservableObject {
 
     func historySupersedes(_ item: AssignmentPlanItem, actualFlights: [FlightLeg]) -> Bool {
         isSupersededByHistory(item, actualFlights: actualFlights)
+    }
+
+    /// То же по готовому индексу истории (`AppStore.historyFlightKeys`) — без перебора легов.
+    func historySupersedes(_ item: AssignmentPlanItem, historyKeys: Set<String>) -> Bool {
+        guard !historyKeys.isEmpty else { return false }
+        return item.normalizedWorkingFlightNumbers.contains { number in
+            historyKeys.contains(historyFlightKey(day: item.start, number: number))
+        }
     }
 
     func conflicts(
@@ -353,6 +367,41 @@ final class AssignmentPlanStore: ObservableObject {
         lastFileImport = Date()
         saveMetadata()
         return count
+    }
+
+    /// Сохраняет разобранный перспективный план. Заменяются только назначения
+    /// тех месяцев, планы которых загружены сейчас (п. 8).
+    @discardableResult
+    func replaceImportedPlan(
+        _ incoming: [AssignmentPlanItem],
+        originMonthKeys: [String: Int],
+        scopeMonthKeys: [Int]
+    ) -> Int {
+        let now = Date()
+        let stamped = incoming.map { item -> AssignmentPlanItem in
+            var value = item
+            value.source = .importedFile
+            value.importedAt = now
+            value.originMonthKey = originMonthKeys[item.id] ?? item.originMonthKey ?? item.monthKey
+            return value
+        }
+        guard !stamped.isEmpty else { return 0 }
+
+        let replacing = scopeMonthKeys.isEmpty
+            ? Set(stamped.compactMap(\.originMonthKey))
+            : Set(scopeMonthKeys)
+        items.removeAll { old in
+            old.source == .importedFile && replacing.contains(old.originMonthKey ?? old.monthKey)
+        }
+        var knownIDs = Set(items.map(\.id))
+        for value in stamped where knownIDs.insert(value.id).inserted {
+            items.append(value)
+        }
+        items.sort { $0.start < $1.start }
+        saveItems()
+        lastFileImport = now
+        saveMetadata()
+        return stamped.count
     }
 
     func deleteCurrentPlan() {
