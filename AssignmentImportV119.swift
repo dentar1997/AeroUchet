@@ -49,6 +49,7 @@ final class AssignmentImportArchiveStore: ObservableObject {
     @Published private(set) var latestArchive: AssignmentImportArchive?
 
     private let key = "assignmentImportArchiveV119"
+    private let fileName = "import-conflicts.json"
 
     private init() {
         load()
@@ -60,17 +61,22 @@ final class AssignmentImportArchiveStore: ObservableObject {
 
     func save(_ archive: AssignmentImportArchive) {
         latestArchive = archive
-        StorageSafety.store(archive, key: key, title: "Решения конфликтов импорта")
+        StorageSafety.storeFile(archive, name: fileName, title: "Решения конфликтов импорта")
     }
 
     func clear() {
         latestArchive = nil
+        StorageSafety.removeFile(fileName)
         UserDefaults.standard.removeObject(forKey: key)
     }
 
     private func load() {
-        guard let decoded = StorageSafety.decode(
-            AssignmentImportArchive.self, key: key, title: "Решения конфликтов импорта"
+        guard let decoded = StorageSafety.loadMigrating(
+            AssignmentImportArchive.self, file: fileName, title: "Решения конфликтов импорта", legacy: {
+                StorageSafety.decode(
+                    AssignmentImportArchive.self, key: key, title: "Решения конфликтов импорта"
+                )
+            }
         ) else {
             return
         }

@@ -249,6 +249,18 @@ expect(
     "invalid divisor is safe"
 )
 
+func expectText(_ actual: String, _ expected: String, _ name: String) {
+    guard actual == expected else {
+        fputs("FAIL: \(name): expected \(expected), got \(actual)\n", stderr)
+        exit(1)
+    }
+}
+
+expectText(historyMonthKey(for: "06.10.2026"), "2026-10", "history file month")
+expectText(historyMonthKey(for: "31.01.2025"), "2025-01", "history file month January")
+expectText(historyMonthKey(for: "2026-10-06"), "other", "unexpected date goes to other")
+expectText(historyMonthKey(for: ""), "other", "empty date goes to other")
+
 print("All AeroUchet time calculation regression checks passed.")
 SWIFT
 

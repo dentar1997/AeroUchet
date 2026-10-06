@@ -73,3 +73,15 @@ func parsedDate(
     
     return value
 }
+
+
+/// Месяц рейса для файла истории: «06.10.2026» → «2026-10». Непонятная дата — «other».
+func historyMonthKey(for date: String) -> String {
+    let parts = date.split(separator: ".")
+    guard parts.count == 3,
+          let month = Int(parts[1]), (1...12).contains(month),
+          parts[2].count == 4, let year = Int(parts[2]) else {
+        return "other"
+    }
+    return String(format: "%04d-%02d", year, month)
+}

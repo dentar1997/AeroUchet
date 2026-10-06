@@ -136,8 +136,7 @@ struct SettingsRootV116View: View {
 private struct PilotPlanSettingsView: View {
     @ObservedObject var planStore: AssignmentPlanStore
 
-    @AppStorage(AssignmentPlanStore.calendarURLKey)
-    private var calendarURL = ""
+    private var calendarURL: String { planStore.calendarURLString }
 
     @State private var draftURL = ""
     @State private var isChecking = false
@@ -206,7 +205,7 @@ private struct PilotPlanSettingsView: View {
                     .disabled(isChecking)
 
                     Button("Удалить ссылку", role: .destructive) {
-                        calendarURL = ""
+                        planStore.setCalendarURL("")
                         draftURL = ""
                         planStore.resetCalendarValidation()
                         message = "Ссылка удалена. Уже загруженные планы сохранены отдельно."
@@ -216,7 +215,10 @@ private struct PilotPlanSettingsView: View {
                 Text("Подписной календарь")
             } footer: {
                 Text(
-                    "Проверка скачивает календарь и убеждается, что ссылка действительно возвращает читаемые назначения. Сам текущий план обновляется вручную во вкладке «Назначения» → «Текущий план»."
+                    (planStore.calendarURLInKeychain
+                        ? "Ссылка хранится в Связке ключей iPad. "
+                        : "Связка ключей недоступна — ссылка хранится в настройках приложения. ")
+                    + "Проверка скачивает календарь и убеждается, что ссылка действительно возвращает читаемые назначения. Сам текущий план обновляется вручную во вкладке «Назначения» → «Текущий план»."
                 )
             }
 
@@ -310,7 +312,7 @@ private struct PilotPlanSettingsView: View {
             return
         }
 
-        calendarURL = url.absoluteString
+        planStore.setCalendarURL(url.absoluteString)
         draftURL = calendarURL
         planStore.resetCalendarValidation()
         checkSavedURL()

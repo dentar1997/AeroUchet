@@ -172,6 +172,7 @@ final class AssignmentPlanStore: ObservableObject {
     @Published private(set) var calendarCheckMessage: String?
 
     private let itemsKey = "assignmentPlanItemsV3"
+    private static let itemsFile = "assignment-plan.json"
     private let legacyV2ItemsKey = "assignmentPlanItemsV2"
     private let legacyV1ItemsKey = "assignmentPlanItemsV1"
     private let calendarRefreshKey = "assignmentPlanCalendarRefreshV1"
@@ -182,10 +183,44 @@ final class AssignmentPlanStore: ObservableObject {
 
     init() {
         load()
+        loadCalendarURL()
     }
 
-    var calendarURLString: String {
-        UserDefaults.standard.string(forKey: Self.calendarURLKey) ?? ""
+    /// Ссылка подписного календаря (с токеном) — в Связке ключей (аудит 05.10, п. 15).
+    @Published private(set) var calendarURLString = ""
+    /// false — Связка ключей недоступна, ссылка лежит в настройках приложения.
+    @Published private(set) var calendarURLInKeychain = true
+
+    /// Сохраняет ссылку; пустая строка удаляет её.
+    func setCalendarURL(_ value: String) {
+        let defaults = UserDefaults.standard
+        calendarURLString = value
+        if value.isEmpty {
+            KeychainStore.remove(Self.calendarURLKey)
+            defaults.removeObject(forKey: Self.calendarURLKey)
+            calendarURLInKeychain = true
+        } else if KeychainStore.set(value, for: Self.calendarURLKey) {
+            defaults.removeObject(forKey: Self.calendarURLKey)
+            calendarURLInKeychain = true
+        } else {
+            // Связка ключей недоступна: ссылку не терять, хранить как раньше.
+            KeychainStore.remove(Self.calendarURLKey)
+            defaults.set(value, forKey: Self.calendarURLKey)
+            calendarURLInKeychain = false
+        }
+    }
+
+    private func loadCalendarURL() {
+        let defaults = UserDefaults.standard
+        if let value = KeychainStore.string(for: Self.calendarURLKey) {
+            calendarURLString = value
+            defaults.removeObject(forKey: Self.calendarURLKey)
+            return
+        }
+        let legacy = defaults.string(forKey: Self.calendarURLKey) ?? ""
+        guard !legacy.isEmpty else { return }
+        // Перенос из настроек приложения (до v144).
+        setCalendarURL(legacy)
     }
 
     var hasCalendarURL: Bool {
@@ -416,10 +451,16 @@ final class AssignmentPlanStore: ObservableObject {
         let defaults = UserDefaults.standard
         var migratedLegacyPlan = false
 
-        if let decoded = StorageSafety.decode(
+        if StorageSafety.fileExists(Self.itemsFile) {
+            items = StorageSafety.decodeFile(
+                [AssignmentPlanItem].self, name: Self.itemsFile, title: "Назначения"
+            ) ?? []
+        } else if let decoded = StorageSafety.decode(
             [AssignmentPlanItem].self, key: itemsKey, title: "Назначения"
         ) {
+            // Первый запуск v144: перенос в файл, прежняя запись остаётся.
             items = decoded
+            saveItems()
         } else {
             let legacyData = defaults.data(forKey: legacyV2ItemsKey)
                 ?? defaults.data(forKey: legacyV1ItemsKey)
@@ -449,7 +490,7 @@ final class AssignmentPlanStore: ObservableObject {
     }
 
     private func saveItems() {
-        StorageSafety.store(items, key: itemsKey, title: "Назначения")
+        StorageSafety.storeFile(items, name: Self.itemsFile, title: "Назначения")
     }
 
     private func saveMetadata() {
