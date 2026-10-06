@@ -24,9 +24,20 @@ def git(*args):
 if not before or set(before) == {"0"}:
     before = git("rev-parse", after + "^").strip()
 
-changed = [f for f in git("diff", "--name-only", before, after).splitlines() if f.endswith(".swift")]
+# Изменение кода — это .swift-файл, кроме самого AppVersion.swift, с правкой не только
+# в пробелах и пустых строках. Иначе синхронизация с iPad (GitSync «Last Sync (Mobile)»,
+# пустая строка после открытия файла в Playgrounds) поднимала номер без изменений
+# приложения (06.10: «Версия 142»).
+candidates = [
+    f for f in git("diff", "--name-only", before, after).splitlines()
+    if f.endswith(".swift") and f != PATH
+]
+changed = [
+    f for f in candidates
+    if git("diff", "--ignore-all-space", "--ignore-blank-lines", before, after, "--", f).strip()
+]
 if not changed:
-    print("Swift не менялся — версия не трогается")
+    print("Код приложения не менялся (только AppVersion.swift или пробелы) — версия не трогается")
     sys.exit(0)
 
 
