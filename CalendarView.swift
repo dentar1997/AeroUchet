@@ -327,6 +327,8 @@ func calendarCells(
 
 struct CalendarView: View {
     
+    @ObservedObject private var dutyPresenter = CalendarDutyPresenter.shared
+
     @ObservedObject
     var store: AppStore
     
@@ -617,6 +619,17 @@ struct CalendarView: View {
                 
                 initialized =
                 true
+            }
+        }
+        .overlay {
+            // D41: карточка рейса из «Календаря» — всплывающая, только просмотр.
+            if let duty = dutyPresenter.duty {
+                DutyAssignmentOverlay(
+                    duty: duty,
+                    store: store,
+                    isReadOnly: true,
+                    onClose: { dutyPresenter.duty = nil }
+                )
             }
         }
         .environmentObject(
@@ -1792,6 +1805,14 @@ struct CalendarEventLine: View {
 
 // MARK: - Правая панель дня
 
+/// Карточка рейса, открытая из «Календаря» (D41). Показывается поверх всего
+/// экрана «Календаря», а не внутри узкой колонки дня.
+final class CalendarDutyPresenter: ObservableObject {
+    static let shared = CalendarDutyPresenter()
+    @Published var duty: FlightDuty?
+}
+
+
 struct CalendarDayDetail: View {
     
     @EnvironmentObject
@@ -1872,11 +1893,8 @@ struct CalendarDayDetail: View {
     
     
     var body: some View {
-        
         let _ =
         refreshToken
-        
-        
         ScrollView {
             
             VStack(
@@ -1965,14 +1983,11 @@ struct CalendarDayDetail: View {
                         flights
                     ) { flight in
                         
-                        NavigationLink {
-                            if let duty = store.duties.first(where: {
+                        Button {
+                            // D41: открывается всплывающим окном на весь экран «Календаря».
+                            CalendarDutyPresenter.shared.duty = store.duties.first(where: {
                                 $0.legs.contains(where: { $0.id == flight.id })
-                            }) {
-                                DutyDetailView(duty: duty)
-                            } else {
-                                Text("Смена для этого рейса не найдена")
-                            }
+                            })
                         } label: {
                             
                             CalendarFlightRow(
