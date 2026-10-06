@@ -7,40 +7,6 @@ import SwiftUI
 // обычные кнопки и ScrollView: они не становятся текстовым
 // first responder и нормально работают с пальцем и трекпадом.
 
-struct AeroYearPickerRow: View {
-    let title: String
-    @Binding var selection: Int
-    let range: ClosedRange<Int>
-
-    init(
-        _ title: String,
-        selection: Binding<Int>,
-        range: ClosedRange<Int> = 2000...2100
-    ) {
-        self.title = title
-        self._selection = selection
-        self.range = range
-    }
-
-    var body: some View {
-        Stepper(
-            value: $selection,
-            in: range
-        ) {
-            HStack {
-                Text(title)
-
-                Spacer()
-
-                Text(String(selection))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-}
-
-
 struct AeroTimePickerRow: View {
     let title: String
     @Binding var selection: Date

@@ -216,13 +216,6 @@ final class FlightNormStore: ObservableObject {
         versions[versionIndex].rows = rows
     }
     
-    func nextVersion(year: Int, season: FlightNormSeason) -> Int {
-        let values = versions
-            .filter { $0.year == year && $0.season == season }
-            .map { $0.versionNumber }
-        
-        return (values.max() ?? 0) + 1
-    }
     
     private func sortVersions() {
         versions.sort {
