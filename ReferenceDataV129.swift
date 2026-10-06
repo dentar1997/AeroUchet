@@ -1275,14 +1275,25 @@ struct FlightScheduleDatabaseV130View: View {
         let title: String
         let primary: Set<String>
         let secondary: Set<String>
+        /// Дни, когда рейс летает на неотмеченных в фильтре типах ВС.
+        let tertiary: Set<String>
         let legend: String?
+    }
+
+    /// Дни рейса (номер+маршрут) на типах ВС, не прошедших фильтр, кроме уже показанных.
+    private func otherTypeDays(key: String, excluding shown: Set<String>) -> Set<String> {
+        guard groups.count < ScheduleAircraftFilterButton.choices.count else { return [] }
+        let hidden = store.entries.filter { Self.flightKey($0) == key && !passesFilter($0) }
+        return dayKeys(executionDates(for: hidden)).subtracting(shown)
     }
 
     /// Выбранный рейс → кнопка у подсказки → точный номер в поиске с одним маршрутом.
     private func highlight(rows: [FlightScheduleEntryV129]) -> Highlight? {
         if let key = selectedFlightKey {
             let entries = store.entries.filter { Self.flightKey($0) == key && passesFilter($0) }
-            guard let sample = entries.first else { return nil }
+            guard let sample = entries.first ?? store.entries.first(where: { Self.flightKey($0) == key }) else {
+                return nil
+            }
             let record = selectedRow(in: rows)
                 ?? entries.first { $0.id == selectedRecordID }
             let recordDays = record.map { dayKeys(executionDates(for: [$0])) } ?? []
@@ -1294,17 +1305,20 @@ struct FlightScheduleDatabaseV130View: View {
                 title: routeTitle(sample.flightNumber, sample.departure, sample.arrival),
                 primary: recordDays,
                 secondary: allDays.subtracting(recordDays),
+                tertiary: otherTypeDays(key: key, excluding: allDays),
                 legend: legend
             )
         }
         let candidates = routeCandidates
         let route = calendarRouteID.flatMap { id in candidates.first { $0.id == id } }
             ?? (candidates.count == 1 ? candidates.first : nil)
-        guard let route else { return nil }
+        guard let route, let first = route.entries.first else { return nil }
+        let days = dayKeys(executionDates(for: route.entries))
         return Highlight(
             title: routeTitle(route.flightNumber, route.departure, route.arrival),
-            primary: dayKeys(executionDates(for: route.entries)),
+            primary: days,
             secondary: [],
+            tertiary: otherTypeDays(key: Self.flightKey(first), excluding: days),
             legend: nil
         )
     }
@@ -1322,6 +1336,7 @@ struct FlightScheduleDatabaseV130View: View {
             selectedDate: $selectedDate,
             primaryDays: highlight?.primary ?? [],
             secondaryDays: highlight?.secondary ?? [],
+            tertiaryDays: highlight?.tertiary ?? [],
             title: highlight?.title,
             legend: highlight?.legend
         )

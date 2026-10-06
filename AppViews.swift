@@ -469,14 +469,6 @@ struct FlightsView: View {
                         )
                     }
 
-                    Button {
-                    } label: {
-                        Label(
-                            "Добавить перспективный план · в разработке",
-                            systemImage: "calendar.badge.plus"
-                        )
-                    }
-                    .disabled(true)
                 } label: {
                     Image(systemName: "plus")
                 }
