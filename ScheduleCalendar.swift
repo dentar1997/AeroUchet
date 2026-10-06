@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Календарь базы расписания (v145)
 //
@@ -12,6 +13,8 @@ struct ScheduleMonthsCalendarView: View {
     let primaryDays: Set<String>
     /// Остальные дни того же рейса по тому же маршруту (другие записи) — бледный круг.
     let secondaryDays: Set<String>
+    /// Дни, когда этот рейс выполняется на неотмеченных в фильтре типах ВС — серый круг.
+    var tertiaryDays: Set<String> = []
     let title: String?
     /// Подпись под календарём, например «эта запись 05.10–25.10, дни 257».
     let legend: String?
@@ -86,16 +89,24 @@ struct ScheduleMonthsCalendarView: View {
                 }
             }
 
-            if let legend, !primaryDays.isEmpty || !secondaryDays.isEmpty {
+            if !primaryDays.isEmpty || !secondaryDays.isEmpty || !tertiaryDays.isEmpty {
                 HStack(spacing: 10) {
-                    HStack(spacing: 4) {
-                        Circle().fill(Color.teal).frame(width: 10, height: 10)
-                        Text(legend)
+                    if let legend, !primaryDays.isEmpty {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.teal).frame(width: 10, height: 10)
+                            Text(legend)
+                        }
                     }
                     if !secondaryDays.isEmpty {
                         HStack(spacing: 4) {
                             Circle().fill(Color.teal.opacity(0.35)).frame(width: 10, height: 10)
                             Text("другие периоды")
+                        }
+                    }
+                    if !tertiaryDays.isEmpty {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.gray.opacity(0.45)).frame(width: 10, height: 10)
+                            Text("на других типах ВС")
                         }
                     }
                     Spacer(minLength: 0)
@@ -173,6 +184,7 @@ struct ScheduleMonthsCalendarView: View {
         let key = Self.dayKey(day)
         let isPrimary = primaryDays.contains(key)
         let isSecondary = !isPrimary && secondaryDays.contains(key)
+        let isTertiary = !isPrimary && !isSecondary && tertiaryDays.contains(key)
         let isSelected = moscowCalendar.isDate(day, inSameDayAs: selectedDate)
         let isToday = moscowCalendar.isDateInToday(day)
         return Button {
@@ -183,18 +195,17 @@ struct ScheduleMonthsCalendarView: View {
                     Circle().fill(Color.teal).padding(3)
                 } else if isSecondary {
                     Circle().fill(Color.teal.opacity(0.35)).padding(3)
+                } else if isTertiary {
+                    Circle().fill(Color.gray.opacity(0.45)).padding(3)
                 }
                 // Выбранный день — обводка цвета текста (в тёмной теме белая).
                 if isSelected {
                     Circle().strokeBorder(Color.primary, lineWidth: 2)
                 }
-                // Сегодня — красное кольцо, видно и на закрашенном дне.
-                if isToday {
-                    Circle().strokeBorder(Color.red, lineWidth: 2).padding(isSelected ? 4 : 1)
-                }
                 Text(String(moscowCalendar.component(.day, from: day)))
                     .font(.callout.monospacedDigit().weight(isToday || isSelected ? .bold : .regular))
-                    .foregroundStyle(isPrimary ? Color.white : Color.primary)
+                    // Сегодня — красная цифра на любом фоне (Денис 07.10).
+                    .foregroundStyle(isToday ? Color.red : (isPrimary ? Color.white : Color.primary))
             }
             .frame(width: 38, height: 38)
             .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
@@ -243,7 +254,12 @@ struct ScheduleMonthsCalendarView: View {
 }
 
 
-// MARK: - Крутилка «месяц · год» (без системного Picker: он ломает клавиатуру в Playgrounds)
+// MARK: - Барабан «месяц · год»
+//
+// Свой барабан вместо системного UIPickerView (системные элементы в Playgrounds
+// мешают физической клавиатуре). Повторяет системный: инерция и остановка ровно
+// на строке, строки к краям поворачиваются и тускнеют, полоса выбора посередине,
+// месяцы по кругу, щелчок вибрацией на каждой строке.
 
 private struct ScheduleMonthYearWheel: View {
     let years: [Int]
@@ -275,63 +291,130 @@ private struct ScheduleMonthYearWheel: View {
             }
             .padding()
 
-            Divider()
-
-            HStack(spacing: 0) {
-                ScheduleWheelColumn(
-                    values: Array(1...12),
-                    selection: month,
-                    label: { ScheduleMonthsCalendarView.monthNames[$0 - 1] }
-                ) { month = $0 }
-                ScheduleWheelColumn(
-                    values: years,
-                    selection: year,
-                    label: { String($0) }
-                ) { year = $0 }
+            ZStack {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(Color(uiColor: .tertiarySystemFill))
+                    .frame(height: DrumColumn.rowHeight)
+                    .padding(.horizontal, 10)
+                HStack(spacing: 0) {
+                    DrumColumn(
+                        count: 12,
+                        isCircular: true,
+                        selection: $month,
+                        valueAt: { $0 + 1 },
+                        label: { ScheduleMonthsCalendarView.monthNames[$0 - 1] },
+                        alignment: .trailing
+                    )
+                    DrumColumn(
+                        count: years.count,
+                        isCircular: false,
+                        selection: $year,
+                        valueAt: { years[$0] },
+                        label: { String($0) },
+                        alignment: .leading
+                    )
+                }
+                .padding(.horizontal, 18)
             }
-            .padding(.horizontal, 12)
+            .frame(height: DrumColumn.height)
+            .padding(.bottom, 12)
         }
-        .frame(width: 320, height: 290)
+        .frame(width: 320)
     }
 }
 
-private struct ScheduleWheelColumn: View {
-    let values: [Int]
-    let selection: Int
+/// Одна колонка барабана. `valueAt` — значение по номеру строки внутри круга.
+private struct DrumColumn: View {
+    static let rowHeight: CGFloat = 36
+    static let height: CGFloat = 216
+    /// Сколько раз повторяются строки круговой колонки (месяцы «бесконечные»).
+    private static let laps = 200
+
+    let count: Int
+    let isCircular: Bool
+    @Binding var selection: Int
+    let valueAt: (Int) -> Int
     let label: (Int) -> String
-    let onSelect: (Int) -> Void
+    let alignment: Alignment
+
+    @State private var centered: Int?
+    @State private var didAppear = false
+
+    private var total: Int { isCircular ? count * Self.laps : count }
+
+    private func value(atRow row: Int) -> Int {
+        valueAt(((row % count) + count) % count)
+    }
+
+    private func initialRow() -> Int {
+        let local = (0..<count).first { valueAt($0) == selection } ?? 0
+        return isCircular ? count * (Self.laps / 2) + local : local
+    }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(values, id: \.self) { value in
-                        Button {
-                            onSelect(value)
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                proxy.scrollTo(value, anchor: .center)
-                            }
-                        } label: {
-                            Text(label(value))
-                                .font(value == selection ? .title3.weight(.semibold) : .body)
-                                .monospacedDigit()
-                                .foregroundStyle(value == selection ? .primary : .secondary)
-                                .frame(maxWidth: .infinity, minHeight: 38)
-                                .contentShape(Rectangle())
+        ScrollView(.vertical) {
+            LazyVStack(spacing: 0) {
+                ForEach(0..<total, id: \.self) { row in
+                    // Значение снаружи замыкания visualEffect: в Playgrounds код по умолчанию
+                    // на главном акторе, а visualEffect выполняется вне его.
+                    let half = Self.height / 2
+                    Text(label(value(atRow: row)))
+                        .font(.title3)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: alignment)
+                        .padding(.horizontal, 14)
+                        .frame(height: Self.rowHeight)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.25)) { centered = row }
                         }
-                        .buttonStyle(.plain)
-                        .id(value)
-                    }
+                        .visualEffect { content, proxy in
+                            // Поворот, уменьшение и тускнение строк к краям — как цилиндр.
+                            let frame = proxy.frame(in: .scrollView(axis: .vertical))
+                            let offset = max(-1, min(1, (frame.midY - half) / half))
+                            return content
+                                .rotation3DEffect(
+                                    .degrees(Double(-offset) * 62),
+                                    axis: (x: 1, y: 0, z: 0),
+                                    perspective: 0.5
+                                )
+                                .scaleEffect(1 - abs(offset) * 0.12)
+                                .opacity(1 - abs(offset) * 0.75)
+                        }
                 }
-                .padding(.vertical, 80)
             }
-            .onAppear {
-                DispatchQueue.main.async {
-                    proxy.scrollTo(selection, anchor: .center)
-                }
-            }
+            .scrollTargetLayout()
         }
-        .frame(maxWidth: .infinity)
+        .scrollIndicators(.hidden)
+        .scrollTargetBehavior(.viewAligned)
+        .scrollPosition(id: $centered, anchor: .center)
+        .contentMargins(.vertical, (Self.height - Self.rowHeight) / 2, for: .scrollContent)
+        .frame(height: Self.height)
+        .mask(
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.25),
+                    .init(color: .black, location: 0.75),
+                    .init(color: .clear, location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .onAppear {
+            guard !didAppear else { return }
+            didAppear = true
+            centered = initialRow()
+        }
+        .onChange(of: centered) { _, row in
+            guard let row else { return }
+            let newValue = value(atRow: row)
+            guard newValue != selection else { return }
+            selection = newValue
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
     }
 }
 

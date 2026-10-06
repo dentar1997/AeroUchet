@@ -143,6 +143,7 @@ enum AirportDatabase {
         AirportInfo("KUT", "UGKO", "Кутаиси"),
         AirportInfo("KVX", "USKK", "Киров"),
         AirportInfo("KXK", "UHKK", "Комсомольск-на-Амуре"),
+        AirportInfo("KVK", "ULMK", "Апатиты"),
         AirportInfo("KYZ", "UNKY", "Кызыл"),
         AirportInfo("KZN", "UWKD", "Казань"),
         AirportInfo("KZO", "UAOO", "Кызылорда"),
