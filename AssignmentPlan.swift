@@ -212,11 +212,13 @@ final class AssignmentPlanStore: ObservableObject {
         actualFlights: [FlightLeg],
         hideSuperseded: Bool = false
     ) -> [AssignmentPlanItem] {
-        let sourceItems = items.filter { $0.source == source }
-        let filtered = hideSuperseded
-            ? sourceItems.filter { !isSupersededByHistory($0, actualFlights: actualFlights) }
-            : sourceItems
-        return filtered.sorted { $0.start < $1.start }
+        // Источники хранятся и показываются независимо; факт истории отмечается
+        // статусом строки (historySupersedes по индексу), а не скрытием.
+        _ = actualFlights
+        _ = hideSuperseded
+        return items
+            .filter { $0.source == source }
+            .sorted { $0.start < $1.start }
     }
 
     func calendarOverlap(for item: AssignmentPlanItem) -> Bool {
