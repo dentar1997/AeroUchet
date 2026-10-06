@@ -733,6 +733,7 @@ struct DutyAssignmentOverlay: View {
     let duty: FlightDuty
     @ObservedObject var store: AppStore
     let isCreating: Bool
+    let isReadOnly: Bool
     let onCreate: (([FlightLeg]) -> Void)?
     let onUpdate: (([FlightLeg]) -> Void)?
     let onDelete: (() -> Void)?
@@ -742,6 +743,7 @@ struct DutyAssignmentOverlay: View {
         duty: FlightDuty,
         store: AppStore,
         isCreating: Bool = false,
+        isReadOnly: Bool = false,
         onCreate: (([FlightLeg]) -> Void)? = nil,
         onUpdate: (([FlightLeg]) -> Void)? = nil,
         onDelete: (() -> Void)? = nil,
@@ -750,6 +752,7 @@ struct DutyAssignmentOverlay: View {
         self.duty = duty
         self.store = store
         self.isCreating = isCreating
+        self.isReadOnly = isReadOnly
         self.onCreate = onCreate
         self.onUpdate = onUpdate
         self.onDelete = onDelete
@@ -803,6 +806,7 @@ struct DutyAssignmentOverlay: View {
                         onEditModeChange: { editModeIsActive = $0 },
                         externalEditorDismissSignal: dismissEditorSignal,
                         isCreating: isCreating,
+                        isReadOnly: isReadOnly,
                         onCreate: onCreate,
                         onUpdate: onUpdate,
                         onDelete: onDelete
@@ -3387,6 +3391,12 @@ final class KeyInputDiagnostics: ObservableObject {
     @Published private(set) var textCount = 0
     @Published private(set) var keyWindow = "—"
     @Published private(set) var presented = "нет"
+    @Published private(set) var responder = "—"
+    @Published private(set) var lastFocus = "—"
+
+    func registerFocusAttempt(became: Bool) {
+        DispatchQueue.main.async { self.lastFocus = became ? "да" : "нет" }
+    }
 
     func registerKey() {
         DispatchQueue.main.async { self.count += 1 }
@@ -3408,6 +3418,14 @@ final class KeyInputDiagnostics: ObservableObject {
         let windows = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap(\.windows)
+        switch UIResponder.aeroCurrentFirstResponder {
+        case .none:
+            responder = "нет"
+        case .some(let value) where value is AssignmentInputTextField:
+            responder = "поле"
+        case .some(let value):
+            responder = String(describing: type(of: value))
+        }
         if let key = windows.first(where: \.isKeyWindow) {
             let name = String(describing: type(of: key))
             keyWindow = name == "UIWindow" ? "приложение" : name
@@ -3431,7 +3449,7 @@ private struct KeyInputIndicator: View {
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        Text("Ячейка: \(activeCell ?? "нет") · ⌨︎ нажатий \(diagnostics.count) · текст \(diagnostics.textCount) · окно: \(diagnostics.keyWindow) · поверх: \(diagnostics.presented)")
+        Text("Ячейка: \(activeCell ?? "нет") · ⌨︎ нажатий \(diagnostics.count) · фокус: \(diagnostics.responder) · взят: \(diagnostics.lastFocus) · окно: \(diagnostics.keyWindow) · поверх: \(diagnostics.presented)")
             .font(.system(size: 10, weight: .medium))
             .lineLimit(2)
             .minimumScaleFactor(0.7)
@@ -3443,6 +3461,27 @@ private struct KeyInputIndicator: View {
             .accessibilityLabel("Диагностика ввода с клавиатуры")
     }
 }
+
+extension UIResponder {
+    private static weak var aeroCapturedResponder: UIResponder?
+
+    /// Настоящий first responder (а не то, что думает SwiftUI) — для диагностики клавиатуры.
+    static var aeroCurrentFirstResponder: UIResponder? {
+        aeroCapturedResponder = nil
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.aeroCaptureFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        return aeroCapturedResponder
+    }
+
+    @objc private func aeroCaptureFirstResponder() {
+        UIResponder.aeroCapturedResponder = self
+    }
+}
+
 
 private final class AssignmentInputTextField: UITextField {
     var hardwareInputHandler: ((String?, Bool) -> Void)?
@@ -3558,7 +3597,19 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
 
         if isActive && !field.isFirstResponder {
             DispatchQueue.main.async {
-                field.becomeFirstResponder()
+                // После окна «Файлы» поле считалось активным, но нажатия физической
+                // клавиатуры до него не доходили (запись 06.10). Окно приложения
+                // делаем ключевым заново и только потом берём фокус (не N09:
+                // это не возврат фокуса после окна, а выбор ячейки пользователем).
+                field.window?.makeKey()
+                let became = field.becomeFirstResponder()
+                if !became || !field.isFirstResponder {
+                    field.window?.makeKeyAndVisible()
+                    _ = field.becomeFirstResponder()
+                }
+                KeyInputDiagnostics.shared.registerFocusAttempt(
+                    became: field.isFirstResponder
+                )
                 context.coordinator.prepareToReplaceCurrentValue(in: field)
             }
         } else if !isActive && field.isFirstResponder {
