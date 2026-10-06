@@ -1175,7 +1175,10 @@ struct FlightScheduleDatabaseV130View: View {
     @State private var search = ""
     @State private var selectedDate = moscowCalendar.startOfDay(for: Date())
     @AppStorage(ScheduleAircraftFilterButton.storageKey) private var groupsRaw = ""
-    @State private var expandedEntryID: String?
+    /// Выбранный рейс: номер + маршрут. Держится при смене дня, пока его не снимут.
+    @State private var selectedFlightKey: String?
+    /// Запись расписания, раскрытая последней (её дни — сплошной круг).
+    @State private var selectedRecordID: String?
     @State private var showCalendarPopover = false
     /// Маршрут, для которого календарь открыли кнопкой «Календарь выполнения» (узкий экран).
     @State private var calendarRouteID: String?
@@ -1226,8 +1229,8 @@ struct FlightScheduleDatabaseV130View: View {
                 && FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber) == normalizedNumber)
                 || entry.departure.localizedCaseInsensitiveContains(query)
                 || entry.arrival.localizedCaseInsensitiveContains(query)
-                || (AirportDatabase.airport(for: entry.departure)?.name.localizedCaseInsensitiveContains(query) ?? false)
-                || (AirportDatabase.airport(for: entry.arrival)?.name.localizedCaseInsensitiveContains(query) ?? false)
+                || (AirportDatabase.airport(for: entry.departure)?.matches(query) ?? false)
+                || (AirportDatabase.airport(for: entry.arrival)?.matches(query) ?? false)
                 || AircraftFamilyV129.display(entry.rawAircraftCode).localizedCaseInsensitiveContains(query)
         }
         .sorted { left, right in
@@ -1255,43 +1258,93 @@ struct FlightScheduleDatabaseV130View: View {
         .sorted { ($0.departure, $0.arrival) < ($1.departure, $1.arrival) }
     }
 
-    // MARK: Подсветка дней выполнения
+    // MARK: Выбранный рейс и подсветка дней выполнения
 
-    /// Чей календарь выполнения показывать: раскрытая строка → кнопка у подсказки →
-    /// точный номер в поиске с одним маршрутом.
-    private var highlightedRoute: (title: String, entries: [FlightScheduleEntryV129])? {
-        if let id = expandedEntryID,
-           let entry = store.entries.first(where: { $0.id == id }) {
-            let number = FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber)
-            let entries = store.entries.filter {
-                $0.departure == entry.departure
-                    && $0.arrival == entry.arrival
-                    && FlightScheduleStoreV129.normalizedFlightNumber($0.flightNumber) == number
-                    && passesFilter($0)
+    private static func flightKey(_ entry: FlightScheduleEntryV129) -> String {
+        "\(FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber))|\(entry.departure)|\(entry.arrival)"
+    }
+
+    /// Строка выбранного рейса в списке выбранного дня (если в этот день он летает).
+    private func selectedRow(in rows: [FlightScheduleEntryV129]) -> FlightScheduleEntryV129? {
+        guard let key = selectedFlightKey else { return nil }
+        return rows.first { $0.id == selectedRecordID && Self.flightKey($0) == key }
+            ?? rows.first { Self.flightKey($0) == key }
+    }
+
+    private struct Highlight {
+        let title: String
+        let primary: Set<String>
+        let secondary: Set<String>
+        let legend: String?
+    }
+
+    /// Выбранный рейс → кнопка у подсказки → точный номер в поиске с одним маршрутом.
+    private func highlight(rows: [FlightScheduleEntryV129]) -> Highlight? {
+        if let key = selectedFlightKey {
+            let entries = store.entries.filter { Self.flightKey($0) == key && passesFilter($0) }
+            guard let sample = entries.first else { return nil }
+            let record = selectedRow(in: rows)
+                ?? entries.first { $0.id == selectedRecordID }
+            let recordDays = record.map { dayKeys(executionDates(for: [$0])) } ?? []
+            let allDays = dayKeys(executionDates(for: entries))
+            let legend = record.map {
+                "эта запись \(FlightScheduleStoreV129.shortDay($0.validFrom))–\(FlightScheduleStoreV129.shortDay($0.validTo)), дни \($0.operatingWeekdays.map(String.init).joined())"
             }
-            return (routeTitle(entry.flightNumber, entry.departure, entry.arrival), entries)
+            return Highlight(
+                title: routeTitle(sample.flightNumber, sample.departure, sample.arrival),
+                primary: recordDays,
+                secondary: allDays.subtracting(recordDays),
+                legend: legend
+            )
         }
         let candidates = routeCandidates
-        if let id = calendarRouteID, let route = candidates.first(where: { $0.id == id }) {
-            return (routeTitle(route.flightNumber, route.departure, route.arrival), route.entries)
-        }
-        if candidates.count == 1, let route = candidates.first {
-            return (routeTitle(route.flightNumber, route.departure, route.arrival), route.entries)
-        }
-        return nil
+        let route = calendarRouteID.flatMap { id in candidates.first { $0.id == id } }
+            ?? (candidates.count == 1 ? candidates.first : nil)
+        guard let route else { return nil }
+        return Highlight(
+            title: routeTitle(route.flightNumber, route.departure, route.arrival),
+            primary: dayKeys(executionDates(for: route.entries)),
+            secondary: [],
+            legend: nil
+        )
+    }
+
+    private func dayKeys(_ dates: [Date]) -> Set<String> {
+        Set(dates.map(ScheduleMonthsCalendarView.dayKey))
     }
 
     private func routeTitle(_ number: String, _ departure: String, _ arrival: String) -> String {
-        "Рейс \(FlightScheduleStoreV129.displayFlightNumber(number)) · \(departure) → \(arrival)"
+        "Рейс \(FlightScheduleStoreV129.displayFlightNumber(number)) · \(AirportDatabase.displayName(for: departure)) → \(AirportDatabase.displayName(for: arrival))"
     }
 
-    private func calendarView(_ route: (title: String, entries: [FlightScheduleEntryV129])?) -> some View {
+    private func calendarView(_ highlight: Highlight?) -> some View {
         ScheduleMonthsCalendarView(
             selectedDate: $selectedDate,
-            highlightedDays: Set((route.map { executionDates(for: $0.entries) } ?? [])
-                .map(ScheduleMonthsCalendarView.dayKey)),
-            title: route?.title
+            primaryDays: highlight?.primary ?? [],
+            secondaryDays: highlight?.secondary ?? [],
+            title: highlight?.title,
+            legend: highlight?.legend
         )
+    }
+
+    private var fullDateTitle: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "EE, d MMMM yyyy"
+        let text = formatter.string(from: selectedDate)
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    private func flightsCountText(_ count: Int) -> String {
+        let tail = count % 100
+        let last = count % 10
+        let word: String
+        if (11...14).contains(tail) { word = "рейсов" }
+        else if last == 1 { word = "рейс" }
+        else if (2...4).contains(last) { word = "рейса" }
+        else { word = "рейсов" }
+        return "\(count) \(word)"
     }
 
     private var selectedDateButtonTitle: String {
@@ -1305,9 +1358,10 @@ struct FlightScheduleDatabaseV130View: View {
     var body: some View {
         GeometryReader { geometry in
             let isWide = geometry.size.width >= Self.sideCalendarMinWidth
-            let route = highlightedRoute
+            let rows = values
+            let route = highlight(rows: rows)
             HStack(spacing: 0) {
-                tablePane(isWide: isWide, route: route)
+                tablePane(isWide: isWide, route: route, rows: rows)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 if isWide {
                     Divider()
@@ -1325,18 +1379,12 @@ struct FlightScheduleDatabaseV130View: View {
 
     private func tablePane(
         isWide: Bool,
-        route: (title: String, entries: [FlightScheduleEntryV129])?
+        route: Highlight?,
+        rows values: [FlightScheduleEntryV129]
     ) -> some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
-                if isWide {
-                    Label(selectedDateButtonTitle, systemImage: "calendar")
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.teal)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Capsule().fill(Color.teal.opacity(0.12)))
-                } else {
+                if !isWide {
                     Button {
                         showCalendarPopover = true
                     } label: {
@@ -1368,7 +1416,9 @@ struct FlightScheduleDatabaseV130View: View {
             .padding(.top, 8)
 
             HStack {
-                Text("Дата вылета по Москве · \(values.count) строк")
+                Text(isWide
+                    ? "\(fullDateTitle) · дата вылета по Москве · \(flightsCountText(values.count))"
+                    : "Дата вылета по Москве · \(flightsCountText(values.count))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -1423,7 +1473,7 @@ struct FlightScheduleDatabaseV130View: View {
                     Text("Маршрут").frame(maxWidth: .infinity, alignment: .leading)
                     Text("Время МСК").frame(width: 104, alignment: .leading)
                     Text("Тип ВС").frame(width: 70, alignment: .leading)
-                    Text("Полётное время").frame(width: 104, alignment: .trailing)
+                    Text("Полётное время").frame(width: 104, alignment: .center)
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -1431,10 +1481,44 @@ struct FlightScheduleDatabaseV130View: View {
                 .padding(.vertical, 6)
                 .background(Color(uiColor: .secondarySystemGroupedBackground))
 
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(values) { entry in
-                            scheduleRow(entry)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            if let key = selectedFlightKey,
+                               selectedRow(in: values) == nil,
+                               let sample = store.entries.first(where: { Self.flightKey($0) == key }) {
+                                HStack(spacing: 10) {
+                                    Text("\(routeTitle(sample.flightNumber, sample.departure, sample.arrival)) в этот день не выполняется")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button("Снять выделение") {
+                                        selectedFlightKey = nil
+                                        selectedRecordID = nil
+                                    }
+                                    .controlSize(.small)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(Color.teal.opacity(0.10))
+                                Divider()
+                            }
+                            ForEach(values) { entry in
+                                VStack(spacing: 0) {
+                                    scheduleRow(entry, expanded: selectedRow(in: values)?.id == entry.id)
+                                }
+                                .id(entry.id)
+                            }
+                        }
+                    }
+                    .onChange(of: selectedDate) { _, _ in
+                        // Выбранный рейс в новом дне: раскрыть его запись и прокрутить к нему.
+                        guard let row = selectedRow(in: self.values) else { return }
+                        selectedRecordID = row.id
+                        DispatchQueue.main.async {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                proxy.scrollTo(row.id, anchor: .center)
+                            }
                         }
                     }
                 }
@@ -1443,19 +1527,25 @@ struct FlightScheduleDatabaseV130View: View {
     }
 
     @ViewBuilder
-    private func scheduleRow(_ entry: FlightScheduleEntryV129) -> some View {
-        let isExpanded = expandedEntryID == entry.id
+    private func scheduleRow(_ entry: FlightScheduleEntryV129, expanded isExpanded: Bool) -> some View {
         Button {
-            expandedEntryID = isExpanded ? nil : entry.id
+            if isExpanded {
+                selectedFlightKey = nil
+                selectedRecordID = nil
+            } else {
+                selectedFlightKey = Self.flightKey(entry)
+                selectedRecordID = entry.id
+            }
         } label: {
             HStack(spacing: 8) {
                 Text(FlightScheduleStoreV129.displayFlightNumber(entry.flightNumber))
                     .font(.subheadline.weight(.semibold).monospacedDigit())
                     .frame(width: 54, alignment: .leading)
-                Text("\(entry.departure) → \(entry.arrival)")
+                Text("\(AirportDatabase.displayName(for: entry.departure)) → \(AirportDatabase.displayName(for: entry.arrival))")
                     .font(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 Text("\(moscowClock(entry.departureMinutesUTC))–\(moscowClock(entry.arrivalMinutesUTC))")
                     .font(.caption.monospacedDigit())
                     .frame(width: 104, alignment: .leading)
@@ -1464,7 +1554,7 @@ struct FlightScheduleDatabaseV130View: View {
                     .frame(width: 70, alignment: .leading)
                 Text(timeText(entry.flightMinutes))
                     .font(.caption.weight(.semibold).monospacedDigit())
-                    .frame(width: 104, alignment: .trailing)
+                    .frame(width: 104, alignment: .center)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
@@ -1556,6 +1646,16 @@ private struct FlightScheduleRouteCandidateV131: Identifiable {
 
 struct FlightScheduleSettingsV129View: View {
     @ObservedObject private var store = FlightScheduleStoreV129.shared
+
+    /// Коды из расписания, которых нет в справочнике аэропортов (пришли скрин — допишем).
+    private var unknownAirports: [String] {
+        var codes = Set<String>()
+        for entry in store.entries {
+            codes.insert(entry.departure)
+            codes.insert(entry.arrival)
+        }
+        return codes.filter { !AirportDatabase.isKnown($0) }.sorted()
+    }
     @State private var showImporter = false
     @State private var message = ""
     @State private var showMessage = false
@@ -1568,6 +1668,12 @@ struct FlightScheduleSettingsV129View: View {
                 LabeledContent("Строк в базе", value: String(store.entries.count))
                 LabeledContent("Покрытие", value: store.coverageText)
                 LabeledContent("Импортов", value: String(store.imports.count))
+                LabeledContent("Аэропорты без названия", value: String(unknownAirports.count))
+                if !unknownAirports.isEmpty {
+                    Text(unknownAirports.joined(separator: ", "))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
 
                 NavigationLink {
                     FlightScheduleDatabaseV130View()

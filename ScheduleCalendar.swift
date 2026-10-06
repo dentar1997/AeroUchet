@@ -8,11 +8,16 @@ import SwiftUI
 
 struct ScheduleMonthsCalendarView: View {
     @Binding var selectedDate: Date
-    /// Дни выполнения рейса — ключи `ГГГГ-ММ-ДД` по Москве. Пусто — без подсветки.
-    let highlightedDays: Set<String>
+    /// Дни выполнения раскрытой записи расписания — сплошной круг (ключи `ГГГГ-ММ-ДД`, Москва).
+    let primaryDays: Set<String>
+    /// Остальные дни того же рейса по тому же маршруту (другие записи) — бледный круг.
+    let secondaryDays: Set<String>
     let title: String?
+    /// Подпись под календарём, например «эта запись 05.10–25.10, дни 257».
+    let legend: String?
 
     @State private var scrollTarget: String?
+    @State private var showJump = false
 
     private static let weekdaySymbols = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
@@ -23,7 +28,23 @@ struct ScheduleMonthsCalendarView: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                jumpMenu
+                Button {
+                    showJump = true
+                } label: {
+                    Image(systemName: "calendar")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .popover(isPresented: $showJump) {
+                    ScheduleMonthYearWheel(
+                        initial: selectedDate,
+                        years: Self.years
+                    ) { month in
+                        showJump = false
+                        scrollTarget = Self.monthID(month)
+                    }
+                    .presentationCompactAdaptation(.popover)
+                }
                 Button("Сегодня") {
                     let today = moscowCalendar.startOfDay(for: Date())
                     selectedDate = today
@@ -45,8 +66,8 @@ struct ScheduleMonthsCalendarView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14, pinnedViews: []) {
-                        ForEach(months, id: \.self) { month in
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        ForEach(Self.months, id: \.self) { month in
                             monthSection(month)
                                 .id(Self.monthID(month))
                         }
@@ -64,21 +85,36 @@ struct ScheduleMonthsCalendarView: View {
                     scrollTarget = nil
                 }
             }
+
+            if let legend, !primaryDays.isEmpty || !secondaryDays.isEmpty {
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) {
+                        Circle().fill(Color.teal).frame(width: 10, height: 10)
+                        Text(legend)
+                    }
+                    if !secondaryDays.isEmpty {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.teal.opacity(0.35)).frame(width: 10, height: 10)
+                            Text("другие периоды")
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
         }
     }
 
     // MARK: Месяцы
 
-    /// Год назад и год вперёд от сегодня; выбранная дата всегда внутри.
-    private var months: [Date] {
-        let today = Self.monthStart(Date())
-        let selected = Self.monthStart(selectedDate)
-        guard var first = moscowCalendar.date(byAdding: .month, value: -12, to: today),
-              var last = moscowCalendar.date(byAdding: .month, value: 12, to: today) else {
-            return [selected]
+    /// С января 2010 года до +5 лет от сегодня. Рисуются только видимые месяцы.
+    private static let months: [Date] = {
+        guard let first = moscowCalendar.date(from: DateComponents(year: 2010, month: 1, day: 1)),
+              let last = moscowCalendar.date(byAdding: .month, value: 60, to: monthStart(Date())) else {
+            return [monthStart(Date())]
         }
-        if selected < first { first = selected }
-        if selected > last { last = selected }
         var result: [Date] = []
         var month = first
         while month <= last {
@@ -87,34 +123,18 @@ struct ScheduleMonthsCalendarView: View {
             month = next
         }
         return result
-    }
+    }()
 
-    private var jumpMenu: some View {
-        let byYear = Dictionary(grouping: months) { moscowCalendar.component(.year, from: $0) }
-        return Menu {
-            ForEach(byYear.keys.sorted(), id: \.self) { year in
-                Section(String(year)) {
-                    ForEach(byYear[year] ?? [], id: \.self) { month in
-                        Button(Self.monthTitle(month)) {
-                            scrollTarget = Self.monthID(month)
-                        }
-                    }
-                }
-            }
-        } label: {
-            Label("Месяц", systemImage: "calendar")
-                .labelStyle(.iconOnly)
-        }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-    }
+    private static let years: [Int] = {
+        Array(Set(months.map { moscowCalendar.component(.year, from: $0) })).sorted()
+    }()
 
     private func monthSection(_ month: Date) -> some View {
         let days = Self.days(in: month)
         let monthKeyPrefix = String(Self.dayKey(month).prefix(8))
-        let count = highlightedDays.isEmpty
+        let count = primaryDays.isEmpty && secondaryDays.isEmpty
             ? 0
-            : highlightedDays.filter { $0.hasPrefix(monthKeyPrefix) }.count
+            : primaryDays.union(secondaryDays).filter { $0.hasPrefix(monthKeyPrefix) }.count
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Text(Self.monthTitle(month))
@@ -140,7 +160,7 @@ struct ScheduleMonthsCalendarView: View {
                             if column < row.count, let day = row[column] {
                                 dayCell(day)
                             } else {
-                                Color.clear.frame(maxWidth: .infinity, minHeight: 38, maxHeight: 38)
+                                Color.clear.frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
                             }
                         }
                     }
@@ -151,27 +171,33 @@ struct ScheduleMonthsCalendarView: View {
 
     private func dayCell(_ day: Date) -> some View {
         let key = Self.dayKey(day)
-        let isHighlighted = highlightedDays.contains(key)
+        let isPrimary = primaryDays.contains(key)
+        let isSecondary = !isPrimary && secondaryDays.contains(key)
         let isSelected = moscowCalendar.isDate(day, inSameDayAs: selectedDate)
         let isToday = moscowCalendar.isDateInToday(day)
         return Button {
             selectedDate = day
         } label: {
             ZStack {
-                if isHighlighted {
-                    Circle().fill(Color.teal)
+                if isPrimary {
+                    Circle().fill(Color.teal).padding(3)
+                } else if isSecondary {
+                    Circle().fill(Color.teal.opacity(0.35)).padding(3)
                 }
+                // Выбранный день — обводка цвета текста (в тёмной теме белая).
                 if isSelected {
                     Circle().strokeBorder(Color.primary, lineWidth: 2)
                 }
+                // Сегодня — красное кольцо, видно и на закрашенном дне.
+                if isToday {
+                    Circle().strokeBorder(Color.red, lineWidth: 2).padding(isSelected ? 4 : 1)
+                }
                 Text(String(moscowCalendar.component(.day, from: day)))
                     .font(.callout.monospacedDigit().weight(isToday || isSelected ? .bold : .regular))
-                    .foregroundStyle(
-                        isHighlighted ? Color.white : (isToday ? Color.red : Color.primary)
-                    )
+                    .foregroundStyle(isPrimary ? Color.white : Color.primary)
             }
-            .frame(width: 34, height: 34)
-            .frame(maxWidth: .infinity, minHeight: 38, maxHeight: 38)
+            .frame(width: 38, height: 38)
+            .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -184,11 +210,11 @@ struct ScheduleMonthsCalendarView: View {
         return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
-    private static func monthID(_ date: Date) -> String {
+    static func monthID(_ date: Date) -> String {
         String(dayKey(date).prefix(7))
     }
 
-    private static func monthStart(_ date: Date) -> Date {
+    static func monthStart(_ date: Date) -> Date {
         let parts = moscowCalendar.dateComponents([.year, .month], from: date)
         return moscowCalendar.date(from: parts) ?? moscowCalendar.startOfDay(for: date)
     }
@@ -204,7 +230,7 @@ struct ScheduleMonthsCalendarView: View {
         return (weekday + 5) % 7
     }
 
-    private static let monthNames = [
+    static let monthNames = [
         "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
         "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
     ]
@@ -213,6 +239,99 @@ struct ScheduleMonthsCalendarView: View {
         let parts = moscowCalendar.dateComponents([.year, .month], from: month)
         let name = monthNames[max(0, min(11, (parts.month ?? 1) - 1))]
         return "\(name) \(parts.year ?? 0)"
+    }
+}
+
+
+// MARK: - Крутилка «месяц · год» (без системного Picker: он ломает клавиатуру в Playgrounds)
+
+private struct ScheduleMonthYearWheel: View {
+    let years: [Int]
+    let onGo: (Date) -> Void
+
+    @State private var month: Int
+    @State private var year: Int
+
+    init(initial: Date, years: [Int], onGo: @escaping (Date) -> Void) {
+        self.years = years
+        self.onGo = onGo
+        let parts = moscowCalendar.dateComponents([.year, .month], from: initial)
+        _month = State(initialValue: parts.month ?? 1)
+        _year = State(initialValue: parts.year ?? 2026)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Перейти к месяцу")
+                    .font(.headline)
+                Spacer()
+                Button("Перейти") {
+                    if let date = moscowCalendar.date(from: DateComponents(year: year, month: month, day: 1)) {
+                        onGo(date)
+                    }
+                }
+                .fontWeight(.semibold)
+            }
+            .padding()
+
+            Divider()
+
+            HStack(spacing: 0) {
+                ScheduleWheelColumn(
+                    values: Array(1...12),
+                    selection: month,
+                    label: { ScheduleMonthsCalendarView.monthNames[$0 - 1] }
+                ) { month = $0 }
+                ScheduleWheelColumn(
+                    values: years,
+                    selection: year,
+                    label: { String($0) }
+                ) { year = $0 }
+            }
+            .padding(.horizontal, 12)
+        }
+        .frame(width: 320, height: 290)
+    }
+}
+
+private struct ScheduleWheelColumn: View {
+    let values: [Int]
+    let selection: Int
+    let label: (Int) -> String
+    let onSelect: (Int) -> Void
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(values, id: \.self) { value in
+                        Button {
+                            onSelect(value)
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                proxy.scrollTo(value, anchor: .center)
+                            }
+                        } label: {
+                            Text(label(value))
+                                .font(value == selection ? .title3.weight(.semibold) : .body)
+                                .monospacedDigit()
+                                .foregroundStyle(value == selection ? .primary : .secondary)
+                                .frame(maxWidth: .infinity, minHeight: 38)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .id(value)
+                    }
+                }
+                .padding(.vertical, 80)
+            }
+            .onAppear {
+                DispatchQueue.main.async {
+                    proxy.scrollTo(selection, anchor: .center)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
