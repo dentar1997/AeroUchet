@@ -654,6 +654,8 @@ final class AppStore: ObservableObject {
         
         
         rebuildDerivedData()
+        // Первый запуск после v146 разобрал строки — запомнить готовые даты.
+        LegTimelineCache.save(keeping: flights)
     }
     
     
@@ -879,6 +881,7 @@ final class AppStore: ObservableObject {
     private var writtenHistoryMonths: [String: Data] = [:]
 
     private func saveFlights() {
+        LegTimelineCache.save(keeping: flights)
         let groups = Dictionary(grouping: flights) { historyMonthKey(for: $0.date) }
         let encoder = JSONEncoder()
         var allWritten = true
@@ -980,6 +983,21 @@ func makeValidatedTimeline(
         )
     }
     
+    // Готовые даты (аудит 05.10, п. 2, шаг 2): одинаковые строки разбираются один раз.
+    let cacheKey = LegTimelineCache.key(for: flight)
+    if let hit = LegTimelineCache.lookup(cacheKey) {
+        return hit.timeline
+    }
+    let parsed = parseManualTimeline(for: flight)
+    LegTimelineCache.remember(parsed, for: cacheKey)
+    return parsed
+}
+
+
+/// Разбор строк ручного лега «дд.ММ.гггг» + «ЧЧ:мм» с переходом через полночь.
+private func parseManualTimeline(
+    for flight: FlightLeg
+) -> FlightTimeline? {
     guard
         var workStart =
             parsedDate(
@@ -1093,6 +1111,73 @@ func makeValidatedTimeline(
             engineOff,
         workEnd: nil
     )
+}
+
+
+/// Готовые даты ручных легов. Ключ — сами строки даты и времён, поэтому
+/// устаревших значений не бывает: изменили время — новый ключ, новый разбор.
+/// Хранится файлом, чтобы при запуске не разбирать строки всех легов заново.
+enum LegTimelineCache {
+    enum Hit {
+        case valid(FlightTimeline)
+        case invalid
+
+        var timeline: FlightTimeline? {
+            if case .valid(let value) = self { return value }
+            return nil
+        }
+    }
+
+    static let fileName = "history/timeline-cache.json"
+    private static let title = "Готовые даты легов"
+
+    /// [план. вылет, начало работы, включение, взлёт, посадка, выключение]; пусто — неверные строки.
+    private static var values: [String: [Double]] = [:]
+    private static var isLoaded = false
+    private static var hasChanges = false
+
+    static func key(for flight: FlightLeg) -> String {
+        [flight.date, flight.plannedDeparture, flight.workStart, flight.engineOn,
+         flight.takeoff, flight.landing, flight.engineOff].joined(separator: "|")
+    }
+
+    static func lookup(_ key: String) -> Hit? {
+        loadIfNeeded()
+        guard let raw = values[key] else { return nil }
+        guard raw.count == 6 else { return .invalid }
+        let dates = raw.map { Date(timeIntervalSince1970: $0) }
+        return .valid(FlightTimeline(
+            plannedDeparture: dates[0], workStart: dates[1], engineOn: dates[2],
+            takeoff: dates[3], landing: dates[4], engineOff: dates[5], workEnd: nil
+        ))
+    }
+
+    static func remember(_ timeline: FlightTimeline?, for key: String) {
+        loadIfNeeded()
+        values[key] = timeline.map {
+            [$0.plannedDeparture, $0.workStart, $0.engineOn, $0.takeoff, $0.landing, $0.engineOff]
+                .map(\.timeIntervalSince1970)
+        } ?? []
+        hasChanges = true
+    }
+
+    /// Сохраняет файл, оставляя только даты легов истории.
+    static func save(keeping flights: [FlightLeg]) {
+        loadIfNeeded()
+        let keep = Set(flights.lazy.filter { $0.portalTimes == nil }.map(key(for:)))
+        let before = values.count
+        values = values.filter { keep.contains($0.key) }
+        guard hasChanges || values.count != before else { return }
+        if StorageSafety.storeFile(values, name: fileName, title: title) {
+            hasChanges = false
+        }
+    }
+
+    private static func loadIfNeeded() {
+        guard !isLoaded else { return }
+        isLoaded = true
+        values = StorageSafety.decodeFile([String: [Double]].self, name: fileName, title: title) ?? [:]
+    }
 }
 
 
