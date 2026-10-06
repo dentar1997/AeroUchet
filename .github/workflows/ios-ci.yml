@@ -35,6 +35,23 @@ jobs:
         run: |
           bash Scripts/run-core-time-tests.sh
 
+      - name: Match Swift Playgrounds isolation
+        # Playgrounds собирает весь код приложения как код главного потока
+        # (default isolation MainActor). Без этого CI пропускает ошибки, которые
+        # ломают сборку на iPad (v136). Package.swift в репозитории не меняется.
+        run: |
+          python3 - <<'PY'
+          import re
+          p = "Package.swift"
+          s = open(p, encoding="utf-8").read()
+          s = re.sub(r"// swift-tools-version: *[0-9.]+", "// swift-tools-version: 6.2", s, count=1)
+          s = s.replace('.enableUpcomingFeature("BareSlashRegexLiterals")',
+                        '.enableUpcomingFeature("BareSlashRegexLiterals"),\n                .defaultIsolation(MainActor.self)')
+          s = re.sub(r"\n\)\s*$", ",\n    swiftLanguageModes: [.v5]\n)\n", s)
+          open(p, "w", encoding="utf-8").write(s)
+          PY
+          cat Package.swift
+
       - name: Build for iOS Simulator
         run: |
           set -o pipefail
@@ -44,8 +61,6 @@ jobs:
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
-            SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor \
-            SWIFT_APPROACHABLE_CONCURRENCY=YES \
             -showBuildTimingSummary \
             build 2>&1 | tee "$RUNNER_TEMP/build.log"; then
             grep -E "error: " "$RUNNER_TEMP/build.log" | sort -u | head -40 | while IFS= read -r line; do
@@ -62,8 +77,6 @@ jobs:
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
-            SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor \
-            SWIFT_APPROACHABLE_CONCURRENCY=YES \
             analyze
 
       - name: Package simulator app
