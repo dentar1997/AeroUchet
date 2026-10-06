@@ -546,33 +546,28 @@ private struct ImportedPlanAssignmentsView: View {
         }
         guard !urls.isEmpty else { return }
 
-        // Разбор PDF — в фоне: раньше каждая страница рисовалась в главном потоке,
-        // и экран замирал (аудит 05.10, п. 12, N07).
+        // Индикатор показывается до начала разбора. Сам разбор идёт в главном потоке:
+        // Swift Playgrounds считает весь код приложения кодом главного потока, и вызов
+        // разбора из фоновой задачи там не собирается (v136). PDF теперь рисуется
+        // один раз, а не дважды (п. 9).
         isParsingPlan = true
-        Task {
-            let parsed: Result<AssignmentImportDraft, Error> = await Task.detached(priority: .userInitiated) {
-                let accesses = urls.map { ($0, $0.startAccessingSecurityScopedResource()) }
-                defer {
-                    for (url, didAccess) in accesses where didAccess {
-                        url.stopAccessingSecurityScopedResource()
-                    }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            let accesses = urls.map { ($0, $0.startAccessingSecurityScopedResource()) }
+            defer {
+                for (url, didAccess) in accesses where didAccess {
+                    url.stopAccessingSecurityScopedResource()
                 }
-                do {
-                    return .success(try AssignmentImportDraft.parse(urls: urls))
-                } catch {
-                    return .failure(error)
-                }
-            }.value
-            isParsingPlan = false
-
-            switch parsed {
-            case .success(let draft):
+                isParsingPlan = false
+            }
+            do {
+                let draft = try AssignmentImportDraft.parse(urls: urls)
                 if draft.unresolvedConflictCount > 0 {
                     pendingDraft = draft
                 } else {
                     saveParsedDraft(draft)
                 }
-            case .failure(let error):
+            } catch {
                 message = error.localizedDescription
                 showMessage = true
             }
