@@ -204,13 +204,18 @@ final class PerspectiveDutyOverrideStoreV130: ObservableObject {
     static let shared = PerspectiveDutyOverrideStoreV130()
 
     private static let key = "aerouchet.v130.perspectiveDutyOverrides"
+    private static let fileName = "perspective-edits.json"
     @Published private(set) var values: [String: [FlightLeg]] = [:]
 
     private init() {
         // Ручные правки перспективных карточек не восстановить — резерв обязателен (п. 17).
-        values = StorageSafety.decode(
-            [String: [FlightLeg]].self, key: Self.key, title: "Правки перспективного плана"
-        ) ?? [:]
+        values = StorageSafety.loadMigrating(
+            [String: [FlightLeg]].self, file: Self.fileName, title: "Правки перспективного плана"
+        ) {
+            StorageSafety.decode(
+                [String: [FlightLeg]].self, key: Self.key, title: "Правки перспективного плана"
+            )
+        } ?? [:]
     }
 
     func legs(for itemID: String) -> [FlightLeg]? {
@@ -230,7 +235,7 @@ final class PerspectiveDutyOverrideStoreV130: ObservableObject {
     }
 
     private func persist() {
-        StorageSafety.store(values, key: Self.key, title: "Правки перспективного плана")
+        StorageSafety.storeFile(values, name: Self.fileName, title: "Правки перспективного плана")
     }
 }
 

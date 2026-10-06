@@ -645,11 +645,7 @@ final class AppStore: ObservableObject {
     
     init() {
         
-        _ =
         loadFlights()
-        
-        
-        _ =
         loadWorkEvents()
         
         
@@ -868,86 +864,101 @@ final class AppStore: ObservableObject {
     }
     
     
+    // MARK: Хранение (v144: файлы вместо UserDefaults)
+    //
+    // История — по файлу на месяц (history/flights-ГГГГ-ММ.json): правка рейса
+    // перезаписывает только его месяц. Файл `history/migrated.json` — признак,
+    // что история уже в файлах; до него читается прежняя запись UserDefaults.
+
+    private static let historyFolder = "history"
+    private static let historyMarker = "history/migrated.json"
+    private static let workEventsFile = "work-events.json"
+    private static let historyTitle = "История рейсов"
+
+    /// Что лежит в каждом файле месяца сейчас — чтобы не переписывать неизменённые.
+    private var writtenHistoryMonths: [String: Data] = [:]
+
     private func saveFlights() {
-        StorageSafety.store(flights, key: flightsKey, title: "История рейсов")
+        let groups = Dictionary(grouping: flights) { historyMonthKey(for: $0.date) }
+        let encoder = JSONEncoder()
+        var allWritten = true
+        for (month, legs) in groups {
+            let data: Data
+            do {
+                data = try encoder.encode(legs)
+            } catch {
+                StorageSafety.reportSaveFailure(title: Self.historyTitle, error: error)
+                allWritten = false
+                continue
+            }
+            if writtenHistoryMonths[month] == data { continue }
+            if StorageSafety.storeData(
+                data, name: Self.historyMonthFile(month), title: Self.historyTitle
+            ) {
+                writtenHistoryMonths[month] = data
+            } else {
+                allWritten = false
+            }
+        }
+        for month in Array(writtenHistoryMonths.keys) where groups[month] == nil {
+            StorageSafety.removeFile(Self.historyMonthFile(month))
+            writtenHistoryMonths.removeValue(forKey: month)
+        }
+        // Признак переноса — только когда все месяцы записаны: иначе следующий
+        // запуск снова возьмёт историю из прежней записи UserDefaults.
+        if allWritten, !StorageSafety.fileExists(Self.historyMarker) {
+            StorageSafety.storeFile(
+                ["version": "\(AppVersion.number)"],
+                name: Self.historyMarker,
+                title: Self.historyTitle
+            )
+        }
     }
 
+    private static func historyMonthFile(_ month: String) -> String {
+        "\(historyFolder)/flights-\(month).json"
+    }
 
     private func saveWorkEvents() {
-        StorageSafety.store(workEvents, key: workEventsKey, title: "План работ")
+        StorageSafety.storeFile(workEvents, name: Self.workEventsFile, title: "План работ")
     }
 
-
-    private func loadFlights() -> Bool {
-        
-        guard
-            let data =
-                UserDefaults.standard.data(
-                    forKey:
-                        flightsKey
-                )
-                
-        else {
-            
-            return false
+    private func loadFlights() {
+        guard StorageSafety.fileExists(Self.historyMarker) else {
+            // Первый запуск v144: перенос из UserDefaults, прежняя запись остаётся.
+            flights = StorageSafety.decode(
+                [FlightLeg].self, key: flightsKey, title: Self.historyTitle
+            ) ?? []
+            if !flights.isEmpty { saveFlights() }
+            return
         }
-        
-        
-        do {
-            
-            flights =
-            try JSONDecoder()
-                .decode(
-                    [FlightLeg].self,
-                    from: data
+        var loaded: [FlightLeg] = []
+        for name in StorageSafety.fileNames(inFolder: Self.historyFolder)
+        where name.hasPrefix("flights-") && name.hasSuffix(".json") {
+            let month = String(name.dropFirst("flights-".count).dropLast(".json".count))
+            let path = Self.historyMonthFile(month)
+            guard let url = StorageSafety.dataFileURL(path),
+                  let data = try? Data(contentsOf: url) else { continue }
+            do {
+                loaded += try JSONDecoder().decode([FlightLeg].self, from: data)
+                writtenHistoryMonths[month] = data
+            } catch {
+                StorageSafety.preserveUnreadable(
+                    data, key: "file." + path, title: Self.historyTitle, error: error
                 )
-            
-            return true
-            
-        } catch {
-            StorageSafety.preserveUnreadable(
-                data, key: flightsKey, title: "История рейсов", error: error
-            )
-            return false
+            }
         }
+        flights = loaded
     }
-    
-    
-    private func loadWorkEvents() -> Bool {
-        
-        guard
-            let data =
-                UserDefaults.standard.data(
-                    forKey:
-                        workEventsKey
-                )
-                
-        else {
-            
-            return false
-        }
-        
-        
-        do {
-            
-            workEvents =
-            try JSONDecoder()
-                .decode(
-                    [WorkEvent].self,
-                    from: data
-                )
-            
-            return true
-            
-        } catch {
-            StorageSafety.preserveUnreadable(
-                data, key: workEventsKey, title: "План работ", error: error
-            )
-            return false
-        }
+
+    private func loadWorkEvents() {
+        workEvents = StorageSafety.loadMigrating(
+            [WorkEvent].self, file: Self.workEventsFile, title: "План работ"
+        ) {
+            StorageSafety.decode([WorkEvent].self, key: workEventsKey, title: "План работ")
+        } ?? []
     }
 }
-
 
 
 // MARK: - Даты

@@ -296,41 +296,20 @@ final class AbsenceStore:
     }
     
     
+    private static let fileName = "absences.json"
+
     private func save() {
-        StorageSafety.store(absences, key: storageKey, title: "Отсутствия")
+        StorageSafety.storeFile(absences, name: Self.fileName, title: "Отсутствия")
     }
-    
-    
+
+
     private func load() {
-        
-        guard
-            let data =
-                UserDefaults.standard
-                .data(
-                    forKey:
-                        storageKey
-                )
-                
-        else {
-            return
-        }
-        
-        
-        do {
-            
-            absences =
-            try JSONDecoder()
-                .decode(
-                    [AbsenceEvent].self,
-                    from:
-                        data
-                )
-            
-        } catch {
-            StorageSafety.preserveUnreadable(
-                data, key: storageKey, title: "Отсутствия", error: error
-            )
-        }
+        guard let value = StorageSafety.loadMigrating(
+            [AbsenceEvent].self, file: Self.fileName, title: "Отсутствия", legacy: {
+                StorageSafety.decode([AbsenceEvent].self, key: storageKey, title: "Отсутствия")
+            }
+        ) else { return }
+        absences = value
     }
 }
 

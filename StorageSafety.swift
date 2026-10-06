@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// Защита сохранённых данных от затирания (аудит 04.10).
 ///
@@ -96,8 +97,66 @@ enum StorageSafety {
             return nil
         }
         let folder = base.appendingPathComponent("АэроУчёт", isDirectory: true)
-        try? manager.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appendingPathComponent(name)
+        let url = folder.appendingPathComponent(name)
+        try? manager.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        return url
+    }
+
+    static func fileExists(_ name: String) -> Bool {
+        guard let url = dataFileURL(name) else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// Записывает готовые байты файлом. Ошибка видна интерфейсу.
+    @discardableResult
+    static func storeData(_ data: Data, name: String, title: String) -> Bool {
+        guard let url = dataFileURL(name) else {
+            reportSaveFailure(title: title, error: CocoaError(.fileNoSuchFile))
+            return false
+        }
+        do {
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            reportSaveFailure(title: title, error: error)
+            return false
+        }
+    }
+
+    static func removeFile(_ name: String) {
+        guard let url = dataFileURL(name),
+              FileManager.default.fileExists(atPath: url.path) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Имена файлов в подпапке данных (без пути), по алфавиту.
+    static func fileNames(inFolder folder: String) -> [String] {
+        guard let url = dataFileURL(folder + "/.probe")?.deletingLastPathComponent(),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: url.path) else {
+            return []
+        }
+        return names.sorted()
+    }
+
+    /// Хранение файлом с v144 (аудит 05.10, п. 2/3, шаг 1).
+    /// Если файл есть — он главный. Если файла ещё нет — читается прежняя запись
+    /// UserDefaults (`legacy`) и сразу переносится в файл. Прежняя запись
+    /// не стирается: при откате на старую версию данные на момент переноса на месте.
+    static func loadMigrating<T: Codable>(
+        _ type: T.Type,
+        file: String,
+        title: String,
+        legacy: () -> T?
+    ) -> T? {
+        if fileExists(file) {
+            return decodeFile(type, name: file, title: title)
+        }
+        guard let value = legacy() else { return nil }
+        storeFile(value, name: file, title: title)
+        return value
     }
 
     /// Сохраняет значение файлом. Ошибка записи на диск видна (в отличие от UserDefaults).
@@ -150,4 +209,52 @@ enum StorageSafety {
         formatter.dateFormat = "yyyy-MM-dd_HHmmss"
         return formatter
     }()
+}
+
+
+/// Секреты (ссылка календаря портала с токеном) — в Связке ключей iPad,
+/// а не в настройках приложения (аудит 05.10, п. 15).
+enum KeychainStore {
+    private static let service = "AeroUchet"
+
+    static func string(for account: String) -> String? {
+        var query = baseQuery(account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// true — записано в Связку ключей.
+    @discardableResult
+    static func set(_ value: String, for account: String) -> Bool {
+        let data = Data(value.utf8)
+        let query = baseQuery(account)
+        let update: [String: Any] = [kSecValueData as String: data]
+        var status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        if status == errSecItemNotFound {
+            var add = query
+            add[kSecValueData as String] = data
+            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+            status = SecItemAdd(add as CFDictionary, nil)
+        }
+        if status != errSecSuccess {
+            print("Связка ключей: не удалось сохранить, код \(status)")
+        }
+        return status == errSecSuccess
+    }
+
+    static func remove(_ account: String) {
+        SecItemDelete(baseQuery(account) as CFDictionary)
+    }
+
+    private static func baseQuery(_ account: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+    }
 }

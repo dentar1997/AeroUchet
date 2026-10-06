@@ -231,23 +231,20 @@ final class FlightNormStore: ObservableObject {
         }
     }
     
+    private static let fileName = "flight-norms.json"
+
     private func save() {
-        StorageSafety.store(versions, key: storageKey, title: "Нормативы")
+        StorageSafety.storeFile(versions, name: Self.fileName, title: "Нормативы")
     }
     
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey) else {
-            return
-        }
-        
-        do {
-            versions = try JSONDecoder().decode([FlightNormVersion].self, from: data)
-            sortVersions()
-        } catch {
-            StorageSafety.preserveUnreadable(
-                data, key: storageKey, title: "Нормативы", error: error
-            )
-        }
+        guard let value = StorageSafety.loadMigrating(
+            [FlightNormVersion].self, file: Self.fileName, title: "Нормативы", legacy: {
+                StorageSafety.decode([FlightNormVersion].self, key: storageKey, title: "Нормативы")
+            }
+        ) else { return }
+        versions = value
+        sortVersions()
     }
 }
 
