@@ -903,7 +903,14 @@ private struct AssignmentImportEditView: View {
             initialValue: AssignmentV119MetadataCodec.humanDetail(item.detail) ?? ""
         )
         _editableStart = State(initialValue: metadata?.sourceStart ?? item.start)
-        _editableEnd = State(initialValue: metadata?.sourceEnd ?? item.end)
+        // «Весь день»: в данных конец — начало следующего дня (исключающая дата),
+        // в редакторе показываем последний день периода (аудит 05.10, п. 25г).
+        if item.isAllDay {
+            let lastDay = moscowCalendar.date(byAdding: .day, value: -1, to: item.end) ?? item.end
+            _editableEnd = State(initialValue: max(item.start, lastDay))
+        } else {
+            _editableEnd = State(initialValue: metadata?.sourceEnd ?? item.end)
+        }
         self.onSave = onSave
     }
 
@@ -944,6 +951,7 @@ private struct AssignmentImportEditView: View {
                     }
                 }
             }
+            .environment(\.timeZone, moscowTimeZone)
             .navigationTitle("Изменить назначение")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -957,7 +965,10 @@ private struct AssignmentImportEditView: View {
                         dismiss()
                     }
                     .disabled(
-                        editableEnd <= editableStart
+                        (item.isAllDay
+                            ? moscowCalendar.startOfDay(for: editableEnd)
+                                < moscowCalendar.startOfDay(for: editableStart)
+                            : editableEnd <= editableStart)
                             || item.title.trimmingCharacters(in: .whitespaces).isEmpty
                     )
                 }
@@ -1006,8 +1017,14 @@ private struct AssignmentImportEditView: View {
             return
         }
 
-        item.start = editableStart
-        item.end = editableEnd
+        if item.isAllDay {
+            item.start = moscowCalendar.startOfDay(for: editableStart)
+            let lastDay = moscowCalendar.startOfDay(for: max(editableStart, editableEnd))
+            item.end = moscowCalendar.date(byAdding: .day, value: 1, to: lastDay) ?? lastDay
+        } else {
+            item.start = editableStart
+            item.end = editableEnd
+        }
         if let metadata = metadata {
             item.detail = AssignmentV119MetadataCodec.encode(
                 humanDetail: humanDetail,
