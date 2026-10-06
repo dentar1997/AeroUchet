@@ -1201,65 +1201,6 @@ func productionMonthlyNorm(
 
 // MARK: - Норма года
 
-func productionYearNorm(
-    year: Int
-) -> Int {
-    
-    guard
-        let firstMonth =
-            moscowCalendar.date(
-                from:
-                    DateComponents(
-                        year:
-                            year,
-                        month:
-                            1,
-                        day:
-                            1
-                    )
-            )
-            
-    else {
-        
-        return 0
-    }
-    
-    
-    var total =
-    0
-    
-    
-    for offset in 0..<12 {
-        
-        guard
-            let month =
-                moscowCalendar.date(
-                    byAdding:
-                            .month,
-                    value:
-                        offset,
-                    to:
-                        firstMonth
-                )
-                
-        else {
-            
-            continue
-        }
-        
-        
-        total +=
-        productionMonthlyNorm(
-            month:
-                month
-        )
-    }
-    
-    
-    return total
-}
-
-
 // MARK: - Официальный ли месяц
 
 func productionMonthIsOfficial(

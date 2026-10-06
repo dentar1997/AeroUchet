@@ -70,17 +70,6 @@ struct AssignmentPlanItem: Identifiable, Codable, Equatable {
         max(0, Int(end.timeIntervalSince(start) / 60))
     }
 
-    var creditedWorkMinutes: Int {
-        switch kind {
-        case .homeReserve:
-            return durationMinutes / 4
-        case .hotelReserve:
-            return durationMinutes
-        default:
-            return durationMinutes
-        }
-    }
-
     var isFlightLike: Bool {
         kind == .flight || kind == .passenger
     }
@@ -124,21 +113,6 @@ struct AssignmentPlanItem: Identifiable, Codable, Equatable {
         return normalizedFlightNumbers
     }
 
-    var logicalKey: String {
-        if isFlightLike {
-            let numbers = normalizedFlightNumbers.sorted().joined(separator: ",")
-            return ["flight", String(dayKey(start)), numbers].joined(separator: "|")
-        }
-
-        return [
-            "event",
-            String(dayKey(start)),
-            String(Int(start.timeIntervalSince1970 / 60)),
-            String(Int(end.timeIntervalSince1970 / 60)),
-            normalizedText(title),
-            normalizedText(detail ?? "")
-        ].joined(separator: "|")
-    }
 }
 
 
@@ -245,41 +219,10 @@ final class AssignmentPlanStore: ObservableObject {
         return filtered.sorted { $0.start < $1.start }
     }
 
-    func visibleItems(actualFlights: [FlightLeg]) -> [AssignmentPlanItem] {
-        let calendar = sourceItems(
-            .subscribedCalendar,
-            actualFlights: actualFlights,
-            hideSuperseded: true
-        )
-        let imported = sourceItems(
-            .importedFile,
-            actualFlights: actualFlights,
-            hideSuperseded: true
-        )
-        .filter { importedItem in
-            !calendar.contains { calendarItem in
-                assignmentsRepresentSame(importedItem, calendarItem)
-            }
-        }
-        return (calendar + imported).sorted { $0.start < $1.start }
-    }
-
-    func visibleFlights(actualFlights: [FlightLeg]) -> [AssignmentPlanItem] {
-        visibleItems(actualFlights: actualFlights).filter(\.isFlightLike)
-    }
-
-    func visibleGroundItems(actualFlights: [FlightLeg]) -> [AssignmentPlanItem] {
-        visibleItems(actualFlights: actualFlights).filter { !$0.isFlightLike }
-    }
-
     func calendarOverlap(for item: AssignmentPlanItem) -> Bool {
         calendarSourceItems.contains { calendarItem in
             assignmentsRepresentSame(item, calendarItem)
         }
-    }
-
-    func historySupersedes(_ item: AssignmentPlanItem, actualFlights: [FlightLeg]) -> Bool {
-        isSupersededByHistory(item, actualFlights: actualFlights)
     }
 
     /// То же по готовому индексу истории (`AppStore.historyFlightKeys`) — без перебора легов.
@@ -301,19 +244,6 @@ final class AssignmentPlanStore: ObservableObject {
                     && assignmentsConflict(item, candidate)
             }
             .sorted { $0.start < $1.start }
-    }
-
-    func conflictPairCount(in source: AssignmentPlanSource) -> Int {
-        let sourceItems = items.filter { $0.source == source }
-        var count = 0
-        for leftIndex in sourceItems.indices {
-            for rightIndex in sourceItems.indices where rightIndex > leftIndex {
-                if assignmentsConflict(sourceItems[leftIndex], sourceItems[rightIndex]) {
-                    count += 1
-                }
-            }
-        }
-        return count
     }
 
     func validateSubscribedCalendar() async throws -> Int {
@@ -358,15 +288,6 @@ final class AssignmentPlanStore: ObservableObject {
             saveMetadata()
             throw error
         }
-    }
-
-    func importPlanFile(url: URL, actualFlights: [FlightLeg]) throws -> Int {
-        _ = actualFlights
-        let snapshot = try AssignmentPlanImporter.parseFile(url: url)
-        let count = apply(snapshot: snapshot, source: .importedFile)
-        lastFileImport = Date()
-        saveMetadata()
-        return count
     }
 
     /// Сохраняет разобранный перспективный план. Заменяются только назначения
@@ -421,11 +342,6 @@ final class AssignmentPlanStore: ObservableObject {
     func deleteItem(id: String) {
         items.removeAll { $0.id == id }
         saveItems()
-    }
-
-    func removeFlightsSuperseded(by actualFlights: [FlightLeg]) {
-        _ = actualFlights
-        // Источники хранятся независимо. Приоритет применяется только при показе.
     }
 
     private func validatedCalendarURL() -> URL? {
@@ -589,31 +505,6 @@ private func assignmentsConflict(
 }
 
 
-private func isSupersededByHistory(
-    _ item: AssignmentPlanItem,
-    actualFlights: [FlightLeg]
-) -> Bool {
-    let plannedNumbers = item.normalizedWorkingFlightNumbers
-    guard !plannedNumbers.isEmpty else { return false }
-
-    return actualFlights.contains { flight in
-        guard flight.portalTimes != nil,
-              moscowCalendar.isDate(flight.timeline.engineOn, inSameDayAs: item.start) else {
-            return false
-        }
-
-        // В истории портала номер без «SU» («1110/1111») — раньше он не распознавался
-        // и выполненный рейс не скрывал плановый (аудит 05.10, п. 19).
-        var numbers = canonicalFlightNumbers(in: flight.flightNumber)
-        if let leg = flight.legNumber {
-            numbers.append(contentsOf: canonicalFlightNumbers(in: leg))
-        }
-        let actual = Set(numbers.filter { !$0.isEmpty })
-        return !actual.isEmpty && !actual.isDisjoint(with: plannedNumbers)
-    }
-}
-
-
 private func normalizedFlightNumber(_ value: String) -> String {
     canonicalFlightNumber(value)
 }
@@ -714,20 +605,16 @@ enum AssignmentPlanImporter {
             ?? moscowCalendar.component(.year, from: Date())
         let scopeMonthKey = planScopeMonthKey(lines: lines, defaultYear: year)
 
-        let items: [AssignmentPlanItem]
-        if header.localizedCaseInsensitiveContains("перспективный план") {
-            items = parsePerspectivePDF(
-                lines: lines,
-                defaultYear: year,
-                scopeMonthKey: scopeMonthKey
-            )
-        } else {
-            items = parseOfficialPDF(
-                lines: lines,
-                defaultYear: year,
-                scopeMonthKey: scopeMonthKey
-            )
+        // Перспективный план разбирает PerspectivePlanV119Parser по геометрии таблицы.
+        // Старый текстовый разбор удалён: подстраховка старым парсером запрещена (D15, N02).
+        guard !header.localizedCaseInsensitiveContains("перспективный план") else {
+            throw AssignmentPlanImportError.unsupportedFile
         }
+        let items = parseOfficialPDF(
+            lines: lines,
+            defaultYear: year,
+            scopeMonthKey: scopeMonthKey
+        )
 
         guard !items.isEmpty else {
             throw AssignmentPlanImportError.noAssignments
@@ -808,90 +695,6 @@ enum AssignmentPlanImporter {
         )
     }
 
-    private static func parsePerspectivePDF(
-        lines: [String],
-        defaultYear: Int,
-        scopeMonthKey: Int?
-    ) -> [AssignmentPlanItem] {
-        var result: [AssignmentPlanItem] = []
-        var index = 0
-
-        while index < lines.count {
-            guard let date = parseDateLine(lines[index], year: defaultYear) else {
-                index += 1
-                continue
-            }
-
-            if date.time == nil,
-               index + 2 < lines.count,
-               let rawEndDate = parseDateLine(lines[index + 1], year: defaultYear),
-               rawEndDate.time == nil,
-               isRangeMarker(lines[index + 2]) {
-                var next = index + 2
-                while next < lines.count,
-                      parseDateLine(lines[next], year: defaultYear) == nil {
-                    next += 1
-                }
-
-                let rawContent = Array(lines[(index + 2)..<next])
-                let firstTimedIndex = rawContent.firstIndex { exactTime($0) != nil }
-                let rangeContent: [String]
-                let timedContent: [String]
-                if let firstTimedIndex {
-                    rangeContent = Array(rawContent[..<firstTimedIndex])
-                    timedContent = Array(rawContent[firstTimedIndex...])
-                } else {
-                    rangeContent = rawContent
-                    timedContent = []
-                }
-
-                let endExclusive = adjustedRangeEnd(
-                    rawEndDate.date,
-                    start: date.date
-                )
-                if let rangeItem = makeRangeItem(
-                    lines: rangeContent,
-                    start: date.date,
-                    endExclusive: endExclusive,
-                    scopeMonthKey: scopeMonthKey
-                ) {
-                    result.append(rangeItem)
-                }
-
-                if !timedContent.isEmpty,
-                   let overlappingTimedItem = parsePerspectiveTimedBlock(
-                       timedContent,
-                       date: date.date,
-                       firstTime: nil,
-                       scopeMonthKey: scopeMonthKey
-                   ) {
-                    result.append(overlappingTimedItem)
-                }
-
-                index = next
-                continue
-            }
-
-            var next = index + 1
-            while next < lines.count,
-                  parseDateLine(lines[next], year: defaultYear) == nil {
-                next += 1
-            }
-            let block = Array(lines[index..<next])
-            if let item = parsePerspectiveTimedBlock(
-                block,
-                date: date.date,
-                firstTime: date.time,
-                scopeMonthKey: scopeMonthKey
-            ) {
-                result.append(item)
-            }
-            index = next
-        }
-
-        return result
-    }
-
     private static func makeRangeItem(
         lines: [String],
         start: Date,
@@ -911,87 +714,6 @@ enum AssignmentPlanImporter {
             isAllDayRange: true,
             originMonthKey: scopeMonthKey
         )
-    }
-
-    private static func parsePerspectiveTimedBlock(
-        _ lines: [String],
-        date: Date,
-        firstTime: String?,
-        scopeMonthKey: Int?
-    ) -> AssignmentPlanItem? {
-        let usableLines = lines.filter { !isMonthlySummary($0) }
-        let combined = usableLines.joined(separator: " ")
-        let numbers = extractFlightNumbers(combined)
-        var times: [String] = []
-        if let firstTime {
-            times.append(firstTime)
-        }
-        for line in usableLines.dropFirst(firstTime == nil ? 0 : 1) {
-            if let value = exactTime(line) {
-                times.append(value)
-            }
-        }
-
-        if !numbers.isEmpty,
-           times.count >= 2,
-           let start = dateWithTime(times[0], baseDate: date),
-           var end = dateWithTime(times[1], baseDate: date) {
-            if end <= start {
-                end = moscowCalendar.date(byAdding: .day, value: 1, to: end) ?? end
-            }
-
-            let route = perspectiveRoute(in: usableLines)
-            let aircraft = regexMatches(in: combined, pattern: #"A-?3(?:19|20|21)[A-Z]?"#).first
-            let legs = makePerspectiveLegs(
-                lines: usableLines,
-                numbers: numbers,
-                route: route,
-                baseID: "\(dayKey(start))"
-            )
-            let allPassenger = !legs.isEmpty && legs.allSatisfy { $0.role == .passenger }
-            let plannedMinutes = plannedFlightMinutes(in: usableLines)
-            let numberText = numbers.joined(separator: " / ")
-
-            return makeImportedItem(
-                id: "perspective|flight|\(dayKey(start))|\(numbers.map(normalizedFlightNumber).joined(separator: "-"))",
-                kind: allPassenger ? .passenger : .flight,
-                start: start,
-                end: end,
-                title: "Полётная смена",
-                flightNumber: numberText,
-                flightNumbers: numbers,
-                aircraft: aircraft,
-                assignmentGroup: route,
-                detail: nil,
-                flightLegs: legs,
-                plannedFlightMinutes: plannedMinutes,
-                isAllDayRange: false,
-                originMonthKey: scopeMonthKey
-            )
-        }
-
-        if times.count >= 2,
-           let start = dateWithTime(times[0], baseDate: date),
-           var end = dateWithTime(times[1], baseDate: date) {
-            if end <= start {
-                end = moscowCalendar.date(byAdding: .day, value: 1, to: end) ?? end
-            }
-            let labels = eventLabels(usableLines)
-            guard !labels.title.isEmpty else { return nil }
-            let kind = classifyKind(labels.title + " " + (labels.detail ?? ""))
-            return makeImportedItem(
-                id: "perspective|ground|\(Int(start.timeIntervalSince1970 / 60))|\(normalizedText(labels.title))",
-                kind: kind,
-                start: start,
-                end: end,
-                title: labels.title,
-                detail: labels.detail,
-                isAllDayRange: false,
-                originMonthKey: scopeMonthKey
-            )
-        }
-
-        return nil
     }
 
     private static func parseOfficialPDF(
@@ -1336,58 +1058,6 @@ enum AssignmentPlanImporter {
             found = true
         }
         return found ? total : nil
-    }
-
-    private static func makePerspectiveLegs(
-        lines: [String],
-        numbers: [String],
-        route: String?,
-        baseID: String
-    ) -> [AssignmentPlanLeg] {
-        var roleByNumber: [String: AssignmentFlightRole] = [:]
-        for line in lines {
-            let lineNumbers = extractFlightNumbers(line)
-            guard !lineNumbers.isEmpty else { continue }
-            let passengerNumbers = explicitPassengerNumbers(in: line)
-            for number in lineNumbers {
-                let normalized = normalizedFlightNumber(number)
-                roleByNumber[normalized] = passengerNumbers.contains(normalized)
-                    ? .passenger
-                    : .workingPilot
-            }
-        }
-
-        let nodes = route.flatMap { routeNodes($0, expectedLegCount: numbers.count) }
-        return numbers.enumerated().map { index, number in
-            let normalized = normalizedFlightNumber(number)
-            return AssignmentPlanLeg(
-                id: "perspective-leg|\(baseID)|\(normalized)|\(index)",
-                flightNumber: number,
-                role: roleByNumber[normalized] ?? .workingPilot,
-                departure: nodes?[safe: index],
-                arrival: nodes?[safe: index + 1]
-            )
-        }
-    }
-
-    private static func explicitPassengerNumbers(in line: String) -> Set<String> {
-        guard line.localizedCaseInsensitiveContains("пассаж") else { return [] }
-        let numbers = extractFlightNumbers(line)
-        guard !numbers.isEmpty else { return [] }
-        if numbers.count == 1 {
-            return [normalizedFlightNumber(numbers[0])]
-        }
-
-        if let groups = captureGroups(
-            in: line,
-            pattern: #"(SU\s*\d{2,4})[^S]{0,80}назначение\s+в\s+качестве\s+пассажира"#
-        ), groups.count >= 2 {
-            return [normalizedFlightNumber(groups[1])]
-        }
-
-        // Если исходник пометил пассажиром всю строку с несколькими номерами,
-        // сохраняем эту информацию для всех рейсов этой строки.
-        return Set(numbers.map(normalizedFlightNumber))
     }
 
     private static func routeNodes(

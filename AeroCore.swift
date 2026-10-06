@@ -404,9 +404,6 @@ struct FlightDuty: Identifiable {
     }
     
     
-    var lastLeg: FlightLeg {
-        legs.last!
-    }
     
     
     var start: Date {
@@ -768,32 +765,6 @@ final class AppStore: ObservableObject {
     }
     
     
-    func updateFlight(
-        _ flight: FlightLeg
-    ) {
-        
-        guard let index =
-                flights.firstIndex(
-                    where: {
-                        $0.id == flight.id
-                    }
-                )
-        else {
-            return
-        }
-        
-        
-        var updatedFlights =
-        flights
-        
-        
-        updatedFlights[index] =
-        flight
-        
-        
-        flights =
-        updatedFlights
-    }
     
     
     // One assignment is committed in a single published change.

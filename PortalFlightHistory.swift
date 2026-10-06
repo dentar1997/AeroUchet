@@ -215,54 +215,101 @@ enum PortalFlightHistory {
         var number: Double? { if case .number(let value) = self { return value }; return nil }
     }
 
-    private struct Record { let id: Int; let bytes: Data }
+
+    private typealias Record = BIFFWorkbook.Record
 
     private static func records(in data: Data) throws -> [Record] {
+        try BIFFWorkbook.records(in: data)
+    }
+
+    private static func workbookStream(_ file: Data) throws -> Data {
+        try BIFFWorkbook.workbookStream(file, notWorkbook: "Выберите файл истории рейсов .xls с портала пилотов")
+    }
+
+    private static func sharedStrings(_ pieces: [Data]) throws -> [String] {
+        try BIFFWorkbook.sharedStrings(pieces)
+    }
+
+    private static func decodeRK(_ raw: Int) -> Double {
+        BIFFWorkbook.decodeRK(raw)
+    }
+}
+
+private extension Data {
+    func u16(_ at: Int) -> Int? {
+        guard at >= 0, at + 2 <= count else { return nil }
+        return Int(self[at]) | Int(self[at + 1]) << 8
+    }
+    func u32(_ at: Int) -> Int? {
+        guard let low = u16(at), let high = u16(at + 2) else { return nil }
+        return low | high << 16
+    }
+    func f64(_ at: Int) -> Double? {
+        guard at >= 0, at + 8 <= count else { return nil }
+        var bits: UInt64 = 0
+        for n in 0..<8 { bits |= UInt64(self[at + n]) << (n * 8) }
+        return Double(bitPattern: bits)
+    }
+}
+
+
+// MARK: - Общее чтение .xls (BIFF8 в контейнере OLE)
+
+/// Одно чтение .xls для истории полётов и расписания: раньше код был скопирован
+/// в два файла (аудит 05.10, п. 20). Ошибку теперь исправлять в одном месте.
+enum BIFFWorkbook {
+    struct Record { let id: Int; let bytes: Data }
+
+    struct Failure: LocalizedError {
+        let reason: String
+        init(_ reason: String) { self.reason = reason }
+        var errorDescription: String? { reason }
+    }
+
+    static func records(in data: Data) throws -> [Record] {
         var result: [Record] = []
         var pos = 0
         while pos + 4 <= data.count {
-            let id = data.u16(pos)!
-            let length = data.u16(pos + 2)!
+            guard let id = data.biffU16(pos), let length = data.biffU16(pos + 2) else { break }
             pos += 4
-            guard pos + length <= data.count else { throw ImportError.invalid("Повреждены записи XLS") }
+            guard pos + length <= data.count else { throw Failure("Повреждены записи XLS") }
             result.append(Record(id: id, bytes: data.subdata(in: pos..<(pos + length))))
             pos += length
         }
         return result
     }
 
-    private static func workbookStream(_ file: Data) throws -> Data {
+    static func workbookStream(_ file: Data, notWorkbook: String) throws -> Data {
         guard file.count >= 512, Array(file.prefix(8)) == [0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1],
-              let sectorShift = file.u16(30), sectorShift == 9 || sectorShift == 12,
-              let fatCount = file.u32(44), let directory = file.u32(48),
-              let difatStart = file.u32(68), let difatCount = file.u32(72) else {
-            throw ImportError.invalid("Выберите файл истории рейсов .xls с портала пилотов")
+              let sectorShift = file.biffU16(30), sectorShift == 9 || sectorShift == 12,
+              let fatCount = file.biffU32(44), let directory = file.biffU32(48),
+              let difatStart = file.biffU32(68), let difatCount = file.biffU32(72) else {
+            throw Failure(notWorkbook)
         }
         let size = 1 << sectorShift
         func sector(_ sid: Int) throws -> Data {
-            guard sid >= 0, sid < 0xFFFFFFF0 else { throw ImportError.invalid("Повреждена цепочка секторов XLS") }
+            guard sid >= 0, sid < 0xFFFFFFF0 else { throw Failure("Повреждена цепочка секторов XLS") }
             let start = 512 + sid * size
-            guard start >= 512, start + size <= file.count else { throw ImportError.invalid("Не хватает данных в XLS") }
+            guard start >= 512, start + size <= file.count else { throw Failure("Не хватает данных в XLS") }
             return file.subdata(in: start..<(start + size))
         }
         var fatSectors: [Int] = []
         for n in 0..<109 {
-            if let sid = file.u32(76 + n * 4), sid != 0xFFFFFFFF { fatSectors.append(sid) }
+            if let sid = file.biffU32(76 + n * 4), sid != 0xFFFFFFFF { fatSectors.append(sid) }
         }
         var nextDifat = difatStart
         for _ in 0..<difatCount {
-            let data = try sector(nextDifat)
+            let block = try sector(nextDifat)
             for n in 0..<(size / 4 - 1) {
-                let sid = data.u32(n * 4)!
-                if sid != 0xFFFFFFFF { fatSectors.append(sid) }
+                if let sid = block.biffU32(n * 4), sid != 0xFFFFFFFF { fatSectors.append(sid) }
             }
-            nextDifat = data.u32(size - 4)!
+            nextDifat = block.biffU32(size - 4) ?? 0xFFFFFFFE
         }
-        guard fatSectors.count >= fatCount, fatCount < 100_000 else { throw ImportError.invalid("Повреждена таблица секторов XLS") }
+        guard fatSectors.count >= fatCount, fatCount < 100_000 else { throw Failure("Повреждена таблица секторов XLS") }
         var fat: [Int] = []
         for sid in fatSectors.prefix(fatCount) {
-            let data = try sector(sid)
-            for n in 0..<(size / 4) { fat.append(data.u32(n * 4)!) }
+            let block = try sector(sid)
+            for n in 0..<(size / 4) { fat.append(block.biffU32(n * 4) ?? 0xFFFFFFFF) }
         }
         func chain(_ first: Int, limit: Int) throws -> Data {
             var output = Data()
@@ -270,7 +317,7 @@ enum PortalFlightHistory {
             var visited = Set<Int>()
             while sid != 0xFFFFFFFE {
                 guard sid >= 0, sid < fat.count, !visited.contains(sid), visited.count < limit else {
-                    throw ImportError.invalid("Повреждена цепочка XLS")
+                    throw Failure("Повреждена цепочка XLS")
                 }
                 visited.insert(sid)
                 output.append(try sector(sid))
@@ -279,34 +326,34 @@ enum PortalFlightHistory {
             return output
         }
         let entries = try chain(directory, limit: file.count / size + 1)
-        for offset in stride(from: 0, to: entries.count - 127, by: 128) {
-            guard let length = entries.u16(offset + 64), length >= 2, length <= 64,
+        for offset in stride(from: 0, to: max(0, entries.count - 127), by: 128) {
+            guard let length = entries.biffU16(offset + 64), length >= 2, length <= 64,
                   entries[offset + 66] == 2 else { continue }
             let name = String(data: entries.subdata(in: offset..<(offset + length - 2)), encoding: .utf16LittleEndian)
             if name == "Workbook" || name == "Book" {
-                guard let first = entries.u32(offset + 116), let bytes = entries.u32(offset + 120), bytes >= 4096 else {
-                    throw ImportError.invalid("Слишком короткая или повреждённая книга XLS")
+                guard let first = entries.biffU32(offset + 116), let bytes = entries.biffU32(offset + 120), bytes >= 4096 else {
+                    throw Failure("Слишком короткая или повреждённая книга XLS")
                 }
-                let stream = try chain(first, limit: (bytes + size - 1) / size + 1)
-                guard stream.count >= bytes else { throw ImportError.invalid("Книга XLS обрезана") }
+                let stream = try chain(first, limit: bytes / size + 2)
+                guard stream.count >= bytes else { throw Failure("Книга XLS обрезана") }
                 return stream.prefix(bytes)
             }
         }
-        throw ImportError.invalid("Книга Excel не найдена в файле")
+        throw Failure("Книга Excel не найдена в файле")
     }
 
-    private static func sharedStrings(_ pieces: [Data]) throws -> [String] {
+    static func sharedStrings(_ pieces: [Data]) throws -> [String] {
         var cursor = StringCursor(pieces: pieces)
         guard let total = cursor.u32(), let unique = cursor.u32(), total >= unique, unique < 1_000_000 else {
-            throw ImportError.invalid("Повреждён словарь строк XLS")
+            throw Failure("Повреждён словарь строк XLS")
         }
         var result: [String] = []
         for _ in 0..<unique {
-            guard let count = cursor.u16(), let flags = cursor.u8() else { throw ImportError.invalid("Повреждена строка XLS") }
+            guard let count = cursor.u16(), let flags = cursor.u8() else { throw Failure("Повреждена строка XLS") }
             let rich = flags & 8 != 0 ? cursor.u16() : 0
             let phonetic = flags & 4 != 0 ? cursor.u32() : 0
             guard let runs = rich, let extra = phonetic, let value = cursor.characters(count, unicode: flags & 1 != 0),
-                  cursor.skip(runs * 4 + extra) else { throw ImportError.invalid("Повреждена строка XLS") }
+                  cursor.skip(runs * 4 + extra) else { throw Failure("Повреждена строка XLS") }
             result.append(value)
         }
         return result
@@ -351,7 +398,7 @@ enum PortalFlightHistory {
         }
     }
 
-    private static func decodeRK(_ raw: Int) -> Double {
+    static func decodeRK(_ raw: Int) -> Double {
         let value: Double
         if raw & 2 != 0 { value = Double(Int32(bitPattern: UInt32(raw)) >> 2) }
         else { value = Double(bitPattern: UInt64(raw & ~3) << 32) }
@@ -359,19 +406,16 @@ enum PortalFlightHistory {
     }
 }
 
-private extension Data {
-    func u16(_ at: Int) -> Int? {
+
+extension Data {
+    func biffU16(_ at: Int) -> Int? {
         guard at >= 0, at + 2 <= count else { return nil }
         return Int(self[at]) | Int(self[at + 1]) << 8
     }
-    func u32(_ at: Int) -> Int? {
-        guard let low = u16(at), let high = u16(at + 2) else { return nil }
+    func biffU32(_ at: Int) -> Int? {
+        guard let low = biffU16(at), let high = biffU16(at + 2) else { return nil }
         return low | high << 16
     }
-    func f64(_ at: Int) -> Double? {
-        guard at >= 0, at + 8 <= count else { return nil }
-        var bits: UInt64 = 0
-        for n in 0..<8 { bits |= UInt64(self[at + n]) << (n * 8) }
-        return Double(bitPattern: bits)
-    }
 }
+
+

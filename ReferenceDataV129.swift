@@ -624,30 +624,6 @@ final class FlightScheduleStoreV129: ObservableObject {
         return matches.sorted { $0.engineOn < $1.engineOn }
     }
 
-    func uniqueMatch(
-        flightNumber: String,
-        moscowDate: Date,
-        departureHint: String? = nil,
-        arrivalHint: String? = nil
-    ) -> FlightScheduleMatchV129? {
-        let exact = matches(
-            flightNumber: flightNumber,
-            moscowDate: moscowDate,
-            departureHint: departureHint,
-            arrivalHint: arrivalHint
-        )
-        if exact.count == 1 { return exact[0] }
-        if departureHint != nil || arrivalHint != nil { return nil }
-
-        let withoutRoute = matches(
-            flightNumber: flightNumber,
-            moscowDate: moscowDate,
-            departureHint: nil,
-            arrivalHint: nil
-        )
-        return withoutRoute.count == 1 ? withoutRoute[0] : nil
-    }
-
     nonisolated static func normalizedFlightNumber(_ raw: String) -> String {
         canonicalFlightNumber(raw)
     }
@@ -1099,216 +1075,23 @@ enum FlightScheduleXLSParserV129 {
         }
     }
 
-    private struct Record {
-        let id: Int
-        let bytes: Data
-    }
+    private typealias Record = BIFFWorkbook.Record
 
+    // Чтение .xls — общее с историей полётов (аудит 05.10, п. 20).
     private static func records(in data: Data) throws -> [Record] {
-        var result: [Record] = []
-        var position = 0
-        while position + 4 <= data.count {
-            guard let id = data.v129U16(position),
-                  let length = data.v129U16(position + 2) else { break }
-            position += 4
-            guard position + length <= data.count else {
-                throw ImportError.invalid("Повреждены записи XLS")
-            }
-            result.append(
-                Record(
-                    id: id,
-                    bytes: data.subdata(in: position..<(position + length))
-                )
-            )
-            position += length
-        }
-        return result
+        try BIFFWorkbook.records(in: data)
     }
 
     private static func workbookStream(_ file: Data) throws -> Data {
-        guard file.count >= 512,
-              Array(file.prefix(8)) == [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1],
-              let sectorShift = file.v129U16(30),
-              sectorShift == 9 || sectorShift == 12,
-              let fatCount = file.v129U32(44),
-              let directory = file.v129U32(48),
-              let difatStart = file.v129U32(68),
-              let difatCount = file.v129U32(72) else {
-            throw ImportError.invalid("Выберите файл расписания .xls")
-        }
-
-        let size = 1 << sectorShift
-        func sector(_ sid: Int) throws -> Data {
-            guard sid >= 0, sid < 0xFFFFFFF0 else {
-                throw ImportError.invalid("Повреждена цепочка секторов XLS")
-            }
-            let start = 512 + sid * size
-            guard start >= 512, start + size <= file.count else {
-                throw ImportError.invalid("Не хватает данных в XLS")
-            }
-            return file.subdata(in: start..<(start + size))
-        }
-
-        var fatSectors: [Int] = []
-        for value in 0..<109 {
-            if let sid = file.v129U32(76 + value * 4), sid != 0xFFFFFFFF {
-                fatSectors.append(sid)
-            }
-        }
-        var nextDifat = difatStart
-        for _ in 0..<difatCount {
-            let block = try sector(nextDifat)
-            for value in 0..<(size / 4 - 1) {
-                if let sid = block.v129U32(value * 4), sid != 0xFFFFFFFF {
-                    fatSectors.append(sid)
-                }
-            }
-            nextDifat = block.v129U32(size - 4) ?? 0xFFFFFFFE
-        }
-        guard fatSectors.count >= fatCount, fatCount < 100_000 else {
-            throw ImportError.invalid("Повреждена таблица секторов XLS")
-        }
-
-        var fat: [Int] = []
-        for sid in fatSectors.prefix(fatCount) {
-            let block = try sector(sid)
-            for value in 0..<(size / 4) {
-                fat.append(block.v129U32(value * 4) ?? 0xFFFFFFFF)
-            }
-        }
-
-        func chain(_ first: Int, limit: Int) throws -> Data {
-            var output = Data()
-            var sid = first
-            var visited = Set<Int>()
-            while sid != 0xFFFFFFFE {
-                guard sid >= 0,
-                      sid < fat.count,
-                      !visited.contains(sid),
-                      visited.count < limit else {
-                    throw ImportError.invalid("Повреждена цепочка XLS")
-                }
-                visited.insert(sid)
-                output.append(try sector(sid))
-                sid = fat[sid]
-            }
-            return output
-        }
-
-        let entries = try chain(directory, limit: file.count / size + 1)
-        for offset in stride(from: 0, to: max(0, entries.count - 127), by: 128) {
-            guard let length = entries.v129U16(offset + 64),
-                  length >= 2,
-                  length <= 64,
-                  entries[offset + 66] == 2 else { continue }
-            let name = String(
-                data: entries.subdata(in: offset..<(offset + length - 2)),
-                encoding: .utf16LittleEndian
-            )
-            if name == "Workbook" || name == "Book" {
-                guard let first = entries.v129U32(offset + 116),
-                      let byteCount = entries.v129U32(offset + 120),
-                      byteCount >= 4096 else {
-                    throw ImportError.invalid("Повреждена книга XLS")
-                }
-                let stream = try chain(first, limit: byteCount / size + 2)
-                guard stream.count >= byteCount else {
-                    throw ImportError.invalid("Книга XLS обрезана")
-                }
-                return stream.prefix(byteCount)
-            }
-        }
-        throw ImportError.invalid("Книга Excel не найдена")
+        try BIFFWorkbook.workbookStream(file, notWorkbook: "Выберите файл расписания .xls")
     }
 
     private static func sharedStrings(_ pieces: [Data]) throws -> [String] {
-        var cursor = StringCursor(pieces: pieces)
-        guard let total = cursor.u32(),
-              let unique = cursor.u32(),
-              total >= unique,
-              unique < 1_000_000 else {
-            throw ImportError.invalid("Повреждён словарь строк XLS")
-        }
-        var result: [String] = []
-        for _ in 0..<unique {
-            guard let count = cursor.u16(),
-                  let flags = cursor.u8() else {
-                throw ImportError.invalid("Повреждена строка XLS")
-            }
-            let rich = flags & 8 != 0 ? cursor.u16() : 0
-            let phonetic = flags & 4 != 0 ? cursor.u32() : 0
-            guard let runs = rich,
-                  let extra = phonetic,
-                  let value = cursor.characters(count, unicode: flags & 1 != 0),
-                  cursor.skip(runs * 4 + extra) else {
-                throw ImportError.invalid("Повреждена строка XLS")
-            }
-            result.append(value)
-        }
-        return result
-    }
-
-    private struct StringCursor {
-        let pieces: [Data]
-        var part = 0
-        var offset = 0
-
-        mutating func u8() -> Int? {
-            while part < pieces.count && offset >= pieces[part].count {
-                part += 1
-                offset = 0
-            }
-            guard part < pieces.count else { return nil }
-            defer { offset += 1 }
-            return Int(pieces[part][offset])
-        }
-
-        mutating func u16() -> Int? {
-            guard let a = u8(), let b = u8() else { return nil }
-            return a | b << 8
-        }
-
-        mutating func u32() -> Int? {
-            guard let a = u16(), let b = u16() else { return nil }
-            return a | b << 16
-        }
-
-        mutating func skip(_ bytes: Int) -> Bool {
-            guard bytes >= 0, bytes < 10_000_000 else { return false }
-            for _ in 0..<bytes where u8() == nil { return false }
-            return true
-        }
-
-        mutating func characters(_ count: Int, unicode initial: Bool) -> String? {
-            var unicode = initial
-            var units: [UInt16] = []
-            for _ in 0..<count {
-                if part < pieces.count && offset == pieces[part].count {
-                    part += 1
-                    offset = 0
-                    guard let flag = u8() else { return nil }
-                    unicode = flag & 1 != 0
-                }
-                guard let first = u8() else { return nil }
-                if unicode {
-                    guard let second = u8() else { return nil }
-                    units.append(UInt16(first | second << 8))
-                } else {
-                    units.append(UInt16(first))
-                }
-            }
-            return String(decoding: units, as: UTF16.self)
-        }
+        try BIFFWorkbook.sharedStrings(pieces)
     }
 
     private static func decodeRK(_ raw: Int) -> Double {
-        let value: Double
-        if raw & 2 != 0 {
-            value = Double(Int32(bitPattern: UInt32(raw)) >> 2)
-        } else {
-            value = Double(bitPattern: UInt64(raw & ~3) << 32)
-        }
-        return raw & 1 != 0 ? value / 100 : value
+        BIFFWorkbook.decodeRK(raw)
     }
 }
 
