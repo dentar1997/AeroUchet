@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import Foundation
+import GameController
 import UIKit
 import UniformTypeIdentifiers
 
@@ -3392,6 +3393,11 @@ final class KeyInputDiagnostics: ObservableObject {
     @Published private(set) var keyWindow = "—"
     @Published private(set) var presented = "нет"
     @Published private(set) var responder = "—"
+    @Published private(set) var gameControllerCount = 0
+
+    func registerGameControllerKey() {
+        DispatchQueue.main.async { self.gameControllerCount += 1 }
+    }
     @Published private(set) var lastFocus = "—"
 
     func registerFocusAttempt(became: Bool) {
@@ -3410,6 +3416,7 @@ final class KeyInputDiagnostics: ObservableObject {
         DispatchQueue.main.async {
             self.count = 0
             self.textCount = 0
+            self.gameControllerCount = 0
         }
     }
 
@@ -3449,7 +3456,7 @@ private struct KeyInputIndicator: View {
     private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        Text("Ячейка: \(activeCell ?? "нет") · ⌨︎ нажатий \(diagnostics.count) · фокус: \(diagnostics.responder) · взят: \(diagnostics.lastFocus) · окно: \(diagnostics.keyWindow) · поверх: \(diagnostics.presented)")
+        Text("Ячейка: \(activeCell ?? "нет") · ⌨︎ нажатий \(diagnostics.count) · GC \(diagnostics.gameControllerCount) · фокус: \(diagnostics.responder) · взят: \(diagnostics.lastFocus) · окно: \(diagnostics.keyWindow) · поверх: \(diagnostics.presented)")
             .font(.system(size: 10, weight: .medium))
             .lineLimit(2)
             .minimumScaleFactor(0.7)
@@ -3483,12 +3490,105 @@ extension UIResponder {
 }
 
 
+/// Запасной путь физической клавиатуры (запись 06.10, v140): после окна «Файлы»
+/// поле остаётся first responder, а нажатия через UIKit до приложения не доходят.
+/// GameController получает клавиши независимо от текстового фокуса. Если обычное
+/// нажатие не пришло, цифра/буква/Backspace вводятся в активную ячейку отсюда.
+/// Если обычное нажатие пришло — ничего не делаем (двойного ввода нет).
+final class HardwareKeyboardBridge {
+    static let shared = HardwareKeyboardBridge()
+
+    weak var activeField: UITextField?
+    var lastUIKitPress = Date.distantPast
+    private var started = false
+
+    func start() {
+        guard !started else { return }
+        started = true
+        attach(GCKeyboard.coalesced)
+        NotificationCenter.default.addObserver(
+            forName: .GCKeyboardDidConnect,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let keyboard = note.object as? GCKeyboard
+            DispatchQueue.main.async {
+                self?.attach(keyboard)
+            }
+        }
+    }
+
+    private func attach(_ keyboard: GCKeyboard?) {
+        keyboard?.handlerQueue = .main
+        keyboard?.keyboardInput?.keyChangedHandler = { [weak self] _, _, keyCode, pressed in
+            guard pressed else { return }
+            DispatchQueue.main.async {
+                self?.handle(keyCode)
+            }
+        }
+    }
+
+    private func handle(_ keyCode: GCKeyCode) {
+        KeyInputDiagnostics.shared.registerGameControllerKey()
+        let pressedAt = Date()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
+            guard let self,
+                  self.lastUIKitPress < pressedAt.addingTimeInterval(-0.25),
+                  let field = self.activeField,
+                  field.isFirstResponder else { return }
+            if keyCode == .deleteOrBackspace {
+                field.deleteBackward()
+            } else if let character = Self.character(for: keyCode) {
+                field.insertText(character)
+            }
+        }
+    }
+
+    private static let digits: [GCKeyCode: String] = [
+        .zero: "0", .one: "1", .two: "2", .three: "3", .four: "4",
+        .five: "5", .six: "6", .seven: "7", .eight: "8", .nine: "9",
+        .keypad0: "0", .keypad1: "1", .keypad2: "2", .keypad3: "3", .keypad4: "4",
+        .keypad5: "5", .keypad6: "6", .keypad7: "7", .keypad8: "8", .keypad9: "9"
+    ]
+
+    private static let letters: [GCKeyCode: String] = [
+        .keyA: "A", .keyB: "B", .keyC: "C", .keyD: "D", .keyE: "E", .keyF: "F",
+        .keyG: "G", .keyH: "H", .keyI: "I", .keyJ: "J", .keyK: "K", .keyL: "L",
+        .keyM: "M", .keyN: "N", .keyO: "O", .keyP: "P", .keyQ: "Q", .keyR: "R",
+        .keyS: "S", .keyT: "T", .keyU: "U", .keyV: "V", .keyW: "W", .keyX: "X",
+        .keyY: "Y", .keyZ: "Z", .hyphen: "-"
+    ]
+
+    private static func character(for keyCode: GCKeyCode) -> String? {
+        digits[keyCode] ?? letters[keyCode]
+    }
+}
+
+
 private final class AssignmentInputTextField: UITextField {
     var hardwareInputHandler: ((String?, Bool) -> Void)?
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        HardwareKeyboardBridge.shared.lastUIKitPress = Date()
         KeyInputDiagnostics.shared.registerKey()
         super.pressesBegan(presses, with: event)
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let became = super.becomeFirstResponder()
+        if became {
+            HardwareKeyboardBridge.shared.start()
+            HardwareKeyboardBridge.shared.activeField = self
+        }
+        return became
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned, HardwareKeyboardBridge.shared.activeField === self {
+            HardwareKeyboardBridge.shared.activeField = nil
+        }
+        return resigned
     }
 
     override func insertText(_ text: String) {
