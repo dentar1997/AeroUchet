@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import CryptoKit
 
 
 @MainActor
@@ -252,20 +253,28 @@ enum PerspectiveDutyBuilderV129 {
 
     private static var buildCache: [String: Result] = [:]
 
+    /// Готовая карточка назначения. Результат один раз считается по расписанию и
+    /// сохраняется (D35): при следующих входах и открытиях — без повторного поиска.
+    /// Пересчёт — только после загрузки другого расписания или изменения назначения.
     static func build(item: AssignmentPlanItem) -> Result {
         if let saved = PerspectiveDutyOverrideStoreV130.shared.legs(for: item.id) {
-            return .ready(FlightDuty(id: UUID(), legs: saved))
+            return .ready(FlightDuty(id: stableUUID(item.id), legs: saved))
         }
 
-        let key = buildCacheKey(item)
-        if let cached = buildCache[key] { return cached }
-        func finish(_ result: Result) -> Result {
-            if Self.buildCache.count > 1024 {
-                Self.buildCache.removeAll(keepingCapacity: true)
-            }
-            Self.buildCache[key] = result
-            return result
+        let key = PerspectiveResolvedStoreV136.itemKey(item)
+        let memoryKey = key + "|" + FlightScheduleStoreV129.generation
+        if let cached = buildCache[memoryKey] { return cached }
+        let stored = PerspectiveResolvedStoreV136.shared.build(key: key) {
+            PerspectiveBuildV136(computeBuild(item: item))
         }
+        let result = stored.result(itemID: item.id)
+        if buildCache.count > 1024 { buildCache.removeAll(keepingCapacity: true) }
+        buildCache[memoryKey] = result
+        return result
+    }
+
+    private static func computeBuild(item: AssignmentPlanItem) -> Result {
+        func finish(_ result: Result) -> Result { result }
 
         let metadata = AssignmentV119MetadataCodec.metadata(from: item.detail)
         let planLegs = resolvedPlanLegs(item: item, metadata: metadata)
@@ -343,19 +352,39 @@ enum PerspectiveDutyBuilderV129 {
         return nil
     }
 
-    private static func buildCacheKey(_ item: AssignmentPlanItem) -> String {
-        let store = FlightScheduleStoreV129.shared
-        let generation = Int((store.imports.first?.importedAt.timeIntervalSinceReferenceDate ?? 0).rounded())
-        return [
-            String(store.entries.count),
-            String(generation),
-            item.id,
-            String(Int(item.start.timeIntervalSinceReferenceDate.rounded())),
-            String(Int(item.end.timeIntervalSinceReferenceDate.rounded())),
-            item.flightNumber ?? "",
-            item.departure ?? "",
-            item.arrival ?? ""
+    /// Данные расписания для строки перспективного плана — из сохранённых результатов.
+    static func scheduleDisplayInfo(
+        flightNumber: String,
+        date: Date,
+        departureHint: String? = nil,
+        arrivalHint: String? = nil
+    ) -> PerspectiveScheduleDisplayV136? {
+        let key = [
+            canonicalFlightNumber(flightNumber),
+            String(Int(date.timeIntervalSince1970 / 60)),
+            departureHint ?? "",
+            arrivalHint ?? ""
         ].joined(separator: "|")
+        return PerspectiveResolvedStoreV136.shared.display(key: key) {
+            guard let match = scheduleDisplay(
+                flightNumber: flightNumber,
+                date: date,
+                departureHint: departureHint,
+                arrivalHint: arrivalHint
+            ) else { return nil }
+            return PerspectiveScheduleDisplayV136(
+                departure: DutyAutofillV129.displayAirport(
+                    code: match.entry.departure,
+                    terminal: match.entry.departureTerminal
+                ),
+                arrival: DutyAutofillV129.displayAirport(
+                    code: match.entry.arrival,
+                    terminal: match.entry.arrivalTerminal
+                ),
+                aircraft: AircraftFamilyV129.display(match.entry.rawAircraftCode),
+                flightMinutes: match.entry.flightMinutes
+            )
+        }
     }
 
     static func scheduleDisplay(
@@ -476,7 +505,7 @@ enum PerspectiveDutyBuilderV129 {
                 )
             )
         }
-        return FlightDuty(id: UUID(), legs: legs)
+        return FlightDuty(id: stableUUID(itemID), legs: legs)
     }
 
     private static func shortDate(_ date: Date) -> String {
@@ -509,5 +538,185 @@ struct PerspectiveDutyOverlayV129: View {
             },
             onClose: onClose
         )
+    }
+}
+
+
+// MARK: - Сохранённые готовые данные перспективного плана (D35, аудит 05.10, п. 16)
+
+/// Детерминированный идентификатор: одна и та же карточка — один и тот же id (п. 21).
+func stableUUID(_ text: String) -> UUID {
+    let bytes = Array(SHA256.hash(data: Data(text.utf8)))
+    return UUID(uuid: (
+        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+        bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+    ))
+}
+
+
+/// Стабильный между запусками хеш текста (FNV-1a), в отличие от `hashValue`.
+func stableTextHash(_ text: String) -> String {
+    var hash: UInt64 = 1469598103934665603
+    for byte in text.utf8 {
+        hash = (hash ^ UInt64(byte)) &* 1099511628211
+    }
+    return String(hash, radix: 16)
+}
+
+
+struct PerspectiveScheduleDisplayV136: Codable, Equatable {
+    var departure: String
+    var arrival: String
+    var aircraft: String
+    var flightMinutes: Int
+}
+
+
+struct PerspectiveBuildV136: Codable {
+    var kind: String
+    var legs: [FlightLeg]?
+    var message: String?
+    var expected: Int?
+    var actual: Int?
+
+    init(_ result: PerspectiveDutyBuilderV129.Result) {
+        switch result {
+        case .ready(let duty):
+            kind = "ready"
+            legs = duty.legs
+        case .missing(let text):
+            kind = "missing"
+            message = text
+        case .routeMismatch(let text):
+            kind = "routeMismatch"
+            message = text
+        case .mismatch(let duty, let expected, let actual):
+            kind = "mismatch"
+            legs = duty.legs
+            self.expected = expected
+            self.actual = actual
+        }
+    }
+
+    func result(itemID: String) -> PerspectiveDutyBuilderV129.Result {
+        let values = legs ?? []
+        let duty = FlightDuty(id: stableUUID(itemID), legs: values)
+        switch kind {
+        case "ready" where !values.isEmpty:
+            return .ready(duty)
+        case "mismatch" where !values.isEmpty:
+            return .mismatch(duty, expected: expected ?? 0, actual: actual ?? 0)
+        case "routeMismatch":
+            return .routeMismatch(message ?? "Маршрут плана не совпадает с расписанием")
+        default:
+            return .missing(message ?? "В загруженном расписании рейс не найден.")
+        }
+    }
+}
+
+
+@MainActor
+final class PerspectiveResolvedStoreV136 {
+    static let shared = PerspectiveResolvedStoreV136()
+
+    private struct Stored: Codable {
+        var generation: String
+        var displays: [String: PerspectiveScheduleDisplayV136]
+        var missingDisplays: [String]
+        var builds: [String: PerspectiveBuildV136]
+    }
+
+    private static let fileName = "perspective-resolved.json"
+
+    private var generation: String
+    private var displays: [String: PerspectiveScheduleDisplayV136] = [:]
+    private var missingDisplays: Set<String> = []
+    private var builds: [String: PerspectiveBuildV136] = [:]
+    private var savePending = false
+
+    private init() {
+        let current = FlightScheduleStoreV129.generation
+        generation = current
+        // Это только сохранённый результат расчёта: если файл не читается,
+        // данные просто пересчитываются, без предупреждения.
+        if let url = StorageSafety.dataFileURL(Self.fileName),
+           let data = try? Data(contentsOf: url),
+           let stored = try? JSONDecoder().decode(Stored.self, from: data),
+           stored.generation == current {
+            displays = stored.displays
+            missingDisplays = Set(stored.missingDisplays)
+            builds = stored.builds
+        }
+    }
+
+    /// Ключ назначения: всё, от чего зависит карточка. Метка расписания учитывается отдельно.
+    static func itemKey(_ item: AssignmentPlanItem) -> String {
+        [
+            item.id,
+            String(Int(item.start.timeIntervalSince1970 / 60)),
+            String(Int(item.end.timeIntervalSince1970 / 60)),
+            item.flightNumber ?? "",
+            item.departure ?? "",
+            item.arrival ?? "",
+            String(item.plannedFlightMinutes ?? -1),
+            stableTextHash(item.detail ?? "")
+        ].joined(separator: "|")
+    }
+
+    func display(
+        key: String,
+        compute: () -> PerspectiveScheduleDisplayV136?
+    ) -> PerspectiveScheduleDisplayV136? {
+        refreshGeneration()
+        if let value = displays[key] { return value }
+        if missingDisplays.contains(key) { return nil }
+        let value = compute()
+        if let value {
+            displays[key] = value
+        } else {
+            missingDisplays.insert(key)
+        }
+        scheduleSave()
+        return value
+    }
+
+    func build(key: String, compute: () -> PerspectiveBuildV136) -> PerspectiveBuildV136 {
+        refreshGeneration()
+        if let value = builds[key] { return value }
+        let value = compute()
+        builds[key] = value
+        scheduleSave()
+        return value
+    }
+
+    private func refreshGeneration() {
+        let current = FlightScheduleStoreV129.generation
+        guard current != generation else { return }
+        generation = current
+        displays = [:]
+        missingDisplays = []
+        builds = [:]
+        scheduleSave()
+    }
+
+    private func scheduleSave() {
+        guard !savePending else { return }
+        savePending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.save()
+        }
+    }
+
+    private func save() {
+        savePending = false
+        let stored = Stored(
+            generation: generation,
+            displays: displays,
+            missingDisplays: Array(missingDisplays),
+            builds: builds
+        )
+        guard let url = StorageSafety.dataFileURL(Self.fileName),
+              let data = try? JSONEncoder().encode(stored) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 }

@@ -32,7 +32,6 @@ struct PlanAssignmentRowV119: View {
     }
 
     @ObservedObject private var appearanceStore = AssignmentAppearanceStore.shared
-    @ObservedObject private var scheduleStore = FlightScheduleStoreV129.shared
 
     private var metadata: AssignmentV119Metadata? {
         decodedMetadata
@@ -330,24 +329,16 @@ struct PlanAssignmentRowV119: View {
     private func legText(_ leg: DisplayLeg) -> String {
         var parts = [leg.flightNumber]
         var displayedAircraft = leg.aircraft
+        // Данные расписания — из сохранённых результатов (D35): без поиска при отрисовке.
         if perspectiveStyle,
-           !scheduleStore.entries.isEmpty,
-           let match = PerspectiveDutyBuilderV129.scheduleDisplay(
+           let info = PerspectiveDutyBuilderV129.scheduleDisplayInfo(
                 flightNumber: leg.flightNumber,
                 date: metadata?.sourceStart ?? item.start,
                 departureHint: leg.departure,
                 arrivalHint: leg.arrival
            ) {
-            let departure = DutyAutofillV129.displayAirport(
-                code: match.entry.departure,
-                terminal: match.entry.departureTerminal
-            )
-            let arrival = DutyAutofillV129.displayAirport(
-                code: match.entry.arrival,
-                terminal: match.entry.arrivalTerminal
-            )
-            parts.append("\(departure) → \(arrival)")
-            displayedAircraft = AircraftFamilyV129.display(match.entry.rawAircraftCode)
+            parts.append("\(info.departure) → \(info.arrival)")
+            displayedAircraft = info.aircraft
         } else if let departure = leg.departure,
                   let arrival = leg.arrival {
             parts.append("\(departure) → \(arrival)")
@@ -359,14 +350,14 @@ struct PlanAssignmentRowV119: View {
     }
 
     private var displayedFlightMinutes: Int? {
-        if perspectiveStyle, !scheduleStore.entries.isEmpty, !displayLegs.isEmpty {
+        if perspectiveStyle, !displayLegs.isEmpty {
             let values = displayLegs.compactMap { leg in
-                PerspectiveDutyBuilderV129.scheduleDisplay(
+                PerspectiveDutyBuilderV129.scheduleDisplayInfo(
                     flightNumber: leg.flightNumber,
                     date: metadata?.sourceStart ?? item.start,
                     departureHint: leg.departure,
                     arrivalHint: leg.arrival
-                )?.entry.flightMinutes
+                )?.flightMinutes
             }
             if values.count == displayLegs.count {
                 return values.reduce(0, +)

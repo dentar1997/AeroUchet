@@ -273,6 +273,31 @@ struct FlightScheduleEntryV129: Identifiable, Codable, Hashable {
 }
 
 
+extension FlightScheduleEntryV129 {
+    /// Та же строка расписания на более узком периоде (D40). nil — если период пуст.
+    func clipped(from start: Date, to end: Date) -> FlightScheduleEntryV129? {
+        let newFrom = max(start, validFrom)
+        let newTo = min(end, validTo)
+        guard newFrom <= newTo else { return nil }
+        return FlightScheduleEntryV129(
+            flightNumber: flightNumber,
+            validFrom: newFrom,
+            validTo: newTo,
+            operatingWeekdays: operatingWeekdays,
+            departure: departure,
+            departureTerminal: departureTerminal,
+            departureMinutesUTC: departureMinutesUTC,
+            arrival: arrival,
+            arrivalTerminal: arrivalTerminal,
+            arrivalMinutesUTC: arrivalMinutesUTC,
+            rawAircraftCode: rawAircraftCode,
+            configuration: configuration,
+            flightMinutes: flightMinutes
+        )
+    }
+}
+
+
 struct FlightScheduleImportRecordV129: Identifiable, Codable, Hashable {
     let id: UUID
     let importedAt: Date
@@ -377,48 +402,81 @@ final class FlightScheduleStoreV129: ObservableObject {
             )
         }
 
-        let replacementIndex = imports.firstIndex { record in
-            let sameCoverage = Self.dayKey(record.validFrom) == Self.dayKey(from)
-                && Self.dayKey(record.validTo) == Self.dayKey(to)
-            let sameSourceAndOverlap = record.sourceName == sourceName
-                && record.validFrom <= to
-                && record.validTo >= from
-            return sameCoverage || sameSourceAndOverlap
-        }
-
-        let newKeys = Set(parsed.map(\.identityKey))
-        let oldKeys = replacementIndex.map { importKeys(for: imports[$0]) } ?? []
-        let protectedKeys = Set(
-            imports.enumerated()
-                .filter { pair in
-                    guard let replacementIndex else { return true }
-                    return pair.offset != replacementIndex
-                }
-                .flatMap { Array(importKeys(for: $0.element)) }
+        // D40: новый снимок заменяет строки только внутри своего периода.
+        // Строки старых снимков до его начала и после конца остаются в базе.
+        let overlapping = entries.filter { $0.validFrom <= to && $0.validTo >= from }
+        var byKey = Dictionary(
+            entries.map { ($0.identityKey, $0) },
+            uniquingKeysWith: { first, _ in first }
         )
-
-        var byKey = Dictionary(uniqueKeysWithValues: entries.map { ($0.identityKey, $0) })
-        var removed = 0
-        for key in oldKeys where !newKeys.contains(key) && !protectedKeys.contains(key) {
-            if byKey.removeValue(forKey: key) != nil { removed += 1 }
+        var replacementKeys: [String: [String]] = [:]
+        for entry in overlapping {
+            byKey.removeValue(forKey: entry.identityKey)
+            var pieces: [String] = []
+            if entry.validFrom < from,
+               let headEnd = Calendar.gregorianUTC.date(byAdding: .day, value: -1, to: from),
+               let head = entry.clipped(from: entry.validFrom, to: headEnd) {
+                byKey[head.identityKey] = head
+                pieces.append(head.identityKey)
+            }
+            if entry.validTo > to,
+               let tailStart = Calendar.gregorianUTC.date(byAdding: .day, value: 1, to: to),
+               let tail = entry.clipped(from: tailStart, to: entry.validTo) {
+                byKey[tail.identityKey] = tail
+                pieces.append(tail.identityKey)
+            }
+            replacementKeys[entry.identityKey] = pieces
         }
 
+        let oldOverlap = Dictionary(
+            overlapping.map { ($0.identityKey, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let newKeys = Set(parsed.map(\.identityKey))
         var added = 0
         var updated = 0
         for value in parsed {
-            if let old = byKey[value.identityKey] {
-                if old != value {
-                    byKey[value.identityKey] = value
-                    updated += 1
-                }
+            if let old = oldOverlap[value.identityKey] {
+                if old != value { updated += 1 }
             } else {
-                byKey[value.identityKey] = value
                 added += 1
             }
         }
+        let removed = oldOverlap.keys.filter { !newKeys.contains($0) }.count
+        for value in parsed {
+            byKey[value.identityKey] = value
+        }
+
+        // Прежние снимки: ключи обрезанных строк заменяются, пустые снимки исчезают.
+        var keptImports: [FlightScheduleImportRecordV129] = []
+        for record in imports {
+            var keys: [String] = []
+            for key in importKeys(for: record) {
+                if let pieces = replacementKeys[key] {
+                    keys.append(contentsOf: pieces)
+                } else if byKey[key] != nil, !newKeys.contains(key) {
+                    keys.append(key)
+                }
+            }
+            let values = keys.compactMap { byKey[$0] }
+            guard let first = values.map(\.validFrom).min(),
+                  let last = values.map(\.validTo).max() else { continue }
+            keptImports.append(
+                FlightScheduleImportRecordV129(
+                    id: record.id,
+                    importedAt: record.importedAt,
+                    validFrom: first,
+                    validTo: last,
+                    rowCount: values.count,
+                    sourceName: record.sourceName,
+                    fingerprint: record.fingerprint,
+                    entryKeys: Array(Set(keys)).sorted()
+                )
+            )
+        }
 
         let record = FlightScheduleImportRecordV129(
-            id: replacementIndex.map { imports[$0].id } ?? UUID(),
+            id: UUID(),
             importedAt: Date(),
             validFrom: from,
             validTo: to,
@@ -427,15 +485,11 @@ final class FlightScheduleStoreV129: ObservableObject {
             fingerprint: fingerprint,
             entryKeys: newKeys.sorted()
         )
-        if let replacementIndex {
-            imports[replacementIndex] = record
-        } else {
-            imports.insert(record, at: 0)
-        }
-
+        imports = [record] + keptImports
         entries = sortedEntries(Array(byKey.values))
         rebuildIndex()
         save()
+
         return FlightScheduleImportSummaryV134(
             added: added,
             updated: updated,
@@ -605,8 +659,26 @@ final class FlightScheduleStoreV129: ObservableObject {
         return String(number)
     }
 
+    private static var airportCodeCache: [String: String] = [:]
+    private static let airportCodeMissing = "\u{0}"
+    private static let airportCodeRegex = try? NSRegularExpression(
+        pattern: #"\(([A-Z]{3})(?:/[A-Z0-9]+)?\)"#
+    )
+
+    /// Код аэропорта из подсказки плана. Результат запоминается: раньше на каждый
+    /// вызов компилировалась регулярка и перебирался справочник (п. 16).
     static func airportCode(_ raw: String?) -> String? {
         guard let raw else { return nil }
+        if let cached = airportCodeCache[raw] {
+            return cached == airportCodeMissing ? nil : cached
+        }
+        let value = resolveAirportCode(raw)
+        if airportCodeCache.count > 2048 { airportCodeCache.removeAll(keepingCapacity: true) }
+        airportCodeCache[raw] = value ?? airportCodeMissing
+        return value
+    }
+
+    private static func resolveAirportCode(_ raw: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
         let upper = trimmed.uppercased()
@@ -618,7 +690,7 @@ final class FlightScheduleStoreV129: ObservableObject {
             if value.count == 3 { return AirportDatabase.airport(for: value)?.iata ?? value }
         }
 
-        if let regex = try? NSRegularExpression(pattern: #"\(([A-Z]{3})(?:/[A-Z0-9]+)?\)"#),
+        if let regex = airportCodeRegex,
            let match = regex.firstMatch(
                 in: upper,
                 range: NSRange(location: 0, length: (upper as NSString).length)
@@ -638,31 +710,58 @@ final class FlightScheduleStoreV129: ObservableObject {
         return nil
     }
 
+    // Форматтеры создаются один раз: раньше — на каждый вызов, а ключ строки
+    // расписания строится десятки тысяч раз (аудит 05.10, п. 16).
     nonisolated static func dayKey(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+        scheduleDayKeyFormatter.string(from: date)
     }
 
     nonisolated static func shortDay(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "dd.MM.yyyy"
-        return formatter.string(from: date)
+        scheduleShortDayFormatter.string(from: date)
+    }
+
+    private struct StoredSchedule: Codable {
+        var entries: [FlightScheduleEntryV129]
+        var imports: [FlightScheduleImportRecordV129]
+    }
+
+    private static let fileName = "flight-schedule.json"
+    static let generationKey = "aerouchet.flightSchedule.generation"
+
+    /// Метка версии загруженного расписания. Меняется при каждом импорте или удалении.
+    /// Читается без загрузки самого расписания — по ней сохранённые результаты
+    /// перспективного плана понимают, что их пора пересчитать (D35).
+    nonisolated static var generation: String {
+        UserDefaults.standard.string(forKey: "aerouchet.flightSchedule.generation") ?? "none"
     }
 
     private func load() {
-        // Нечитаемые данные уходят в резерв, а не затираются (аудит 05.10, п. 17).
-        entries = StorageSafety.decode(
+        // Расписание хранится файлом, а не в UserDefaults: UserDefaults переписывает
+        // весь свой файл при любой записи (п. 16). Нечитаемое — в резерв (п. 17).
+        if let stored = StorageSafety.decodeFile(
+            StoredSchedule.self, name: Self.fileName, title: "Расписание рейсов"
+        ) {
+            entries = stored.entries
+            imports = stored.imports
+            return
+        }
+        let legacyEntries = StorageSafety.decode(
             [FlightScheduleEntryV129].self, key: Self.entriesKey, title: "Расписание рейсов"
-        ) ?? []
-        imports = StorageSafety.decode(
+        )
+        let legacyImports = StorageSafety.decode(
             [FlightScheduleImportRecordV129].self, key: Self.importsKey, title: "Импорты расписания"
-        ) ?? []
+        )
+        guard legacyEntries != nil || legacyImports != nil else { return }
+        entries = legacyEntries ?? []
+        imports = legacyImports ?? []
+        if StorageSafety.storeFile(
+            StoredSchedule(entries: entries, imports: imports),
+            name: Self.fileName,
+            title: "Расписание рейсов"
+        ) {
+            UserDefaults.standard.removeObject(forKey: Self.entriesKey)
+            UserDefaults.standard.removeObject(forKey: Self.importsKey)
+        }
     }
 
     private func rebuildIndex() {
@@ -672,18 +771,40 @@ final class FlightScheduleStoreV129: ObservableObject {
     }
 
     private func save() {
-        StorageSafety.store(entries, key: Self.entriesKey, title: "Расписание рейсов")
-        StorageSafety.store(imports, key: Self.importsKey, title: "Импорты расписания")
+        StorageSafety.storeFile(
+            StoredSchedule(entries: entries, imports: imports),
+            name: Self.fileName,
+            title: "Расписание рейсов"
+        )
+        UserDefaults.standard.set(UUID().uuidString, forKey: Self.generationKey)
     }
 }
 
 
+private let scheduleDayKeyFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter
+}()
+
+private let scheduleShortDayFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "ru_RU")
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    formatter.dateFormat = "dd.MM.yyyy"
+    return formatter
+}()
+
+
 private extension Calendar {
-    static var gregorianUTC: Calendar {
+    static let gregorianUTC: Calendar = {
         var value = Calendar(identifier: .gregorian)
         value.timeZone = TimeZone(secondsFromGMT: 0)!
         return value
-    }
+    }()
 }
 
 

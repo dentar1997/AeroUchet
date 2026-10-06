@@ -89,6 +89,46 @@ enum StorageSafety {
         if Thread.isMainThread { post() } else { DispatchQueue.main.async(execute: post) }
     }
 
+    /// Папка данных приложения (Application Support/АэроУчёт).
+    static func dataFileURL(_ name: String) -> URL? {
+        let manager = FileManager.default
+        guard let base = manager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        let folder = base.appendingPathComponent("АэроУчёт", isDirectory: true)
+        try? manager.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder.appendingPathComponent(name)
+    }
+
+    /// Сохраняет значение файлом. Ошибка записи на диск видна (в отличие от UserDefaults).
+    @discardableResult
+    static func storeFile<T: Encodable>(_ value: T, name: String, title: String) -> Bool {
+        guard let url = dataFileURL(name) else {
+            reportSaveFailure(title: title, error: CocoaError(.fileNoSuchFile))
+            return false
+        }
+        do {
+            let data = try JSONEncoder().encode(value)
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            reportSaveFailure(title: title, error: error)
+            return false
+        }
+    }
+
+    /// Читает файл; если он есть, но не читается — резерв и nil.
+    static func decodeFile<T: Decodable>(_ type: T.Type, name: String, title: String) -> T? {
+        guard let url = dataFileURL(name),
+              let data = try? Data(contentsOf: url) else { return nil }
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            preserveUnreadable(data, key: "file." + name, title: title, error: error)
+            return nil
+        }
+    }
+
     private static func writeFileCopy(_ data: Data, name: String) {
         let manager = FileManager.default
         guard let documents = manager.urls(for: .documentDirectory, in: .userDomainMask).first else {

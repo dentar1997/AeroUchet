@@ -85,25 +85,18 @@ private enum PerspectivePlanImportEnricher {
         let row: Int
     }
 
-    private struct GeometryRow {
-        var top: CGFloat
-        var bottom: CGFloat
-        var tableLeft: CGFloat
-        var dateRight: CGFloat
-        var contentLeft: CGFloat
-        var tableRight: CGFloat
-    }
-
+    /// Уточняет маршруты и примечания по тексту строк, который уже прочитал
+    /// основной разбор PDF. Раньше PDF здесь рисовался второй раз (аудит 05.10, п. 9).
     static func enrich(
         snapshot: AssignmentPlanSnapshot,
-        url: URL
+        rowContent rawRows: [String: String]
     ) -> AssignmentPlanSnapshot {
-        guard url.pathExtension.lowercased() == "pdf",
-              let document = PDFDocument(url: url) else {
-            return snapshot
+        var rowContent: [RowKey: String] = [:]
+        for (key, value) in rawRows {
+            let parts = key.split(separator: "|")
+            guard parts.count == 2, let page = Int(parts[0]), let row = Int(parts[1]) else { continue }
+            rowContent[RowKey(page: page, row: row)] = value
         }
-
-        let rowContent = rawContentByRow(document: document)
         guard !rowContent.isEmpty else { return snapshot }
 
         var result = snapshot
@@ -223,166 +216,6 @@ private enum PerspectivePlanImportEnricher {
             return nil
         }
         return RowKey(page: page, row: row)
-    }
-
-    private static func rawContentByRow(
-        document: PDFDocument
-    ) -> [RowKey: String] {
-        var result: [RowKey: String] = [:]
-
-        for pageIndex in 0..<document.pageCount {
-            guard let page = document.page(at: pageIndex) else { continue }
-            let rows = geometryRows(page: page)
-            for (rowIndex, row) in rows.enumerated() {
-                let content = text(
-                    page: page,
-                    topRect: CGRect(
-                        x: row.contentLeft,
-                        y: row.top,
-                        width: row.tableRight - row.contentLeft,
-                        height: row.bottom - row.top
-                    )
-                )
-                if !content.isEmpty {
-                    result[RowKey(page: pageIndex, row: rowIndex)] = content
-                }
-            }
-        }
-        return result
-    }
-
-    private static func geometryRows(page: PDFPage) -> [GeometryRow] {
-        let pageBounds = page.bounds(for: .mediaBox)
-        guard pageBounds.width > 0, pageBounds.height > 0 else { return [] }
-
-        let separatorTops = renderedSeparatorTops(page: page, bounds: pageBounds)
-        guard separatorTops.count >= 2 else { return [] }
-
-        let left = pageBounds.width * (75.0 / 595.275)
-        let dateRight = pageBounds.width * (136.5 / 595.275)
-        let contentLeft = pageBounds.width * (180.0 / 595.275)
-        let right = pageBounds.width * (520.275 / 595.275)
-
-        var rows: [GeometryRow] = []
-        for index in 0..<(separatorTops.count - 1) {
-            let top = separatorTops[index]
-            let bottom = separatorTops[index + 1]
-            guard bottom - top > 8 else { continue }
-            rows.append(
-                GeometryRow(
-                    top: top + 0.8,
-                    bottom: bottom - 0.8,
-                    tableLeft: left,
-                    dateRight: dateRight,
-                    contentLeft: contentLeft,
-                    tableRight: right
-                )
-            )
-        }
-        return rows
-    }
-
-    private static func renderedSeparatorTops(
-        page: PDFPage,
-        bounds: CGRect
-    ) -> [CGFloat] {
-        let scale: CGFloat = 2
-        let width = max(1, Int((bounds.width * scale).rounded()))
-        let height = max(1, Int((bounds.height * scale).rounded()))
-        let bytesPerPixel = 4
-        let bytesPerRow = width * bytesPerPixel
-        var pixels = [UInt8](repeating: 255, count: height * bytesPerRow)
-
-        guard let context = CGContext(
-            data: &pixels,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: bytesPerRow,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            return []
-        }
-
-        context.setFillColor(UIColor.white.cgColor)
-        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        context.saveGState()
-        context.translateBy(x: 0, y: CGFloat(height))
-        context.scaleBy(x: scale, y: -scale)
-        page.draw(with: .mediaBox, to: context)
-        context.restoreGState()
-
-        let scanLeft = max(0, Int(bounds.width * (70.0 / 595.275) * scale))
-        let scanRight = min(width - 1, Int(bounds.width * (525.0 / 595.275) * scale))
-        let scanWidth = max(1, scanRight - scanLeft)
-        var matchingRows: [Int] = []
-
-        for y in 0..<height {
-            var grayCount = 0
-            var longestRun = 0
-            var currentRun = 0
-            let rowStart = y * bytesPerRow
-
-            for x in scanLeft...scanRight {
-                let offset = rowStart + x * bytesPerPixel
-                let r = Int(pixels[offset])
-                let g = Int(pixels[offset + 1])
-                let b = Int(pixels[offset + 2])
-                let maxChannel = max(r, max(g, b))
-                let minChannel = min(r, min(g, b))
-                let isSeparatorGray = r >= 215 && r <= 247
-                    && g >= 215 && g <= 247
-                    && b >= 215 && b <= 247
-                    && maxChannel - minChannel <= 10
-
-                if isSeparatorGray {
-                    grayCount += 1
-                    currentRun += 1
-                    longestRun = max(longestRun, currentRun)
-                } else {
-                    currentRun = 0
-                }
-            }
-
-            if grayCount > Int(Double(scanWidth) * 0.55)
-                && longestRun > Int(Double(scanWidth) * 0.50) {
-                matchingRows.append(y)
-            }
-        }
-
-        guard !matchingRows.isEmpty else { return [] }
-        var clusters: [[Int]] = []
-        for value in matchingRows {
-            if let last = clusters.indices.last,
-               let previous = clusters[last].last,
-               value - previous <= 2 {
-                clusters[last].append(value)
-            } else {
-                clusters.append([value])
-            }
-        }
-
-        return clusters.compactMap { cluster -> CGFloat? in
-            guard let first = cluster.first, let last = cluster.last else { return nil }
-            let renderedY = CGFloat(first + last) / 2 / scale
-            return bounds.height - renderedY
-        }
-        .filter { $0 > 55 && $0 < bounds.height - 30 }
-        .sorted()
-    }
-
-    private static func text(page: PDFPage, topRect: CGRect) -> String {
-        let bounds = page.bounds(for: .mediaBox)
-        let pdfRect = CGRect(
-            x: topRect.minX,
-            y: bounds.height - topRect.maxY,
-            width: topRect.width,
-            height: topRect.height
-        )
-        return page.selection(for: pdfRect)?.string?
-            .replacingOccurrences(of: "\r", with: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     private static func routeNodes(
@@ -593,10 +426,10 @@ final class AssignmentImportDraft: ObservableObject, Identifiable {
         var monthKeys: Set<Int> = []
 
         for url in urls {
-            let parsed = try PerspectivePlanV119Parser.parseFile(url: url)
+            let parsed = try PerspectivePlanV119Parser.parseFileWithRowContent(url: url)
             let snapshot = PerspectivePlanImportEnricher.enrich(
-                snapshot: parsed,
-                url: url
+                snapshot: parsed.snapshot,
+                rowContent: parsed.rowContent
             )
             items.append(contentsOf: snapshot.items)
             if generatedAt == nil {
@@ -627,15 +460,21 @@ final class AssignmentImportDraft: ObservableObject, Identifiable {
             throw AssignmentImportV119Error.emptyResolvedPlan
         }
 
+        // Прежний формат строк сохраняем (по нему работают карточки и правки),
+        // но без временного файла и, главное, с месяцем плана каждой строки:
+        // раньше месяц терялся, и сохранение стирало назначения соседнего месяца (п. 8).
         let data = AssignmentImportICSBridge.makeICS(items: items)
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("AeroUchet-v119-resolved-\(UUID().uuidString).ics")
-        try data.write(to: url, options: .atomic)
-        defer { try? FileManager.default.removeItem(at: url) }
-
-        let count = try planStore.importPlanFile(
-            url: url,
-            actualFlights: actualFlights
+        let normalized = try AssignmentPlanImporter.parseICS(data: data)
+        var originMonthKeys: [String: Int] = [:]
+        for item in items {
+            if let key = item.originMonthKey ?? (scopeMonthKeys.count == 1 ? scopeMonthKeys[0] : nil) {
+                originMonthKeys["ics|\(item.id)@aerouchet-v119"] = key
+            }
+        }
+        let count = planStore.replaceImportedPlan(
+            normalized.items,
+            originMonthKeys: originMonthKeys,
+            scopeMonthKeys: scopeMonthKeys
         )
         AssignmentImportArchiveStore.shared.save(archive())
         return count

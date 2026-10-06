@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import UniformTypeIdentifiers
 
 
@@ -153,7 +154,7 @@ private struct CurrentPlanAssignmentsView: View {
                                 item: item,
                                 status: planStore.historySupersedes(
                                     item,
-                                    actualFlights: store.flights
+                                    historyKeys: store.historyFlightKeys
                                 ) ? "Есть в истории полётов · факт имеет приоритет" : nil,
                                 statusColor: .green,
                                 conflictText: nil
@@ -281,6 +282,8 @@ private struct ImportedPlanAssignmentsView: View {
     @State private var pendingDraft: AssignmentImportDraft?
     @State private var selectedPerspectiveDuty: FlightDuty?
     @State private var selectedPerspectiveItem: AssignmentPlanItem?
+    @State private var isParsingPlan = false
+    @State private var scheduleGeneration = FlightScheduleStoreV129.generation
 
     private var items: [AssignmentPlanItem] {
         planStore.sourceItems(
@@ -288,6 +291,28 @@ private struct ImportedPlanAssignmentsView: View {
             actualFlights: store.flights,
             hideSuperseded: false
         )
+    }
+
+    /// Назначения раскладываются по месяцам один раз за отрисовку: раньше каждый
+    /// месяц получал весь план и сам его фильтровал и сортировал (аудит 05.10, п. 23).
+    private func itemsByMonth(_ keys: [Int]) -> [Int: [AssignmentPlanItem]] {
+        func key(_ date: Date) -> Int {
+            let parts = moscowCalendar.dateComponents([.year, .month], from: date)
+            return (parts.year ?? 0) * 100 + (parts.month ?? 0)
+        }
+        var result: [Int: [AssignmentPlanItem]] = [:]
+        for item in items {
+            let start = AssignmentV119MetadataCodec.metadata(from: item.detail)?.sourceStart ?? item.start
+            let own = key(start)
+            result[own, default: []].append(item)
+            guard item.isAllDay else { continue }
+            let includedEnd = moscowCalendar.date(byAdding: .day, value: -1, to: item.end) ?? item.end
+            let last = key(includedEnd)
+            for monthKey in keys where monthKey > own && monthKey <= last {
+                result[monthKey, default: []].append(item)
+            }
+        }
+        return result
     }
 
     private var perspectiveMonthKeys: [Int] {
@@ -361,9 +386,11 @@ private struct ImportedPlanAssignmentsView: View {
                         Text("План из файла пока не импортирован.")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(perspectiveMonthKeys, id: \.self) { monthKey in
+                        let monthKeys = perspectiveMonthKeys
+                        let byMonth = itemsByMonth(monthKeys)
+                        ForEach(monthKeys, id: \.self) { monthKey in
                             PerspectivePlanMonthCardsView(
-                                items: items,
+                                items: byMonth[monthKey] ?? [],
                                 onlyMonthKey: monthKey,
                                 status: status(for:),
                                 statusColor: statusColor(for:),
@@ -372,6 +399,7 @@ private struct ImportedPlanAssignmentsView: View {
                             .listRowInsets(EdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10))
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
+                            .id("\(monthKey)|\(scheduleGeneration)")
                         }
                     }
                 }
@@ -418,6 +446,24 @@ private struct ImportedPlanAssignmentsView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(message)
+            }
+            .overlay {
+                if isParsingPlan {
+                    ProgressView("Читаю план…")
+                        .padding(20)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                }
+            }
+            .disabled(isParsingPlan)
+            // Строки берут данные расписания из сохранённых результатов и сами за
+            // расписанием не следят: после загрузки нового — перерисовать список.
+            .onReceive(
+                NotificationCenter.default
+                    .publisher(for: UserDefaults.didChangeNotification)
+                    .receive(on: RunLoop.main)
+            ) { _ in
+                let current = FlightScheduleStoreV129.generation
+                if current != scheduleGeneration { scheduleGeneration = current }
             }
             .alert("Удалить импортированный план?", isPresented: $showDeleteConfirmation) {
                 Button("Отмена", role: .cancel) { }
@@ -470,7 +516,7 @@ private struct ImportedPlanAssignmentsView: View {
     }
 
     private func status(for item: AssignmentPlanItem) -> String? {
-        if planStore.historySupersedes(item, actualFlights: store.flights) {
+        if planStore.historySupersedes(item, historyKeys: store.historyFlightKeys) {
             return "Есть в истории полётов · используется факт"
         }
         if planStore.calendarOverlap(for: item) {
@@ -480,7 +526,7 @@ private struct ImportedPlanAssignmentsView: View {
     }
 
     private func statusColor(for item: AssignmentPlanItem) -> Color {
-        if planStore.historySupersedes(item, actualFlights: store.flights) {
+        if planStore.historySupersedes(item, historyKeys: store.historyFlightKeys) {
             return .green
         }
         if planStore.calendarOverlap(for: item) {
@@ -490,35 +536,60 @@ private struct ImportedPlanAssignmentsView: View {
     }
 
     private func importFiles(_ result: Result<[URL], Error>) {
+        let urls: [URL]
         do {
-            let urls = try result.get()
-            guard !urls.isEmpty else { return }
-
-            var accesses: [(URL, Bool)] = []
-            for url in urls {
-                accesses.append((url, url.startAccessingSecurityScopedResource()))
-            }
-            defer {
-                for (url, didAccess) in accesses where didAccess {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
-
-            let draft = try AssignmentImportDraft.parse(urls: urls)
-            if draft.unresolvedConflictCount > 0 {
-                pendingDraft = draft
-            } else {
-                let count = try draft.commit(
-                    to: planStore,
-                    actualFlights: store.flights
-                )
-                message = "Импорт завершён. Сохранено назначений: \(count). Конфликтов не обнаружено."
-                showMessage = true
-            }
+            urls = try result.get()
         } catch {
             message = error.localizedDescription
             showMessage = true
+            return
         }
+        guard !urls.isEmpty else { return }
+
+        // Разбор PDF — в фоне: раньше каждая страница рисовалась в главном потоке,
+        // и экран замирал (аудит 05.10, п. 12, N07).
+        isParsingPlan = true
+        Task {
+            let parsed: Result<AssignmentImportDraft, Error> = await Task.detached(priority: .userInitiated) {
+                let accesses = urls.map { ($0, $0.startAccessingSecurityScopedResource()) }
+                defer {
+                    for (url, didAccess) in accesses where didAccess {
+                        url.stopAccessingSecurityScopedResource()
+                    }
+                }
+                do {
+                    return .success(try AssignmentImportDraft.parse(urls: urls))
+                } catch {
+                    return .failure(error)
+                }
+            }.value
+            isParsingPlan = false
+
+            switch parsed {
+            case .success(let draft):
+                if draft.unresolvedConflictCount > 0 {
+                    pendingDraft = draft
+                } else {
+                    saveParsedDraft(draft)
+                }
+            case .failure(let error):
+                message = error.localizedDescription
+                showMessage = true
+            }
+        }
+    }
+
+    private func saveParsedDraft(_ draft: AssignmentImportDraft) {
+        do {
+            let count = try draft.commit(
+                to: planStore,
+                actualFlights: store.flights
+            )
+            message = "Импорт завершён. Сохранено назначений: \(count). Конфликтов не обнаружено."
+        } catch {
+            message = error.localizedDescription
+        }
+        showMessage = true
     }
 
     private func saveDraft(_ draft: AssignmentImportDraft) {
