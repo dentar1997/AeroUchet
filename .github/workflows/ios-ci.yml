@@ -44,7 +44,8 @@ jobs:
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
-            OTHER_SWIFT_FLAGS='$(inherited) -default-isolation MainActor' \
+            SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor \
+            SWIFT_APPROACHABLE_CONCURRENCY=YES \
             -showBuildTimingSummary \
             build 2>&1 | tee "$RUNNER_TEMP/build.log"; then
             grep -E "error: " "$RUNNER_TEMP/build.log" | sort -u | head -40 | while IFS= read -r line; do
@@ -61,7 +62,8 @@ jobs:
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
-            OTHER_SWIFT_FLAGS='$(inherited) -default-isolation MainActor' \
+            SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor \
+            SWIFT_APPROACHABLE_CONCURRENCY=YES \
             analyze
 
       - name: Package simulator app
