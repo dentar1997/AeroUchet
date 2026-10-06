@@ -1172,7 +1172,13 @@ struct AircraftReferenceSettingsV129View: View {
 
 struct FlightScheduleDatabaseV130View: View {
     @ObservedObject private var store = FlightScheduleStoreV129.shared
+    /// Номер рейса (до 4 цифр).
     @State private var search = ""
+    @State private var departureQuery = ""
+    @State private var arrivalQuery = ""
+    /// Часы вылета по Москве: с `fromHour` до `toHour` (24 — до конца дня).
+    @State private var fromHour = 0
+    @State private var toHour = 24
     @State private var selectedDate = moscowCalendar.startOfDay(for: Date())
     @AppStorage(ScheduleAircraftFilterButton.storageKey) private var groupsRaw = ""
     /// Выбранный рейс: номер + маршрут. Держится при смене дня, пока его не снимут.
@@ -1213,32 +1219,52 @@ struct FlightScheduleDatabaseV130View: View {
         return store.entries.filter {
             FlightScheduleStoreV129.normalizedFlightNumber($0.flightNumber) == number
                 && passesFilter($0)
+                && Self.airport($0.departure, matches: departureQuery)
+                && Self.airport($0.arrival, matches: arrivalQuery)
         }
     }
 
+    /// Пустое поле — любой аэропорт; иначе начало кода или название/город.
+    private static func airport(_ code: String, matches rawQuery: String) -> Bool {
+        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        if code.uppercased().hasPrefix(query.uppercased()) { return true }
+        return AirportDatabase.airport(for: code)?.matches(query) ?? false
+    }
+
+    /// Минуты вылета по Москве от начала суток.
+    private static func moscowMinutes(_ utcMinutes: Int) -> Int {
+        let offset = moscowTimeZone.secondsFromGMT() / 60
+        return ((utcMinutes + offset) % 1440 + 1440) % 1440
+    }
+
     private var values: [FlightScheduleEntryV129] {
-        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedNumber = FlightScheduleStoreV129.normalizedFlightNumber(query)
+        let number = exactSearchNumber
+        let fromMinutes = fromHour * 60
+        let toMinutes = toHour * 60
         return store.entries.filter { entry in
             guard passesFilter(entry),
                   entryRuns(entry, onMoscowDate: selectedDate) else {
                 return false
             }
-            guard !query.isEmpty else { return true }
-            return (!normalizedNumber.isEmpty
-                && FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber) == normalizedNumber)
-                || entry.departure.localizedCaseInsensitiveContains(query)
-                || entry.arrival.localizedCaseInsensitiveContains(query)
-                || (AirportDatabase.airport(for: entry.departure)?.matches(query) ?? false)
-                || (AirportDatabase.airport(for: entry.arrival)?.matches(query) ?? false)
-                || AircraftFamilyV129.display(entry.rawAircraftCode).localizedCaseInsensitiveContains(query)
+            if let number,
+               FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber) != number {
+                return false
+            }
+            guard Self.airport(entry.departure, matches: departureQuery),
+                  Self.airport(entry.arrival, matches: arrivalQuery) else { return false }
+            let departure = Self.moscowMinutes(entry.departureMinutesUTC)
+            return departure >= fromMinutes && departure < toMinutes
         }
+        // Порядок — по московскому времени вылета, с 00:00 МСК (раньше — по UTC).
         .sorted { left, right in
-            if left.departureMinutesUTC == right.departureMinutesUTC {
+            let l = Self.moscowMinutes(left.departureMinutesUTC)
+            let r = Self.moscowMinutes(right.departureMinutesUTC)
+            if l == r {
                 return FlightScheduleStoreV129.normalizedFlightNumber(left.flightNumber)
                     .localizedStandardCompare(FlightScheduleStoreV129.normalizedFlightNumber(right.flightNumber)) == .orderedAscending
             }
-            return left.departureMinutesUTC < right.departureMinutesUTC
+            return l < r
         }
     }
 
@@ -1390,6 +1416,8 @@ struct FlightScheduleDatabaseV130View: View {
         .navigationTitle("База расписания")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: search) { _, _ in calendarRouteID = nil }
+        .onChange(of: fromHour) { _, value in if toHour <= value { toHour = value + 1 } }
+        .onChange(of: toHour) { _, value in if fromHour >= value { fromHour = value - 1 } }
     }
 
     private func tablePane(
@@ -1421,11 +1449,34 @@ struct FlightScheduleDatabaseV130View: View {
                     }
                 }
 
+                TextField("Рейс", text: $search)
+                    .keyboardType(.numberPad)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 76)
+                    .onChange(of: search) { _, value in
+                        let digits = String(value.filter(\.isNumber).prefix(4))
+                        if digits != value { search = digits }
+                    }
+
+                TextField("Вылет", text: $departureQuery)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 150)
+                Image(systemName: "arrow.right")
+                    .foregroundStyle(.secondary)
+                TextField("Прилёт", text: $arrivalQuery)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 150)
+
+                AeroHourPickerButton(title: "с", hour: $fromHour, range: 0...23)
+                AeroHourPickerButton(title: "до", hour: $toHour, range: 1...24)
+
                 ScheduleAircraftFilterButton(selection: groupsBinding)
 
-                TextField("Рейс или аэропорт", text: $search)
-                    .textInputAutocapitalization(.characters)
-                    .textFieldStyle(.roundedBorder)
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)

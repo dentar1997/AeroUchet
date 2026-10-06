@@ -218,6 +218,36 @@ struct AeroMinutesPickerButton: View {
     }
 }
 
+/// Выбор часа нашей крутилкой (как в задании на полёт): «с 00», «до 24».
+struct AeroHourPickerButton: View {
+    let title: String
+    @Binding var hour: Int
+    let range: ClosedRange<Int>
+
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            isPresented = true
+        } label: {
+            Text("\(title) \(String(format: "%02d", hour))")
+                .monospacedDigit()
+        }
+        .buttonStyle(.bordered)
+        .popover(isPresented: $isPresented) {
+            AeroNumberColumn(
+                values: Array(range),
+                selection: hour
+            ) { value in
+                hour = value
+                isPresented = false
+            }
+            .frame(width: 120, height: 240)
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+}
+
 private struct AeroNumberColumn: View {
     let values: [Int]
     let selection: Int
