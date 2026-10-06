@@ -327,6 +327,8 @@ private struct ScheduleMonthYearWheel: View {
 private struct DrumColumn: View {
     static let rowHeight: CGFloat = 36
     static let height: CGFloat = 216
+    /// Радиус цилиндра: на половину высоты окна приходится чуть меньше четверти оборота.
+    static let radius: CGFloat = 92
     /// Сколько раз повторяются строки круговой колонки (месяцы «бесконечные»).
     private static let laps = 200
 
@@ -355,9 +357,10 @@ private struct DrumColumn: View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(0..<total, id: \.self) { row in
-                    // Значение снаружи замыкания visualEffect: в Playgrounds код по умолчанию
+                    // Значения снаружи замыкания visualEffect: в Playgrounds код по умолчанию
                     // на главном акторе, а visualEffect выполняется вне его.
-                    let half = Self.height / 2
+                    let center = Self.height / 2
+                    let radius = Self.radius
                     Text(label(value(atRow: row)))
                         .font(.title3)
                         .monospacedDigit()
@@ -370,17 +373,22 @@ private struct DrumColumn: View {
                             withAnimation(.easeOut(duration: 0.25)) { centered = row }
                         }
                         .visualEffect { content, proxy in
-                            // Поворот, уменьшение и тускнение строк к краям — как цилиндр.
-                            let frame = proxy.frame(in: .scrollView(axis: .vertical))
-                            let offset = max(-1, min(1, (frame.midY - half) / half))
+                            // Строка лежит на цилиндре: угол — по расстоянию от центра окна,
+                            // высота — проекция дуги (строки к краям сжимаются и сближаются),
+                            // поворот вокруг горизонтальной оси, к краям тускнеет.
+                            let frame = proxy.frame(in: .named("drumViewport"))
+                            let distance = frame.midY - center
+                            let angle = max(-Double.pi / 2, min(Double.pi / 2, Double(distance / radius)))
+                            let projected = radius * CGFloat(sin(angle))
                             return content
                                 .rotation3DEffect(
-                                    .degrees(Double(-offset) * 62),
+                                    .radians(-angle),
                                     axis: (x: 1, y: 0, z: 0),
-                                    perspective: 0.5
+                                    anchor: .center,
+                                    perspective: 0.35
                                 )
-                                .scaleEffect(1 - abs(offset) * 0.12)
-                                .opacity(1 - abs(offset) * 0.75)
+                                .offset(y: projected - distance)
+                                .opacity(max(0, cos(angle)) * 0.85 + (abs(angle) < 0.15 ? 0.15 : 0))
                         }
                 }
             }
@@ -389,6 +397,7 @@ private struct DrumColumn: View {
         .scrollIndicators(.hidden)
         .scrollTargetBehavior(.viewAligned)
         .scrollPosition(id: $centered, anchor: .center)
+        .coordinateSpace(.named("drumViewport"))
         .contentMargins(.vertical, (Self.height - Self.rowHeight) / 2, for: .scrollContent)
         .frame(height: Self.height)
         .mask(
