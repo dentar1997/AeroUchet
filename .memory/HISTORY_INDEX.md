@@ -181,3 +181,4 @@
 | `f185e72` | 142 | 06.10 13:33 | Merge remote-tracking branch 'origin/b680c10a43dfc8e8b920e66a0118e625283e43ca' into b680c10a43dfc8e8b920e66a0118e625283e43ca | NEEDS_VERIFICATION |  |
 | #151 | 143 | 06.10 13:50 | Убран индикатор клавиатуры и запасной ввод GameController | NEEDS_VERIFICATION |  |
 | #152 | 144 | 06.10 23:54 | v144: данные в файлах, ссылка календаря в Связке ключей | NEEDS_VERIFICATION |  |
+| #153 | 145 | 07.10 01:02 | v145: база расписания — календарь справа, Время МСК, фильтр типов ВС | NEEDS_VERIFICATION |  |
