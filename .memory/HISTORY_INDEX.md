@@ -180,3 +180,4 @@
 | #150 | 141 | 06.10 13:17 | Клавиатура: запасной ввод через GameController | ISSUE | 06.10: GC 17 до «Файлов», GC 0 после — клавиши не получает всё приложение; не помогло |
 | `f185e72` | 142 | 06.10 13:33 | Merge remote-tracking branch 'origin/b680c10a43dfc8e8b920e66a0118e625283e43ca' into b680c10a43dfc8e8b920e66a0118e625283e43ca | NEEDS_VERIFICATION |  |
 | #151 | 143 | 06.10 13:50 | Убран индикатор клавиатуры и запасной ввод GameController | NEEDS_VERIFICATION |  |
+| #152 | 144 | 06.10 23:54 | v144: данные в файлах, ссылка календаря в Связке ключей | NEEDS_VERIFICATION |  |
