@@ -3511,7 +3511,10 @@ final class HardwareKeyboardBridge {
             object: nil,
             queue: .main
         ) { [weak self] note in
-            self?.attach(note.object as? GCKeyboard)
+            let keyboard = note.object as? GCKeyboard
+            DispatchQueue.main.async {
+                self?.attach(keyboard)
+            }
         }
     }
 
