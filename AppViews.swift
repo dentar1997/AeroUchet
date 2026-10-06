@@ -1,7 +1,6 @@
 import SwiftUI
 import Combine
 import Foundation
-import GameController
 import UIKit
 import UniformTypeIdentifiers
 
@@ -1393,15 +1392,6 @@ struct DutyDetailView: View {
         .frame(maxWidth: .infinity)
         .buttonStyle(.bordered)
         .controlSize(.mini)
-        .overlay(alignment: .bottom) {
-            if isEditing {
-                KeyInputIndicator(activeCell: focusedField?.title)
-                    .offset(y: 12)
-            }
-        }
-        .onChange(of: isEditing) { _, editing in
-            if editing { KeyInputDiagnostics.shared.reset() }
-        }
     }
 
     private func recordEdit() {
@@ -3382,217 +3372,10 @@ private func formattedRegistration(_ rawValue: String) -> String {
 // UITextField уже реализует UIKeyInput. Перехватываем именно текстовый канал
 // insertText/deleteBackward: его использует система и для программной, и для
 // физической клавиатуры, когда поле является first responder.
-final class KeyInputDiagnostics: ObservableObject {
-    static let shared = KeyInputDiagnostics()
-
-    // Диагностика клавиатуры после окна «Файлы» (аудит 05.10, п. 25д, N09).
-    // Различает гипотезы: H1 — ключевым осталось чужое окно; H2 — нажатия
-    // приходят, но не становятся текстом; H3 — поверх висит системное окно.
-    @Published private(set) var count = 0
-    @Published private(set) var textCount = 0
-    @Published private(set) var keyWindow = "—"
-    @Published private(set) var presented = "нет"
-    @Published private(set) var responder = "—"
-    @Published private(set) var gameControllerCount = 0
-
-    func registerGameControllerKey() {
-        DispatchQueue.main.async { self.gameControllerCount += 1 }
-    }
-    @Published private(set) var lastFocus = "—"
-
-    func registerFocusAttempt(became: Bool) {
-        DispatchQueue.main.async { self.lastFocus = became ? "да" : "нет" }
-    }
-
-    func registerKey() {
-        DispatchQueue.main.async { self.count += 1 }
-    }
-
-    func registerText() {
-        DispatchQueue.main.async { self.textCount += 1 }
-    }
-
-    func reset() {
-        DispatchQueue.main.async {
-            self.count = 0
-            self.textCount = 0
-            self.gameControllerCount = 0
-        }
-    }
-
-    @MainActor
-    func refreshWindows() {
-        let windows = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-        switch UIResponder.aeroCurrentFirstResponder {
-        case .none:
-            responder = "нет"
-        case .some(let value) where value is AssignmentInputTextField:
-            responder = "поле"
-        case .some(let value):
-            responder = String(describing: type(of: value))
-        }
-        if let key = windows.first(where: \.isKeyWindow) {
-            let name = String(describing: type(of: key))
-            keyWindow = name == "UIWindow" ? "приложение" : name
-            var top = key.rootViewController
-            while let next = top?.presentedViewController { top = next }
-            if let top, top !== key.rootViewController {
-                presented = String(describing: type(of: top))
-            } else {
-                presented = "нет"
-            }
-        } else {
-            keyWindow = "нет ключевого"
-            presented = "нет"
-        }
-    }
-}
-
-private struct KeyInputIndicator: View {
-    let activeCell: String?
-    @ObservedObject private var diagnostics = KeyInputDiagnostics.shared
-    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        Text("Ячейка: \(activeCell ?? "нет") · ⌨︎ нажатий \(diagnostics.count) · GC \(diagnostics.gameControllerCount) · фокус: \(diagnostics.responder) · взят: \(diagnostics.lastFocus) · окно: \(diagnostics.keyWindow) · поверх: \(diagnostics.presented)")
-            .font(.system(size: 10, weight: .medium))
-            .lineLimit(2)
-            .minimumScaleFactor(0.7)
-            .foregroundStyle(
-                activeCell == nil ? Color.red
-                    : (diagnostics.count == 0 ? Color.orange : Color.green)
-            )
-            .onReceive(ticker) { _ in diagnostics.refreshWindows() }
-            .accessibilityLabel("Диагностика ввода с клавиатуры")
-    }
-}
-
-extension UIResponder {
-    private static weak var aeroCapturedResponder: UIResponder?
-
-    /// Настоящий first responder (а не то, что думает SwiftUI) — для диагностики клавиатуры.
-    static var aeroCurrentFirstResponder: UIResponder? {
-        aeroCapturedResponder = nil
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.aeroCaptureFirstResponder),
-            to: nil,
-            from: nil,
-            for: nil
-        )
-        return aeroCapturedResponder
-    }
-
-    @objc private func aeroCaptureFirstResponder() {
-        UIResponder.aeroCapturedResponder = self
-    }
-}
-
-
-/// Запасной путь физической клавиатуры (запись 06.10, v140): после окна «Файлы»
-/// поле остаётся first responder, а нажатия через UIKit до приложения не доходят.
-/// GameController получает клавиши независимо от текстового фокуса. Если обычное
-/// нажатие не пришло, цифра/буква/Backspace вводятся в активную ячейку отсюда.
-/// Если обычное нажатие пришло — ничего не делаем (двойного ввода нет).
-final class HardwareKeyboardBridge {
-    static let shared = HardwareKeyboardBridge()
-
-    weak var activeField: UITextField?
-    var lastUIKitPress = Date.distantPast
-    private var started = false
-
-    func start() {
-        guard !started else { return }
-        started = true
-        attach(GCKeyboard.coalesced)
-        NotificationCenter.default.addObserver(
-            forName: .GCKeyboardDidConnect,
-            object: nil,
-            queue: .main
-        ) { [weak self] note in
-            let keyboard = note.object as? GCKeyboard
-            DispatchQueue.main.async {
-                self?.attach(keyboard)
-            }
-        }
-    }
-
-    private func attach(_ keyboard: GCKeyboard?) {
-        keyboard?.handlerQueue = .main
-        keyboard?.keyboardInput?.keyChangedHandler = { [weak self] _, _, keyCode, pressed in
-            guard pressed else { return }
-            DispatchQueue.main.async {
-                self?.handle(keyCode)
-            }
-        }
-    }
-
-    private func handle(_ keyCode: GCKeyCode) {
-        KeyInputDiagnostics.shared.registerGameControllerKey()
-        let pressedAt = Date()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak self] in
-            guard let self,
-                  self.lastUIKitPress < pressedAt.addingTimeInterval(-0.25),
-                  let field = self.activeField,
-                  field.isFirstResponder else { return }
-            if keyCode == .deleteOrBackspace {
-                field.deleteBackward()
-            } else if let character = Self.character(for: keyCode) {
-                field.insertText(character)
-            }
-        }
-    }
-
-    private static let digits: [GCKeyCode: String] = [
-        .zero: "0", .one: "1", .two: "2", .three: "3", .four: "4",
-        .five: "5", .six: "6", .seven: "7", .eight: "8", .nine: "9",
-        .keypad0: "0", .keypad1: "1", .keypad2: "2", .keypad3: "3", .keypad4: "4",
-        .keypad5: "5", .keypad6: "6", .keypad7: "7", .keypad8: "8", .keypad9: "9"
-    ]
-
-    private static let letters: [GCKeyCode: String] = [
-        .keyA: "A", .keyB: "B", .keyC: "C", .keyD: "D", .keyE: "E", .keyF: "F",
-        .keyG: "G", .keyH: "H", .keyI: "I", .keyJ: "J", .keyK: "K", .keyL: "L",
-        .keyM: "M", .keyN: "N", .keyO: "O", .keyP: "P", .keyQ: "Q", .keyR: "R",
-        .keyS: "S", .keyT: "T", .keyU: "U", .keyV: "V", .keyW: "W", .keyX: "X",
-        .keyY: "Y", .keyZ: "Z", .hyphen: "-"
-    ]
-
-    private static func character(for keyCode: GCKeyCode) -> String? {
-        digits[keyCode] ?? letters[keyCode]
-    }
-}
-
-
 private final class AssignmentInputTextField: UITextField {
     var hardwareInputHandler: ((String?, Bool) -> Void)?
 
-    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        HardwareKeyboardBridge.shared.lastUIKitPress = Date()
-        KeyInputDiagnostics.shared.registerKey()
-        super.pressesBegan(presses, with: event)
-    }
-
-    override func becomeFirstResponder() -> Bool {
-        let became = super.becomeFirstResponder()
-        if became {
-            HardwareKeyboardBridge.shared.start()
-            HardwareKeyboardBridge.shared.activeField = self
-        }
-        return became
-    }
-
-    override func resignFirstResponder() -> Bool {
-        let resigned = super.resignFirstResponder()
-        if resigned, HardwareKeyboardBridge.shared.activeField === self {
-            HardwareKeyboardBridge.shared.activeField = nil
-        }
-        return resigned
-    }
-
     override func insertText(_ text: String) {
-        KeyInputDiagnostics.shared.registerText()
         guard let hardwareInputHandler else {
             super.insertText(text)
             return
@@ -3697,19 +3480,7 @@ private struct InlineSelectAllTextField: UIViewRepresentable {
 
         if isActive && !field.isFirstResponder {
             DispatchQueue.main.async {
-                // После окна «Файлы» поле считалось активным, но нажатия физической
-                // клавиатуры до него не доходили (запись 06.10). Окно приложения
-                // делаем ключевым заново и только потом берём фокус (не N09:
-                // это не возврат фокуса после окна, а выбор ячейки пользователем).
-                field.window?.makeKey()
-                let became = field.becomeFirstResponder()
-                if !became || !field.isFirstResponder {
-                    field.window?.makeKeyAndVisible()
-                    _ = field.becomeFirstResponder()
-                }
-                KeyInputDiagnostics.shared.registerFocusAttempt(
-                    became: field.isFirstResponder
-                )
+                field.becomeFirstResponder()
                 context.coordinator.prepareToReplaceCurrentValue(in: field)
             }
         } else if !isActive && field.isFirstResponder {
