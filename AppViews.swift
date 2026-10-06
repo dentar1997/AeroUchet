@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import Foundation
 import UIKit
 import UniformTypeIdentifiers
@@ -234,6 +235,7 @@ struct FlightsView: View {
     @State private var importMessage = ""
     @State private var pendingFlights: [FlightLeg] = []
     @State private var verificationStatus = ""
+    @ObservedObject private var cardPresence = DutyCardPresence.shared
 
     private var selectedDateBinding: Binding<Date> {
         Binding(
@@ -336,6 +338,7 @@ struct FlightsView: View {
                 } label: {
                     Image(systemName: "magnifyingglass")
                 }
+                .disabled(cardPresence.isOpen)
                 .accessibilityLabel("Поиск, фильтр и сортировка")
                 .popover(isPresented: $showSearchTools, arrowEdge: .top) {
                     VStack(alignment: .leading, spacing: 12) {
@@ -477,6 +480,7 @@ struct FlightsView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .disabled(cardPresence.isOpen)
                 .accessibilityLabel("Добавить")
             }
             .fileImporter(
@@ -712,6 +716,19 @@ struct DutiesListView: View {
 }
 
 
+/// Открыта ли сейчас карточка задания поверх списка. Пока открыта, переключатель
+/// разделов, «лупа», «+» и удаление недоступны — черновик не теряется (аудит 05.10, п. 25б).
+final class DutyCardPresence: ObservableObject {
+    static let shared = DutyCardPresence()
+    @Published private(set) var openCount = 0
+
+    var isOpen: Bool { openCount > 0 }
+
+    func opened() { openCount += 1 }
+    func closed() { openCount = max(0, openCount - 1) }
+}
+
+
 struct DutyAssignmentOverlay: View {
     let duty: FlightDuty
     @ObservedObject var store: AppStore
@@ -754,6 +771,12 @@ struct DutyAssignmentOverlay: View {
     }
 
     var body: some View {
+        overlayBody
+            .onAppear { DutyCardPresence.shared.opened() }
+            .onDisappear { DutyCardPresence.shared.closed() }
+    }
+
+    private var overlayBody: some View {
         GeometryReader { geometry in
             // Ширина задания ориентирована на естественную ширину
             // верхней строки из пяти компактных полей leg.
@@ -1165,6 +1188,9 @@ struct DutyDetailView: View {
             onEditorFocusChange?(false)
             onEditModeChange?(false)
         }
+        // Открыта из «Календаря» (экраном, а не поверх списка): пока идёт
+        // редактирование, «назад» и свайп назад недоступны — черновик не теряется (п. 25б).
+        .navigationBarBackButtonHidden(isEditing && !scrollsAsPage)
         .environment(\.timeZone, moscowTimeZone)
         .background {
             // Behind the controls: blank card/header space dismisses the
@@ -2290,6 +2316,8 @@ struct DutyDetailView: View {
                 registrationField(leg, index: index)
                 flightKindField(leg, index: index)
                 calculatedTime(leg, index: index)
+                    // Одинаковая ширина в просмотре и редактировании (U01, п. 25а).
+                    .frame(width: 130)
             }
             .frame(width: 496, alignment: .center)
             .zIndex(focusedField == .calculatedTime(index) ? 100 : 0)
@@ -2321,7 +2349,9 @@ struct DutyDetailView: View {
                 restoreValue: original.indices.contains(index)
                     ? editableLegNumber(original[index], index: index)
                     : editableLegNumber(leg, index: index),
-                clearOnFirstDelete: true
+                clearOnFirstDelete: true,
+                // Ширина ячейки не зависит от числа введённых цифр (U01, п. 25а).
+                reserveText: "0000"
             )
         }
     }
@@ -2340,9 +2370,15 @@ struct DutyDetailView: View {
 
     private func aircraftField(_ leg: FlightLeg, index: Int) -> some View {
         identityField("Тип ВС", field: .aircraft(index)) {
-            Text(AircraftFamilyV129.display(leg.aircraft))
-                .font(.caption.bold())
-                .lineLimit(1)
+            ZStack {
+                // Ширина — под самый длинный тип, чтобы строка не прыгала.
+                Text("A321N")
+                    .font(.caption.bold())
+                    .hidden()
+                Text(AircraftFamilyV129.display(leg.aircraft))
+                    .font(.caption.bold())
+                    .lineLimit(1)
+            }
         }
     }
 
@@ -2372,6 +2408,7 @@ struct DutyDetailView: View {
                         ? registrationComparisonKey(original[index].registration)
                         : staticDigits,
                     clearOnFirstDelete: true,
+                    reserveText: "RA-00000",
                     highlightHorizontalPadding: 0
                 )
             } else {
@@ -2389,6 +2426,7 @@ struct DutyDetailView: View {
                     restoreValue: original.indices.contains(index)
                         ? formattedRegistration(original[index].registration)
                         : formatted,
+                    reserveText: "RA-00000",
                     highlightHorizontalPadding: 0
                 )
             }
@@ -3342,31 +3380,66 @@ private func formattedRegistration(_ rawValue: String) -> String {
 final class KeyInputDiagnostics: ObservableObject {
     static let shared = KeyInputDiagnostics()
 
+    // Диагностика клавиатуры после окна «Файлы» (аудит 05.10, п. 25д, N09).
+    // Различает гипотезы: H1 — ключевым осталось чужое окно; H2 — нажатия
+    // приходят, но не становятся текстом; H3 — поверх висит системное окно.
     @Published private(set) var count = 0
+    @Published private(set) var textCount = 0
+    @Published private(set) var keyWindow = "—"
+    @Published private(set) var presented = "нет"
 
     func registerKey() {
         DispatchQueue.main.async { self.count += 1 }
     }
 
+    func registerText() {
+        DispatchQueue.main.async { self.textCount += 1 }
+    }
+
     func reset() {
-        DispatchQueue.main.async { self.count = 0 }
+        DispatchQueue.main.async {
+            self.count = 0
+            self.textCount = 0
+        }
+    }
+
+    @MainActor
+    func refreshWindows() {
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+        if let key = windows.first(where: \.isKeyWindow) {
+            let name = String(describing: type(of: key))
+            keyWindow = name == "UIWindow" ? "приложение" : name
+            var top = key.rootViewController
+            while let next = top?.presentedViewController { top = next }
+            if let top, top !== key.rootViewController {
+                presented = String(describing: type(of: top))
+            } else {
+                presented = "нет"
+            }
+        } else {
+            keyWindow = "нет ключевого"
+            presented = "нет"
+        }
     }
 }
 
 private struct KeyInputIndicator: View {
     let activeCell: String?
     @ObservedObject private var diagnostics = KeyInputDiagnostics.shared
+    private let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        Text("Активная ячейка: \(activeCell ?? "нет") · ⌨︎ "
-             + (diagnostics.count == 0
-                ? "клавиш нет"
-                : "клавиш получено: \(diagnostics.count)"))
+        Text("Ячейка: \(activeCell ?? "нет") · ⌨︎ нажатий \(diagnostics.count) · текст \(diagnostics.textCount) · окно: \(diagnostics.keyWindow) · поверх: \(diagnostics.presented)")
             .font(.system(size: 10, weight: .medium))
+            .lineLimit(2)
+            .minimumScaleFactor(0.7)
             .foregroundStyle(
                 activeCell == nil ? Color.red
                     : (diagnostics.count == 0 ? Color.orange : Color.green)
             )
+            .onReceive(ticker) { _ in diagnostics.refreshWindows() }
             .accessibilityLabel("Диагностика ввода с клавиатуры")
     }
 }
@@ -3380,6 +3453,7 @@ private final class AssignmentInputTextField: UITextField {
     }
 
     override func insertText(_ text: String) {
+        KeyInputDiagnostics.shared.registerText()
         guard let hardwareInputHandler else {
             super.insertText(text)
             return

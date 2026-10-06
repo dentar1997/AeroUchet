@@ -18,6 +18,7 @@ struct AssignmentsView: View {
     @ObservedObject var planStore: AssignmentPlanStore
 
     @State private var section: AssignmentsSection = .flights
+    @ObservedObject private var cardPresence = DutyCardPresence.shared
 
     var body: some View {
         // Одна общая навигационная панель на всю вкладку: в iPadOS 26
@@ -33,6 +34,7 @@ struct AssignmentsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .disabled(cardPresence.isOpen)
                 .padding(.horizontal, 12)
                 .padding(.top, 10)
                 .padding(.bottom, 8)
@@ -59,6 +61,7 @@ struct AssignmentsView: View {
 private struct FlightHistoryAssignmentsView: View {
     @ObservedObject var store: AppStore
     @State private var showDeleteConfirmation = false
+    @ObservedObject private var cardPresence = DutyCardPresence.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -77,7 +80,7 @@ private struct FlightHistoryAssignmentsView: View {
                     Label("Удалить историю", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
-                .disabled(store.flightHistoryCount == 0)
+                .disabled(store.flightHistoryCount == 0 || cardPresence.isOpen)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -283,6 +286,7 @@ private struct ImportedPlanAssignmentsView: View {
     @State private var selectedPerspectiveDuty: FlightDuty?
     @State private var selectedPerspectiveItem: AssignmentPlanItem?
     @State private var isParsingPlan = false
+    @ObservedObject private var cardPresence = DutyCardPresence.shared
     @State private var scheduleGeneration = FlightScheduleStoreV129.generation
 
     private var items: [AssignmentPlanItem] {
@@ -411,13 +415,14 @@ private struct ImportedPlanAssignmentsView: View {
                     } label: {
                         Label("Импорт", systemImage: "doc.badge.plus")
                     }
+                    .disabled(cardPresence.isOpen)
 
                     Button(role: .destructive) {
                         showDeleteConfirmation = true
                     } label: {
                         Image(systemName: "trash")
                     }
-                    .disabled(items.isEmpty)
+                    .disabled(items.isEmpty || cardPresence.isOpen)
                     .accessibilityLabel("Удалить импортированный план")
                 }
             }
@@ -847,8 +852,8 @@ private struct AccordWorkPlanView: View {
     @ObservedObject var store: AppStore
 
     @State private var showAdd = false
-    @State private var showImageImporter = false
-    @State private var showVideoImporter = false
+    @State private var showMediaImporter = false
+    @State private var mediaImportIsVideo = false
     @State private var showDeleteConfirmation = false
     @State private var isImporting = false
     @State private var message = ""
@@ -897,13 +902,15 @@ private struct AccordWorkPlanView: View {
                         }
 
                         Button {
-                            showImageImporter = true
+                            mediaImportIsVideo = false
+                            showMediaImporter = true
                         } label: {
                             Label("Импорт фото", systemImage: "photo")
                         }
 
                         Button {
-                            showVideoImporter = true
+                            mediaImportIsVideo = true
+                            showMediaImporter = true
                         } label: {
                             Label("Импорт видео", systemImage: "video")
                         }
@@ -930,19 +937,14 @@ private struct AccordWorkPlanView: View {
                     store.addWorkEvent(event)
                 }
             }
+            // Один выбор файла на экран: два .fileImporter подряд в SwiftUI
+            // работают через раз — срабатывает только один (аудит 05.10, п. 25в).
             .fileImporter(
-                isPresented: $showImageImporter,
-                allowedContentTypes: [.image],
+                isPresented: $showMediaImporter,
+                allowedContentTypes: mediaImportIsVideo ? [.movie] : [.image],
                 allowsMultipleSelection: false
             ) { result in
-                handleMedia(result: result, isVideo: false)
-            }
-            .fileImporter(
-                isPresented: $showVideoImporter,
-                allowedContentTypes: [.movie],
-                allowsMultipleSelection: false
-            ) { result in
-                handleMedia(result: result, isVideo: true)
+                handleMedia(result: result, isVideo: mediaImportIsVideo)
             }
             .alert("Импорт плана работ", isPresented: $showMessage) {
                 Button("OK", role: .cancel) { }
