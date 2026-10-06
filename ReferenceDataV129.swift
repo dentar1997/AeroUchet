@@ -1174,9 +1174,29 @@ struct FlightScheduleDatabaseV130View: View {
     @ObservedObject private var store = FlightScheduleStoreV129.shared
     @State private var search = ""
     @State private var selectedDate = moscowCalendar.startOfDay(for: Date())
-    @State private var group: FlightScheduleAircraftGroupV131 = .all
+    @AppStorage(ScheduleAircraftFilterButton.storageKey) private var groupsRaw = ""
     @State private var expandedEntryID: String?
-    @State private var calendarRequest: FlightScheduleCalendarRequestV134?
+    @State private var showCalendarPopover = false
+    /// Маршрут, для которого календарь открыли кнопкой «Календарь выполнения» (узкий экран).
+    @State private var calendarRouteID: String?
+
+    /// Ширина, с которой календарь стоит справа от таблицы, а не всплывает.
+    private static let sideCalendarMinWidth: CGFloat = 860
+
+    private var groups: Set<FlightScheduleAircraftGroupV131> {
+        ScheduleAircraftFilterButton.decode(groupsRaw)
+    }
+
+    private var groupsBinding: Binding<Set<FlightScheduleAircraftGroupV131>> {
+        Binding(
+            get: { groups },
+            set: { groupsRaw = ScheduleAircraftFilterButton.encode($0) }
+        )
+    }
+
+    private func passesFilter(_ entry: FlightScheduleEntryV129) -> Bool {
+        ScheduleAircraftFilterButton.matches(groups, rawAircraftCode: entry.rawAircraftCode)
+    }
 
     private var exactSearchNumber: String? {
         let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1189,7 +1209,7 @@ struct FlightScheduleDatabaseV130View: View {
         guard let number = exactSearchNumber else { return [] }
         return store.entries.filter {
             FlightScheduleStoreV129.normalizedFlightNumber($0.flightNumber) == number
-                && group.contains(rawAircraftCode: $0.rawAircraftCode)
+                && passesFilter($0)
         }
     }
 
@@ -1197,7 +1217,7 @@ struct FlightScheduleDatabaseV130View: View {
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedNumber = FlightScheduleStoreV129.normalizedFlightNumber(query)
         return store.entries.filter { entry in
-            guard group.contains(rawAircraftCode: entry.rawAircraftCode),
+            guard passesFilter(entry),
                   entryRuns(entry, onMoscowDate: selectedDate) else {
                 return false
             }
@@ -1235,40 +1255,110 @@ struct FlightScheduleDatabaseV130View: View {
         .sorted { ($0.departure, $0.arrival) < ($1.departure, $1.arrival) }
     }
 
+    // MARK: Подсветка дней выполнения
+
+    /// Чей календарь выполнения показывать: раскрытая строка → кнопка у подсказки →
+    /// точный номер в поиске с одним маршрутом.
+    private var highlightedRoute: (title: String, entries: [FlightScheduleEntryV129])? {
+        if let id = expandedEntryID,
+           let entry = store.entries.first(where: { $0.id == id }) {
+            let number = FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber)
+            let entries = store.entries.filter {
+                $0.departure == entry.departure
+                    && $0.arrival == entry.arrival
+                    && FlightScheduleStoreV129.normalizedFlightNumber($0.flightNumber) == number
+                    && passesFilter($0)
+            }
+            return (routeTitle(entry.flightNumber, entry.departure, entry.arrival), entries)
+        }
+        let candidates = routeCandidates
+        if let id = calendarRouteID, let route = candidates.first(where: { $0.id == id }) {
+            return (routeTitle(route.flightNumber, route.departure, route.arrival), route.entries)
+        }
+        if candidates.count == 1, let route = candidates.first {
+            return (routeTitle(route.flightNumber, route.departure, route.arrival), route.entries)
+        }
+        return nil
+    }
+
+    private func routeTitle(_ number: String, _ departure: String, _ arrival: String) -> String {
+        "Рейс \(FlightScheduleStoreV129.displayFlightNumber(number)) · \(departure) → \(arrival)"
+    }
+
+    private func calendarView(_ route: (title: String, entries: [FlightScheduleEntryV129])?) -> some View {
+        ScheduleMonthsCalendarView(
+            selectedDate: $selectedDate,
+            highlightedDays: Set((route.map { executionDates(for: $0.entries) } ?? [])
+                .map(ScheduleMonthsCalendarView.dayKey)),
+            title: route?.title
+        )
+    }
+
     private var selectedDateButtonTitle: String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "ru_RU")
-    formatter.timeZone = moscowTimeZone
-    formatter.dateFormat = "d MMM yyyy"
-    return formatter.string(from: selectedDate).replacingOccurrences(of: ".", with: "")
-}
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "d MMM yyyy"
+        return formatter.string(from: selectedDate).replacingOccurrences(of: ".", with: "")
+    }
 
     var body: some View {
+        GeometryReader { geometry in
+            let isWide = geometry.size.width >= Self.sideCalendarMinWidth
+            let route = highlightedRoute
+            HStack(spacing: 0) {
+                tablePane(isWide: isWide, route: route)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                if isWide {
+                    Divider()
+                    calendarView(route)
+                        .padding(12)
+                        .frame(width: 380)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
+            }
+        }
+        .navigationTitle("База расписания")
+        .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: search) { _, _ in calendarRouteID = nil }
+    }
+
+    private func tablePane(
+        isWide: Bool,
+        route: (title: String, entries: [FlightScheduleEntryV129])?
+    ) -> some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
-                Button {
-            openDateCalendar()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "calendar")
-                Text(selectedDateButtonTitle)
-                    .font(.subheadline.monospacedDigit())
-            }
-        }
-        .buttonStyle(.bordered)
-        .popover(item: $calendarRequest) { request in
-            FlightExecutionCalendarV134View(request: request) { date in
-                selectedDate = date
-                calendarRequest = nil
-            }
-        }
-
-                Picker("Семейство ВС", selection: $group) {
-                    ForEach(FlightScheduleAircraftGroupV131.allCases) { value in
-                        Text(value.rawValue).tag(value)
+                if isWide {
+                    Label(selectedDateButtonTitle, systemImage: "calendar")
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.teal)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(Color.teal.opacity(0.12)))
+                } else {
+                    Button {
+                        showCalendarPopover = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar")
+                            Text(selectedDateButtonTitle)
+                                .font(.subheadline.monospacedDigit())
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .popover(isPresented: $showCalendarPopover) {
+                        calendarView(route)
+                            .padding(12)
+                            .frame(width: 380, height: 520)
+                            .background(Color(uiColor: .systemBackground))
+                            .presentationBackground(Color(uiColor: .systemBackground))
+                            .presentationCompactAdaptation(.popover)
+                            .onChange(of: selectedDate) { _, _ in showCalendarPopover = false }
                     }
                 }
-                .pickerStyle(.menu)
+
+                ScheduleAircraftFilterButton(selection: groupsBinding)
 
                 TextField("Рейс или аэропорт", text: $search)
                     .textInputAutocapitalization(.characters)
@@ -1278,32 +1368,43 @@ struct FlightScheduleDatabaseV130View: View {
             .padding(.top, 8)
 
             HStack {
-        Text("Дата вылета по Москве · \(values.count) строк")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        Spacer()
-    }
-    .padding(.horizontal, 12)
+                Text("Дата вылета по Москве · \(values.count) строк")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
 
             if values.isEmpty,
                exactSearchNumber != nil,
                !routeCandidates.isEmpty {
                 VStack(spacing: 6) {
-                    ForEach(routeCandidates) { route in
+                    ForEach(routeCandidates) { candidate in
                         HStack(spacing: 10) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Рейс \(FlightScheduleStoreV129.displayFlightNumber(route.flightNumber)) · \(route.departure) → \(route.arrival)")
+                                Text(routeTitle(candidate.flightNumber, candidate.departure, candidate.arrival))
                                     .font(.subheadline.weight(.semibold))
                                 Text("В выбранную дату не выполняется")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button("Календарь выполнения") {
-                                openExecutionCalendar(for: route)
+                            if isWide {
+                                if routeCandidates.count > 1 {
+                                    Button(calendarRouteID == candidate.id ? "Подсвечено" : "Показать дни") {
+                                        calendarRouteID = candidate.id
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            } else {
+                                Button("Календарь выполнения") {
+                                    calendarRouteID = candidate.id
+                                    showCalendarPopover = true
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
@@ -1320,9 +1421,9 @@ struct FlightScheduleDatabaseV130View: View {
                 HStack(spacing: 8) {
                     Text("Рейс").frame(width: 54, alignment: .leading)
                     Text("Маршрут").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("UTC").frame(width: 112, alignment: .leading)
-                    Text("Тип ВС").frame(width: 78, alignment: .leading)
-                    Text("Полёт.").frame(width: 56, alignment: .trailing)
+                    Text("Время МСК").frame(width: 104, alignment: .leading)
+                    Text("Тип ВС").frame(width: 70, alignment: .leading)
+                    Text("Полётное время").frame(width: 104, alignment: .trailing)
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -1339,15 +1440,13 @@ struct FlightScheduleDatabaseV130View: View {
                 }
             }
         }
-        .navigationTitle("База расписания")
-        .navigationBarTitleDisplayMode(.inline)
-
     }
 
     @ViewBuilder
     private func scheduleRow(_ entry: FlightScheduleEntryV129) -> some View {
+        let isExpanded = expandedEntryID == entry.id
         Button {
-            expandedEntryID = expandedEntryID == entry.id ? nil : entry.id
+            expandedEntryID = isExpanded ? nil : entry.id
         } label: {
             HStack(spacing: 8) {
                 Text(FlightScheduleStoreV129.displayFlightNumber(entry.flightNumber))
@@ -1357,29 +1456,31 @@ struct FlightScheduleDatabaseV130View: View {
                     .font(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineLimit(1)
-                Text("\(clock(entry.departureMinutesUTC))–\(clock(entry.arrivalMinutesUTC))")
+                Text("\(moscowClock(entry.departureMinutesUTC))–\(moscowClock(entry.arrivalMinutesUTC))")
                     .font(.caption.monospacedDigit())
-                    .frame(width: 112, alignment: .leading)
+                    .frame(width: 104, alignment: .leading)
                 Text(AircraftFamilyV129.display(entry.rawAircraftCode))
                     .font(.caption.weight(.semibold))
-                    .frame(width: 78, alignment: .leading)
+                    .frame(width: 70, alignment: .leading)
                 Text(timeText(entry.flightMinutes))
                     .font(.caption.weight(.semibold).monospacedDigit())
-                    .frame(width: 56, alignment: .trailing)
+                    .frame(width: 104, alignment: .trailing)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
+            .background(isExpanded ? Color.teal.opacity(0.10) : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
 
-        if expandedEntryID == entry.id {
-            Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined()) · код \(entry.rawAircraftCode)" + (entry.configuration.map { " · \($0)" } ?? ""))
+        if isExpanded {
+            Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined()) · код \(entry.rawAircraftCode) · UTC \(clock(entry.departureMinutesUTC))–\(clock(entry.arrivalMinutesUTC))" + (entry.configuration.map { " · \($0)" } ?? ""))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 74)
                 .padding(.bottom, 5)
+                .background(Color.teal.opacity(0.10))
         }
         Divider()
     }
@@ -1405,28 +1506,6 @@ struct FlightScheduleDatabaseV130View: View {
             if moscowCalendar.isDate(engineOn, inSameDayAs: date) { return true }
         }
         return false
-    }
-
-    private func openDateCalendar() {
-    if exactSearchNumber != nil,
-       routeCandidates.count == 1,
-       let route = routeCandidates.first {
-        openExecutionCalendar(for: route)
-        return
-    }
-    calendarRequest = FlightScheduleCalendarRequestV134(
-        title: nil,
-        executionDates: nil,
-        selectedDate: selectedDate
-    )
-}
-
-    private func openExecutionCalendar(for route: FlightScheduleRouteCandidateV131) {
-        calendarRequest = FlightScheduleCalendarRequestV134(
-            title: "Рейс \(FlightScheduleStoreV129.displayFlightNumber(route.flightNumber)) · \(route.departure) → \(route.arrival)",
-            executionDates: executionDates(for: route.entries),
-            selectedDate: selectedDate
-        )
     }
 
     private func executionDates(for entries: [FlightScheduleEntryV129]) -> [Date] {
@@ -1456,6 +1535,13 @@ struct FlightScheduleDatabaseV130View: View {
     private func clock(_ minutes: Int) -> String {
         String(format: "%02d:%02d", (minutes / 60) % 24, minutes % 60)
     }
+
+    /// Время по Москве из минут UTC (Москва — UTC+3 круглый год).
+    private func moscowClock(_ utcMinutes: Int) -> String {
+        let offset = moscowTimeZone.secondsFromGMT() / 60
+        let value = ((utcMinutes + offset) % 1440 + 1440) % 1440
+        return clock(value)
+    }
 }
 
 
@@ -1465,151 +1551,6 @@ private struct FlightScheduleRouteCandidateV131: Identifiable {
     let arrival: String
     let entries: [FlightScheduleEntryV129]
     var id: String { "\(FlightScheduleStoreV129.normalizedFlightNumber(flightNumber))|\(departure)|\(arrival)" }
-}
-
-
-private struct FlightScheduleCalendarRequestV134: Identifiable {
-    let id = UUID()
-    let title: String?
-    let executionDates: [Date]?
-    let selectedDate: Date
-}
-
-
-private struct FlightExecutionCalendarV134View: View {
-    let request: FlightScheduleCalendarRequestV134
-    let onSelect: (Date) -> Void
-
-    var body: some View {
-        VStack(spacing: 8) {
-            if let title = request.title {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            SystemScheduleCalendarV134(
-                selectedDate: request.selectedDate,
-                executionDates: request.executionDates,
-                onSelect: onSelect
-            )
-            .frame(width: 360, height: 350)
-
-            if request.executionDates != nil {
-                Text("Бирюзовая точка — день выполнения рейса по загруженному расписанию и текущему фильтру ВС.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(12)
-        .frame(width: 384)
-    }
-}
-
-
-private struct SystemScheduleCalendarV134: UIViewRepresentable {
-    let selectedDate: Date
-    let executionDates: [Date]?
-    let onSelect: (Date) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onSelect: onSelect)
-    }
-
-    func makeUIView(context: Context) -> UICalendarView {
-        let view = UICalendarView()
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.locale = Locale(identifier: "ru_RU")
-        calendar.timeZone = moscowTimeZone
-        view.calendar = calendar
-        view.locale = Locale(identifier: "ru_RU")
-        view.timeZone = moscowTimeZone
-        view.tintColor = .systemTeal
-        view.wantsDateDecorations = true
-        view.delegate = context.coordinator
-
-        let selection = UICalendarSelectionSingleDate(delegate: context.coordinator)
-        view.selectionBehavior = selection
-        context.coordinator.selection = selection
-        context.coordinator.calendar = calendar
-        update(view: view, coordinator: context.coordinator, animated: false)
-        return view
-    }
-
-    func updateUIView(_ uiView: UICalendarView, context: Context) {
-        context.coordinator.onSelect = onSelect
-        update(view: uiView, coordinator: context.coordinator, animated: false)
-    }
-
-    private func update(view: UICalendarView, coordinator: Coordinator, animated: Bool) {
-        let newComponents = (executionDates ?? []).map { coordinator.dayComponents(for: $0) }
-        let oldComponents = coordinator.executionComponents
-        coordinator.executionComponents = newComponents
-        coordinator.restrictToExecutionDates = executionDates != nil
-        coordinator.executionDayKeys = Set(newComponents.map { coordinator.key(for: $0) })
-
-        let selected = coordinator.dayComponents(for: selectedDate)
-        coordinator.selection?.selectedDate = selected
-        var visible = selected
-        visible.day = nil
-        view.setVisibleDateComponents(visible, animated: animated)
-
-        let reload = oldComponents + newComponents
-        if !reload.isEmpty {
-            view.reloadDecorations(forDateComponents: reload, animated: false)
-        }
-    }
-
-    final class Coordinator: NSObject, UICalendarViewDelegate, UICalendarSelectionSingleDateDelegate {
-        var onSelect: (Date) -> Void
-        var selection: UICalendarSelectionSingleDate?
-        var calendar = moscowCalendar
-        var restrictToExecutionDates = false
-        var executionDayKeys = Set<String>()
-        var executionComponents: [DateComponents] = []
-
-        init(onSelect: @escaping (Date) -> Void) {
-            self.onSelect = onSelect
-        }
-
-        func dayComponents(for date: Date) -> DateComponents {
-            calendar.dateComponents([.calendar, .timeZone, .year, .month, .day], from: date)
-        }
-
-        func key(for components: DateComponents) -> String {
-            guard let year = components.year,
-                  let month = components.month,
-                  let day = components.day else { return "" }
-            return String(format: "%04d-%02d-%02d", year, month, day)
-        }
-
-        func calendarView(
-            _ calendarView: UICalendarView,
-            decorationFor dateComponents: DateComponents
-        ) -> UICalendarView.Decoration? {
-            guard executionDayKeys.contains(key(for: dateComponents)) else { return nil }
-            return .default(color: .systemTeal, size: .large)
-        }
-
-        func dateSelection(
-            _ selection: UICalendarSelectionSingleDate,
-            canSelectDate dateComponents: DateComponents?
-        ) -> Bool {
-            guard restrictToExecutionDates else { return true }
-            guard let dateComponents else { return false }
-            return executionDayKeys.contains(key(for: dateComponents))
-        }
-
-        func dateSelection(
-            _ selection: UICalendarSelectionSingleDate,
-            didSelectDate dateComponents: DateComponents?
-        ) {
-            guard let dateComponents,
-                  let date = calendar.date(from: dateComponents) else { return }
-            onSelect(calendar.startOfDay(for: date))
-        }
-    }
 }
 
 
