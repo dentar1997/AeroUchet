@@ -1657,9 +1657,6 @@ struct FlightScheduleDatabaseV130View: View {
             tapCatcher.install()
         }
         .onDisappear { tapCatcher.remove() }
-                }
-            }
-        )
         // Строку «База расписания» не показываем (Денис 07.10 05:11).
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
