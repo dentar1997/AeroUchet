@@ -146,3 +146,5 @@
 | U39 | ACTIVE | Для предотвращения вертикальных jump при scroll: если navigation bar экрану не нужна — скрывать; если нужна для заголовка/кнопки Back — сохранять её, но запрещать minimization при scroll; custom blur v169 можно оставлять | Денис 08.10 00:07 · log/2026-10-08_0007_chatgpt_v171-ok-nav-policy.md |
 
 | U40 | ACTIVE | **Каждое новое окно с custom blur должно сразу учитывать navigation bar/safe area:** ненужную navigation bar скрывать; нужную для заголовка/Back/toolbar — оставлять, но запрещать minimization/изменение высоты при scroll. При приёмке обязательно проверять вертикальные свайпы и отсутствие jump | Денис 08.10 00:10 · log/2026-10-08_0010_chatgpt-custom-blur-nav-rule.md |
+
+| U41 | ACTIVE | Custom blur v173 принят по стабильности. Defaults стекла: **blur 50%, opacity 100%, dark tint 25%**. Следующая оптимизация — сохранить тот же вид, но убрать постоянные 20–30 FPS snapshot/CIGaussianBlur; предпочтительно кэш + обновление только при реальном изменении фона | Денис 08.10 01:36 · log/2026-10-08_0136_chatgpt_v173-ok-fps.md |
