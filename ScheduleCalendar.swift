@@ -429,15 +429,19 @@ private struct ScheduleMonthYearWheel: View {
             .frame(height: DrumColumn.height)
             .padding(.bottom, 12)
         }
-        .frame(width: Self.gap * 3 + Self.monthWidth + Self.yearWidth)
+        // Квадратное окно (Денис 07.10 13:03): ширина = высоте, промежутки поровну.
+        .frame(width: Self.side, height: Self.side)
     }
 
-    static let gap: CGFloat = 22
+    static let side: CGFloat = 264
+    static let gap: CGFloat = max(16, (side - monthWidth - yearWidth) / 3)
     // Колонки ровно по самому длинному месяцу и году: слева от месяца и справа от года
     // остаются одинаковые отступы (= промежутку между ними).
     private static func textWidth(_ text: String) -> CGFloat {
-        let font = UIFont.preferredFont(forTextStyle: .title3)
-        return ceil((text as NSString).size(withAttributes: [.font: font]).width) + 4
+        // Как в барабане: .title3 с моноширинными цифрами (иначе год не влезал — «20…»).
+        let size = UIFont.preferredFont(forTextStyle: .title3).pointSize
+        let font = UIFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width) + 8
     }
     static let monthWidth: CGFloat = ScheduleMonthsCalendarView.monthNames.map(textWidth).max() ?? 110
     static let yearWidth: CGFloat = textWidth("2026")
@@ -485,6 +489,8 @@ private struct DrumColumn: View {
                         .font(.title3)
                         .monospacedDigit()
                         .lineLimit(1)
+                        // Никогда не сокращать до «…».
+                        .fixedSize()
                         .frame(maxWidth: .infinity, alignment: alignment)
                         .padding(.horizontal, 2)
                         .frame(height: Self.rowHeight)
@@ -791,8 +797,17 @@ final class ScheduleTapCatcher: NSObject, UIGestureRecognizerDelegate {
 // окантовка, мягкая тень — как системное окно, но без резкой серой рамки.
 extension View {
     func scheduleGlassPanel(cornerRadius: CGFloat = 20) -> some View {
-        // Прозрачнее (Денис 07.10 12:45): сквозь окно видно то, что под ним.
-        background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        // Темнее и прозрачнее (Денис 07.10 13:02): слабое размытие + тёмная тонировка,
+        // сквозь окно видно то, что под ним; на любой подложке один вид.
+        background {
+            ZStack {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .opacity(0.55)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color.black.opacity(0.38))
+            }
+        }
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
