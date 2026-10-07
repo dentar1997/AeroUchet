@@ -218,7 +218,9 @@ struct ScheduleMonthsCalendarView: View {
             .padding(.horizontal, 4)
 
             let leading = Self.leadingBlanks(month)
-            let cells: [Date?] = Array(repeating: nil, count: leading) + days.map { Optional($0) }
+            // Всегда 6 недель: все месяцы одной высоты, прокрутка к месяцу встаёт ровно.
+            let filled: [Date?] = Array(repeating: nil, count: leading) + days.map { Optional($0) }
+            let cells: [Date?] = filled + Array(repeating: nil, count: max(0, 42 - filled.count))
             let rows = stride(from: 0, to: cells.count, by: 7).map {
                 Array(cells[$0..<min($0 + 7, cells.count)])
             }
@@ -657,13 +659,11 @@ struct ScheduleAircraftMenuPanel: View {
 // (у ячейки ~48 pt — радиус 10, у поля 34 pt — радиус 7) и тот же цвет плашки.
 
 enum ScheduleFilterStyle {
-    static let cornerRadius: CGFloat = 7
-    static let height: CGFloat = 34
-    static let fill = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(white: 0.36, alpha: 1)
-            : UIColor(white: 0.88, alpha: 1)
-    })
+    // Денис 07.10 06:47–06:50: ниже (28), заливка и форма скругления — как у больших карточек,
+    // радиус пропорционально меньше.
+    static let cornerRadius: CGFloat = 8
+    static let height: CGFloat = 28
+    static let fill = Color(uiColor: .secondarySystemGroupedBackground)
 }
 
 extension View {
@@ -671,9 +671,60 @@ extension View {
         padding(.horizontal, 10)
             .frame(height: ScheduleFilterStyle.height)
             .background(
-                RoundedRectangle(cornerRadius: ScheduleFilterStyle.cornerRadius)
+                RoundedRectangle(cornerRadius: ScheduleFilterStyle.cornerRadius, style: .continuous)
                     // Без бирюзовой заливки при выборе (Денис 07.10 04:49): бирюзовые только цифры.
                     .fill(ScheduleFilterStyle.fill)
             )
     }
+}
+
+
+// MARK: - Тап «мимо» на всё окно (Денис 07.10 06:47)
+//
+// Прокручиваемые таблица и календарь забирают тап у жестов SwiftUI, поэтому
+// на время экрана расписания на окно ставится UIKit-распознаватель, который
+// не мешает остальным касаниям: тап вне поля ввода гасит курсор, а экран
+// получает точку тапа (закрыть крутилки).
+final class ScheduleTapCatcher: NSObject, UIGestureRecognizerDelegate {
+    private var recognizer: UITapGestureRecognizer?
+    private weak var window: UIWindow?
+    var onTap: ((CGPoint) -> Void)?
+
+    func install() {
+        guard recognizer == nil,
+              let window = UIApplication.shared.connectedScenes
+                .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+                .first else { return }
+        let tap = UITapGestureRecognizer(target: self, action: #selector(handle(_:)))
+        tap.cancelsTouchesInView = false
+        tap.delaysTouchesBegan = false
+        tap.delaysTouchesEnded = false
+        tap.delegate = self
+        window.addGestureRecognizer(tap)
+        recognizer = tap
+        self.window = window
+    }
+
+    func remove() {
+        if let recognizer { window?.removeGestureRecognizer(recognizer) }
+        recognizer = nil
+    }
+
+    @objc private func handle(_ gesture: UITapGestureRecognizer) {
+        guard let window else { return }
+        let point = gesture.location(in: window)
+        var view = window.hitTest(point, with: nil)
+        var onTextField = false
+        while let current = view {
+            if current is UITextField || current is UITextView { onTextField = true; break }
+            view = current.superview
+        }
+        if !onTextField { window.endEditing(true) }
+        onTap?(point)
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool { true }
 }

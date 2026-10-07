@@ -1183,8 +1183,7 @@ struct FlightScheduleDatabaseV130View: View {
     @State private var highlightMemo = HighlightMemo()
     @State private var typeMenuOpen = false
     @State private var fromFieldFrame: CGRect = .zero
-    /// Рамки полей ввода: тап мимо них убирает курсор.
-    @State private var textFieldFrames: [Int: CGRect] = [:]
+    @State private var tapCatcher = ScheduleTapCatcher()
     @State private var toFieldFrame: CGRect = .zero
     /// Вкладка «Тест» (07.10): та же таблица, шрифт крупнее, вся таблица в общей карточке.
     private let cardStyle: Bool
@@ -1622,7 +1621,8 @@ struct FlightScheduleDatabaseV130View: View {
             }
         }
         // Нижний отступ карточек — от края экрана, как слева (12).
-        .ignoresSafeArea(.container, edges: .bottom)
+        // Клавиатура (и строка над ней) не ужимает экран — низ карточек не срезается.
+        .ignoresSafeArea([.container, .keyboard], edges: .bottom)
         .overlay {
             // Своё окно типов ВС: под кнопкой; тап мимо — закрыть.
             if typeMenuOpen {
@@ -1646,22 +1646,17 @@ struct FlightScheduleDatabaseV130View: View {
             // Пустое место по всему экрану (и у верхней полосы) ловит тап «мимо».
             Color.clear.contentShape(Rectangle()).ignoresSafeArea()
         }
-        .simultaneousGesture(
-            SpatialTapGesture(coordinateSpace: .global).onEnded { value in
-                if activeHourField != nil {
-                    let inside = [fromFieldFrame, toFieldFrame].contains {
-                        $0.insetBy(dx: -4, dy: -14).contains(value.location)
-                    }
-                    if !inside { activeHourField = nil }
+        .onAppear {
+            tapCatcher.onTap = { point in
+                guard activeHourField != nil else { return }
+                let inside = [fromFieldFrame, toFieldFrame].contains {
+                    $0.insetBy(dx: -4, dy: -14).contains(point)
                 }
-                // Тап мимо полей ввода — курсор гаснет, поле перестаёт быть активным.
-                if !textFieldFrames.values.contains(where: { $0.contains(value.location) }) {
-                    UIApplication.shared.sendAction(
-                        #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
-                    )
-                }
+                if !inside { activeHourField = nil }
             }
-        )
+            tapCatcher.install()
+        }
+        .onDisappear { tapCatcher.remove() }
         // Строку «База расписания» не показываем (Денис 07.10 05:11).
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -1716,7 +1711,6 @@ struct FlightScheduleDatabaseV130View: View {
                     .keyboardType(.numberPad)
                     .scheduleFilterTile()
                     .frame(width: 66)
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { textFieldFrames[0] = $0 }
                     .onChange(of: search) { _, value in
                         let digits = String(value.filter(\.isNumber).prefix(4))
                         if digits != value { search = digits }
@@ -1727,7 +1721,6 @@ struct FlightScheduleDatabaseV130View: View {
                     .autocorrectionDisabled()
                     .scheduleFilterTile()
                     .frame(width: 124)
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { textFieldFrames[1] = $0 }
                 // Стрелка меняет вылет и прилёт местами.
                 Button {
                     let value = departureQuery
@@ -1758,7 +1751,6 @@ struct FlightScheduleDatabaseV130View: View {
                         .padding(.trailing, 6)
                     }
                     .frame(width: 124)
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { textFieldFrames[2] = $0 }
 
                 ScheduleHourWheelField(
                     title: "с",
