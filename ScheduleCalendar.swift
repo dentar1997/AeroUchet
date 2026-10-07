@@ -449,12 +449,7 @@ struct ScheduleAircraftFilterButton: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 10)
-        .frame(height: 34)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(uiColor: isOpen ? .tertiarySystemFill : .secondarySystemFill))
-        )
+        .scheduleFilterTile(active: isOpen)
         .contentShape(Rectangle())
         .onTapGesture { isOpen.toggle() }
         .onGeometryChange(for: CGRect.self) { proxy in
@@ -509,6 +504,8 @@ struct ScheduleHourWheelField: View {
     let range: ClosedRange<Int>
     let isActive: Bool
     let onActivate: () -> Void
+    /// Где поле на экране — чтобы тап мимо закрывал крутилку.
+    @Binding var frame: CGRect
 
     private func text(_ value: Int) -> String { String(format: "%02d", value) }
 
@@ -535,14 +532,14 @@ struct ScheduleHourWheelField: View {
                 canStepPrevious: true
             )
         }
-        .padding(.horizontal, 10)
-        .frame(height: 34)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(uiColor: isActive ? .tertiarySystemFill : .secondarySystemFill))
-        )
+        .scheduleFilterTile(active: isActive)
         .contentShape(Rectangle())
         .onTapGesture(perform: onActivate)
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .global)
+        } action: { value in
+            frame = value
+        }
     }
 }
 
@@ -578,13 +575,40 @@ struct ScheduleAircraftMenuPanel: View {
         }
         .frame(width: 190)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: ScheduleFilterStyle.cornerRadius)
                 .fill(Color(uiColor: .secondarySystemBackground))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: ScheduleFilterStyle.cornerRadius)
                 .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+    }
+}
+
+
+// MARK: - Единый вид полей и кнопок фильтра (Денис 07.10 04:15–04:17)
+//
+// Форма — как ячейка задания на полёт («Начало работы»): та же пропорция скругления
+// (у ячейки ~48 pt — радиус 10, у поля 34 pt — радиус 7) и тот же цвет плашки.
+
+enum ScheduleFilterStyle {
+    static let cornerRadius: CGFloat = 7
+    static let height: CGFloat = 34
+    static let fill = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(white: 0.36, alpha: 1)
+            : UIColor(white: 0.88, alpha: 1)
+    })
+}
+
+extension View {
+    func scheduleFilterTile(active: Bool = false) -> some View {
+        padding(.horizontal, 10)
+            .frame(height: ScheduleFilterStyle.height)
+            .background(
+                RoundedRectangle(cornerRadius: ScheduleFilterStyle.cornerRadius)
+                    .fill(active ? Color.teal.opacity(0.32) : ScheduleFilterStyle.fill)
+            )
     }
 }

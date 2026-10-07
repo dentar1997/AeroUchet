@@ -59,6 +59,14 @@ struct ContentView: View {
             .tabItem {
                 Label("Ещё", systemImage: "ellipsis.circle")
             }
+
+            // Вкладка «Тест» (07.10): база расписания в стиле перспективного плана — для сравнения.
+            NavigationStack {
+                FlightScheduleDatabaseV130View(cardStyle: true)
+            }
+            .tabItem {
+                Label("Тест", systemImage: "testtube.2")
+            }
         }
         .environmentObject(store)
         .environmentObject(planStore)

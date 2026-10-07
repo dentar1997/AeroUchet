@@ -1182,6 +1182,14 @@ struct FlightScheduleDatabaseV130View: View {
     @State private var activeHourField: String?
     @State private var highlightMemo = HighlightMemo()
     @State private var typeMenuOpen = false
+    @State private var fromFieldFrame: CGRect = .zero
+    @State private var toFieldFrame: CGRect = .zero
+    /// Вкладка «Тест» (07.10): строки — блоками в стиле перспективного плана.
+    private let cardStyle: Bool
+
+    init(cardStyle: Bool = false) {
+        self.cardStyle = cardStyle
+    }
     @State private var typeButtonFrame: CGRect = .zero
     /// Часы вылета по UTC: с `fromHour` до `toHour` (24 — до конца суток).
     @State private var fromHour = 0
@@ -1543,7 +1551,17 @@ struct FlightScheduleDatabaseV130View: View {
                 }
             }
         }
-        .navigationTitle("База расписания")
+        // Тап в любом месте мимо крутилок часов закрывает крутилку.
+        .simultaneousGesture(
+            SpatialTapGesture(coordinateSpace: .global).onEnded { value in
+                guard activeHourField != nil else { return }
+                let inside = [fromFieldFrame, toFieldFrame].contains {
+                    $0.insetBy(dx: -4, dy: -14).contains(value.location)
+                }
+                if !inside { activeHourField = nil }
+            }
+        )
+        .navigationTitle(cardStyle ? "Тест · база расписания" : "База расписания")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: search) { _, _ in calendarRouteID = nil }
         .onChange(of: fromHour) { _, value in if toHour <= value { toHour = value + 1 } }
@@ -1581,7 +1599,7 @@ struct FlightScheduleDatabaseV130View: View {
 
                 TextField("Рейс", text: $search)
                     .keyboardType(.numberPad)
-                    .textFieldStyle(.roundedBorder)
+                    .scheduleFilterTile()
                     .frame(width: 76)
                     .onChange(of: search) { _, value in
                         let digits = String(value.filter(\.isNumber).prefix(4))
@@ -1591,7 +1609,7 @@ struct FlightScheduleDatabaseV130View: View {
                 TextField(arrivalEnabled ? "Вылет" : "Аэропорт", text: $departureQuery)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+                    .scheduleFilterTile()
                     .frame(width: 150)
                 // Стрелка меняет вылет и прилёт местами.
                 Button {
@@ -1606,7 +1624,7 @@ struct FlightScheduleDatabaseV130View: View {
                 TextField("Прилёт", text: $arrivalQuery)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+                    .scheduleFilterTile()
                     .disabled(!arrivalEnabled)
                     .opacity(arrivalEnabled ? 1 : 0.45)
                     .padding(.trailing, 0)
@@ -1629,14 +1647,16 @@ struct FlightScheduleDatabaseV130View: View {
                     hour: $fromHour,
                     range: 0...23,
                     isActive: activeHourField == "from",
-                    onActivate: { activeHourField = activeHourField == "from" ? nil : "from" }
+                    onActivate: { activeHourField = activeHourField == "from" ? nil : "from" },
+                    frame: $fromFieldFrame
                 )
                 ScheduleHourWheelField(
                     title: "до",
                     hour: $toHour,
                     range: 1...24,
                     isActive: activeHourField == "to",
-                    onActivate: { activeHourField = activeHourField == "to" ? nil : "to" }
+                    onActivate: { activeHourField = activeHourField == "to" ? nil : "to" },
+                    frame: $toFieldFrame
                 )
 
                 ScheduleAircraftFilterButton(
@@ -1703,6 +1723,7 @@ struct FlightScheduleDatabaseV130View: View {
             }
 
             VStack(spacing: 0) {
+                if !cardStyle {
                 HStack(spacing: 8) {
                     Text("Рейс").frame(width: 54, alignment: .leading)
                     Text("Маршрут").frame(maxWidth: .infinity, alignment: .leading)
@@ -1715,6 +1736,7 @@ struct FlightScheduleDatabaseV130View: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(Color(uiColor: .secondarySystemGroupedBackground))
+                }
 
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -1738,13 +1760,33 @@ struct FlightScheduleDatabaseV130View: View {
                                 .background(Color.teal.opacity(0.10))
                                 Divider()
                             }
+                            if cardStyle {
+                                Text("\(fullDateTitle) · \(flightsCountText(values.count))")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 12)
+                                    .padding(.bottom, 4)
+                            }
                             ForEach(values) { entry in
                                 VStack(spacing: 0) {
-                                    scheduleRow(entry, expanded: selectedRow(in: values)?.id == entry.id)
+                                    if cardStyle {
+                                        scheduleCardRow(entry, expanded: selectedRow(in: values)?.id == entry.id)
+                                    } else {
+                                        scheduleRow(entry, expanded: selectedRow(in: values)?.id == entry.id)
+                                    }
                                 }
                                 .id(entry.id)
                             }
                         }
+                        .padding(.bottom, cardStyle ? 8 : 0)
+                        .background {
+                            if cardStyle {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                            }
+                        }
+                        .padding(cardStyle ? 12 : 0)
                     }
                     .onChange(of: selectedDate) { _, _ in
                         // Выбранный рейс в новом дне: раскрыть его запись и прокрутить к нему.
@@ -1799,15 +1841,88 @@ struct FlightScheduleDatabaseV130View: View {
         .buttonStyle(.plain)
 
         if isExpanded {
-            Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined()) · код \(entry.rawAircraftCode) · МСК \(moscowClock(entry.departureMinutesUTC))–\(moscowClock(entry.arrivalMinutesUTC))" + (entry.configuration.map { " · \($0)" } ?? ""))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 74)
-                .padding(.bottom, 5)
-                .background(Color.teal.opacity(0.10))
+            // Доп. информация — по тем же столбцам: МСК под UTC, код и компоновка под типом ВС.
+            HStack(spacing: 8) {
+                Color.clear.frame(width: 54, height: 1)
+                Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined())")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("\(moscowClock(entry.departureMinutesUTC))–\(moscowClock(entry.arrivalMinutesUTC))")
+                    .monospacedDigit()
+                    .frame(width: 104, alignment: .leading)
+                    .overlay(alignment: .leading) {
+                        Text("МСК")
+                            .fixedSize()
+                            .offset(x: -30)
+                    }
+                Text(entry.rawAircraftCode + (entry.configuration.map { "  ·  \($0)" } ?? ""))
+                    .lineLimit(1)
+                    .frame(width: 70 + 8 + 104, alignment: .leading)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 5)
+            .background(Color.teal.opacity(0.10))
         }
         Divider()
+    }
+
+    /// Вкладка «Тест»: рейс отдельным блоком, как назначение в перспективном плане.
+    @ViewBuilder
+    private func scheduleCardRow(_ entry: FlightScheduleEntryV129, expanded isExpanded: Bool) -> some View {
+        Button {
+            if isExpanded {
+                selectedFlightKey = nil
+                selectedRecordID = nil
+            } else {
+                selectedFlightKey = Self.flightKey(entry)
+                selectedRecordID = entry.id
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                AssignmentEventIconView(
+                    eventType: .flight,
+                    style: AssignmentAppearanceStore.shared.style(for: .flight),
+                    size: 23
+                )
+                .frame(width: 26, height: 26)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(FlightScheduleStoreV129.displayFlightNumber(entry.flightNumber)) · \(AirportDatabase.displayName(for: entry.departure)) → \(AirportDatabase.displayName(for: entry.arrival))")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text("\(AircraftFamilyV129.display(entry.rawAircraftCode)) · \(entry.rawAircraftCode)" + (entry.configuration.map { " · \($0)" } ?? "") + " · Полётное время \(timeText(entry.flightMinutes))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if isExpanded {
+                        Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined())")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("\(clock(entry.departureMinutesUTC))–\(clock(entry.arrivalMinutesUTC)) UTC")
+                        .font(.caption.monospacedDigit())
+                    Text("МСК \(moscowClock(entry.departureMinutesUTC))–\(moscowClock(entry.arrivalMinutesUTC))")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isExpanded ? Color.teal.opacity(0.18) : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 4)
+        Divider().padding(.leading, 52)
     }
 
 
