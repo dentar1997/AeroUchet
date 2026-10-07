@@ -1124,48 +1124,186 @@ struct AircraftReferenceSettingsV129View: View {
     @ObservedObject private var store = AircraftReferenceStoreV129.shared
     @State private var search = ""
 
+    private enum SortColumn {
+        case registration, oldRegistration, msn, type, surname
+    }
+
+    @State private var sortColumn: SortColumn = .registration
+    @State private var sortAscending = true
+
+    private let registrationWidth: CGFloat = 96
+    private let oldRegistrationWidth: CGFloat = 92
+    private let msnWidth: CGFloat = 58
+    private let typeWidth: CGFloat = 72
+
     private var values: [AircraftReferenceV129] {
         let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return store.aircraft }
-        return store.aircraft.filter {
+        let filtered = query.isEmpty ? store.aircraft : store.aircraft.filter {
             $0.registration.localizedCaseInsensitiveContains(query)
                 || $0.surname.localizedCaseInsensitiveContains(query)
                 || $0.type.rawValue.localizedCaseInsensitiveContains(query)
                 || ($0.oldRegistration?.localizedCaseInsensitiveContains(query) ?? false)
+                || ($0.msn?.localizedCaseInsensitiveContains(query) ?? false)
         }
+        return filtered.sorted(by: sortsBefore)
     }
 
     var body: some View {
-        List {
-            Section {
-                TextField("Борт, фамилия или тип ВС", text: $search)
+        VStack(spacing: 8) {
+            HStack {
+                Text("Воздушные суда · \(values.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
 
-            Section("Воздушные суда · \(values.count)") {
-                ForEach(values) { aircraft in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(aircraft.type.rawValue)
-                                .font(.subheadline.weight(.semibold))
-                            Text(aircraft.registration)
-                                .font(.subheadline.monospacedDigit())
-                            Spacer()
-                            Text(aircraft.surname)
-                                .foregroundStyle(.secondary)
+            HStack {
+                TextField("Борт, старый борт, MSN, тип или фамилия", text: $search)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .scheduleFilterTile()
+                    .frame(maxWidth: 360)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    sortHeader("Борт", .registration)
+                        .frame(width: registrationWidth, alignment: .leading)
+                    sortHeader("Старый борт", .oldRegistration)
+                        .frame(width: oldRegistrationWidth, alignment: .leading)
+                    sortHeader("MSN", .msn)
+                        .frame(width: msnWidth, alignment: .leading)
+                    sortHeader("Тип", .type)
+                        .frame(width: typeWidth, alignment: .leading)
+                    sortHeader("Фамилия", .surname)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 12)
+                .frame(height: ScheduleMonthsCalendarView.headerHeight)
+
+                Divider()
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(values) { aircraft in
+                            aircraftRow(aircraft)
                         }
-                        HStack(spacing: 12) {
-                            Text("Старый: \(aircraft.oldRegistration ?? "—")")
-                            if let msn = aircraft.msn { Text("MSN: \(msn)") }
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     }
-                    .padding(.vertical, 2)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .navigationTitle("Воздушные суда")
         .navigationBarTitleDisplayMode(.inline)
+        .aeroStableNavigationBar()
+    }
+
+    private func aircraftRow(_ aircraft: AircraftReferenceV129) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text(aircraft.registration)
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .frame(width: registrationWidth, alignment: .leading)
+                Text(aircraft.oldRegistration ?? "—")
+                    .font(.caption.monospaced())
+                    .frame(width: oldRegistrationWidth, alignment: .leading)
+                Text(aircraft.msn ?? "—")
+                    .font(.caption.monospacedDigit())
+                    .frame(width: msnWidth, alignment: .leading)
+                Text(aircraft.type.rawValue)
+                    .font(.caption.weight(.semibold))
+                    .frame(width: typeWidth, alignment: .leading)
+                Text(aircraft.surname)
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+
+            Divider()
+        }
+    }
+
+    private func sortHeader(_ title: String, _ column: SortColumn) -> some View {
+        Button {
+            if sortColumn == column {
+                sortAscending.toggle()
+            } else {
+                sortColumn = column
+                sortAscending = true
+            }
+        } label: {
+            Text(title)
+                .fixedSize()
+                .overlay(alignment: .trailing) {
+                    if sortColumn == column {
+                        Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.bold))
+                            .offset(x: 13)
+                    }
+                }
+                .foregroundStyle(sortColumn == column ? Color.teal : Color.secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sortsBefore(_ left: AircraftReferenceV129, _ right: AircraftReferenceV129) -> Bool {
+        // «Тарасов» всегда закреплён первой строкой — направление/столбец сортировки не влияют.
+        if left.registration == "RA-73772" { return true }
+        if right.registration == "RA-73772" { return false }
+
+        let order: ComparisonResult
+        switch sortColumn {
+        case .registration:
+            order = left.registration.localizedStandardCompare(right.registration)
+        case .oldRegistration:
+            if let fixed = missingValueOrder(left.oldRegistration, right.oldRegistration) { return fixed }
+            order = (left.oldRegistration ?? "").localizedStandardCompare(right.oldRegistration ?? "")
+        case .msn:
+            if let fixed = missingValueOrder(left.msn, right.msn) { return fixed }
+            if let lhs = Int(left.msn ?? ""), let rhs = Int(right.msn ?? ""), lhs != rhs {
+                order = lhs < rhs ? .orderedAscending : .orderedDescending
+            } else {
+                order = (left.msn ?? "").localizedStandardCompare(right.msn ?? "")
+            }
+        case .type:
+            order = left.type.rawValue.localizedStandardCompare(right.type.rawValue)
+        case .surname:
+            order = left.surname.localizedStandardCompare(right.surname)
+        }
+
+        if order != .orderedSame {
+            return sortAscending ? order == .orderedAscending : order == .orderedDescending
+        }
+        return left.registration.localizedStandardCompare(right.registration) == .orderedAscending
+    }
+
+    /// Пустые справочные значения всегда внизу, независимо от направления сортировки.
+    private func missingValueOrder(_ left: String?, _ right: String?) -> Bool? {
+        switch (left, right) {
+        case (nil, nil):
+            return nil
+        case (nil, _):
+            return false
+        case (_, nil):
+            return true
+        default:
+            return nil
+        }
     }
 }
 
