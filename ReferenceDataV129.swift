@@ -1789,9 +1789,9 @@ struct FlightScheduleDatabaseV130View: View {
                     sortHeader("Тип ВС", .type).frame(width: typeWidth, alignment: .leading)
                     sortHeader("Полётное время", .duration).frame(width: durationWidth, alignment: .center)
                 }
-                .font((cardStyle ? Font.subheadline : Font.caption).weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .padding(.horizontal, 12)
-                .padding(.vertical, cardStyle ? 9 : 6)
+                .padding(.vertical, 6)
                 .background(cardStyle ? Color.clear : Color(uiColor: .secondarySystemGroupedBackground))
                 if cardStyle { Divider() }
 
@@ -1849,13 +1849,13 @@ struct FlightScheduleDatabaseV130View: View {
         }
     }
 
-    // Ширины столбцов и шрифты: во вкладке «Тест» крупнее.
-    private var numberWidth: CGFloat { cardStyle ? 64 : 54 }
-    private var timeWidth: CGFloat { cardStyle ? 124 : 104 }
-    private var typeWidth: CGFloat { cardStyle ? 84 : 70 }
-    private var durationWidth: CGFloat { cardStyle ? 130 : 104 }
-    private var mainFont: Font { cardStyle ? .body : .subheadline }
-    private var cellFont: Font { cardStyle ? .callout : .caption }
+    // Ширины столбцов и шрифты — прежние (Денис 07.10 05:23: шрифт не трогать, только карточка).
+    private var numberWidth: CGFloat { 54 }
+    private var timeWidth: CGFloat { 104 }
+    private var typeWidth: CGFloat { 70 }
+    private var durationWidth: CGFloat { 104 }
+    private var mainFont: Font { .subheadline }
+    private var cellFont: Font { .caption }
 
     @ViewBuilder
     private func scheduleRow(_ entry: FlightScheduleEntryV129, expanded isExpanded: Bool) -> some View {
@@ -1888,7 +1888,7 @@ struct FlightScheduleDatabaseV130View: View {
                     .frame(width: durationWidth, alignment: .center)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, cardStyle ? 8 : 5)
+            .padding(.vertical, 5)
             .background(isExpanded ? Color.teal.opacity(0.10) : Color.clear)
             .contentShape(Rectangle())
         }
