@@ -1,11 +1,11 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 08.10.2026 00:07 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 08.10.2026 00:10 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
 
 ## Последние записи журнала
+- [2026-10-08_0010_chatgpt-custom-blur-nav-rule.md](log/2026-10-08_0010_chatgpt-custom-blur-nav-rule.md)
 - [2026-10-08_0007_chatgpt_v171-ok-nav-policy.md](log/2026-10-08_0007_chatgpt_v171-ok-nav-policy.md)
 - [2026-10-07_2356_chatgpt_v171-custom-blur-test.md](log/2026-10-07_2356_chatgpt_v171-custom-blur-test.md)
-- [2026-10-07_2352_chatgpt_v171-start.md](log/2026-10-07_2352_chatgpt_v171-start.md)
 
 ## Код
 - **`AppVersion` = 171** (PR #179: в Test возвращён custom blur v169; пустая navigation bar Test скрыта). CI ✅. **Test: прыжки ✅ исправлены по проверке Дениса 08.10 00:07.** Прыжки ещё есть в Settings и базе расписания; применить U39.
