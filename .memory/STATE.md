@@ -1,13 +1,14 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 08.10.2026 01:36 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 08.10.2026 01:44 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
 
 ## Последние записи журнала
+- [2026-10-08_0144_chatgpt_v174-cached-blur.md](log/2026-10-08_0144_chatgpt_v174-cached-blur.md)
+- [2026-10-08_0141_chatgpt_v174-start.md](log/2026-10-08_0141_chatgpt_v174-start.md)
 - [2026-10-08_0136_chatgpt_v173-ok-fps.md](log/2026-10-08_0136_chatgpt_v173-ok-fps.md)
-- [2026-10-08_0046_chatgpt_v173-local-blur.md](log/2026-10-08_0046_chatgpt_v173-local-blur.md)
-- [2026-10-08_0030_chatgpt_v173-start.md](log/2026-10-08_0030_chatgpt_v173-start.md)
 
 ## Код
+- **`AppVersion` = 174** (PR #182: custom blur теперь кэшируется; `CADisplayLink` удалён; refresh при открытии/resize и через 120 мс после затишья SwiftUI; defaults 50/100/25). CI ✅. **Ждёт проверки FPS на iPad.**
 - **`AppVersion` = 173** (PR #181: custom blur ограничен ближайшим SwiftUI hosting-контейнером). CI ✅. **iPad: jump ✅ исправлен, v173 принят.** Open: падение FPS при открытом календаре; defaults стекла 50/100/25.
 - **`AppVersion` = 172** (PR #180: общий `aeroStableNavigationBar()` через `toolbar(.visible, for: .navigationBar)` для Settings/Вид окон/настроек расписания/базы расписания). CI ✅. **Ждёт проверки на iPad: убрать jump при свайпах, сохранив заголовки/Back и custom blur.**
 - **`AppVersion` = 171** (PR #179: в Test возвращён custom blur v169; пустая navigation bar Test скрыта). CI ✅. **Test: прыжки ✅ исправлены по проверке Дениса 08.10 00:07.** Прыжки ещё есть в Settings и базе расписания; применить U39.
