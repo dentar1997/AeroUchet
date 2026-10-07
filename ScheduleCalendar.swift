@@ -811,16 +811,8 @@ extension View {
     func scheduleGlassPanel(cornerRadius: CGFloat = 20) -> some View {
         // Темнее и прозрачнее (Денис 07.10 13:02): слабое размытие + тёмная тонировка,
         // сквозь окно видно то, что под ним; на любой подложке один вид.
-        background {
-            ZStack {
-                // Лёгкое размытие при сохранённой прозрачности (Денис 07.10 14:30):
-                // системное размытие, остановленное на части силы, + тёмный оттенок как в v162.
-                ScheduleLightBlur(intensity: ScheduleLightBlur.panelIntensity)
-                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                    .opacity(ScheduleLightBlur.panelOpacity)
-                // Тёмного оттенка нет (Денис 07.10 21:34: «посветлее»).
-            }
-        }
+        // Вид задаётся ползунками в «Ещё → Вид окон» (Денис 07.10 22:11).
+        background { ScheduleGlassBackground(cornerRadius: cornerRadius) }
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
@@ -833,11 +825,7 @@ extension View {
 /// Размытие с регулируемой силой: системный UIBlurEffect, анимация которого
 /// остановлена на доле `intensity` (0 — без размытия, 1 — полное системное).
 struct ScheduleLightBlur: UIViewRepresentable {
-    /// Подбирается одним числом: больше — сильнее размыто.
-    // 07.10 21:15: в 0.25 было слишком размыто и темно.
-    // 07.10 21:54: размытие слабее, стекло прозрачнее.
-    static let panelIntensity: CGFloat = 0.06
-    static let panelOpacity: Double = 0.6
+    // Сила задаётся ползунком «Размытие» (ScheduleGlassSettings).
     let intensity: CGFloat
 
     final class BlurView: UIVisualEffectView {
@@ -884,5 +872,133 @@ struct ScheduleLightBlur: UIViewRepresentable {
             view.intensity = intensity
             view.rebuild()
         }
+    }
+}
+
+
+// MARK: - Вид окон (ползунки в настройках)
+
+enum ScheduleGlassSettings {
+    static let blurKey = "aerouchet.glass.blur"
+    static let opacityKey = "aerouchet.glass.opacity"
+    static let tintKey = "aerouchet.glass.tint"
+    // Значения по умолчанию — как в v167.
+    static let defaultBlur: Double = 0.06
+    static let defaultOpacity: Double = 0.6
+    static let defaultTint: Double = 0
+}
+
+/// Фон окна «стекло»: размытие, прозрачность и тёмный оттенок из настроек.
+struct ScheduleGlassBackground: View {
+    let cornerRadius: CGFloat
+    @AppStorage(ScheduleGlassSettings.blurKey) private var blur = ScheduleGlassSettings.defaultBlur
+    @AppStorage(ScheduleGlassSettings.opacityKey) private var opacity = ScheduleGlassSettings.defaultOpacity
+    @AppStorage(ScheduleGlassSettings.tintKey) private var tint = ScheduleGlassSettings.defaultTint
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        ZStack {
+            ScheduleLightBlur(intensity: CGFloat(blur))
+                .clipShape(shape)
+                .opacity(opacity)
+            shape.fill(Color.black.opacity(tint))
+        }
+    }
+}
+
+/// «Ещё → Вид окон»: образец окна поверх календаря и три ползунка.
+struct GlassAppearanceSettingsView: View {
+    @AppStorage(ScheduleGlassSettings.blurKey) private var blur = ScheduleGlassSettings.defaultBlur
+    @AppStorage(ScheduleGlassSettings.opacityKey) private var opacity = ScheduleGlassSettings.defaultOpacity
+    @AppStorage(ScheduleGlassSettings.tintKey) private var tint = ScheduleGlassSettings.defaultTint
+
+    var body: some View {
+        Form {
+            Section("Образец") {
+                ZStack {
+                    sampleCalendar
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("Перейти к месяцу")
+                                .font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Image(systemName: "checkmark")
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(.teal)
+                        }
+                        ForEach(["Сентябрь   2025", "Октябрь   2026", "Ноябрь   2027"], id: \.self) { line in
+                            Text(line)
+                                .font(.title3)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(18)
+                    .frame(width: 240)
+                    .scheduleGlassPanel()
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+
+            Section {
+                slider("Размытие", value: $blur, range: 0...1, text: percent(blur))
+                slider("Прозрачность стекла", value: $opacity, range: 0...1, text: percent(opacity))
+                slider("Тёмный оттенок", value: $tint, range: 0...0.6, text: percent(tint))
+            } footer: {
+                Text("Применяется к окнам «Перейти к месяцу» и «Тип ВС». Подберёшь — пришли эти три числа, их зашьём как стандарт.")
+            }
+
+            Section {
+                Button("Сбросить") {
+                    blur = ScheduleGlassSettings.defaultBlur
+                    opacity = ScheduleGlassSettings.defaultOpacity
+                    tint = ScheduleGlassSettings.defaultTint
+                }
+            }
+        }
+        .navigationTitle("Вид окон")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func percent(_ value: Double) -> String {
+        "\(Int((value * 100).rounded())) %"
+    }
+
+    private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(text)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: value, in: range, step: 0.01)
+                .tint(.teal)
+        }
+    }
+
+    /// Кусочек календаря под образцом — чтобы видно было размытие и прозрачность.
+    private var sampleCalendar: some View {
+        VStack(spacing: 8) {
+            ForEach(0..<5, id: \.self) { row in
+                HStack(spacing: 8) {
+                    ForEach(1...7, id: \.self) { column in
+                        let day = row * 7 + column
+                        Text(String(day))
+                            .font(.callout.monospacedDigit())
+                            .frame(width: 34, height: 34)
+                            .background(
+                                Circle().fill(day % 3 == 0 ? Color.teal : Color.teal.opacity(0.35))
+                            )
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemGroupedBackground))
+        )
     }
 }

@@ -53,6 +53,12 @@ struct SettingsRootV116View: View {
                     }
 
                     NavigationLink {
+                        GlassAppearanceSettingsView()
+                    } label: {
+                        Label("Вид окон", systemImage: "square.on.square.dashed")
+                    }
+
+                    NavigationLink {
                         ProductionCalendarSettingsView(calendarSync: calendarSync)
                     } label: {
                         Label(
