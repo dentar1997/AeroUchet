@@ -1183,6 +1183,8 @@ struct FlightScheduleDatabaseV130View: View {
     @State private var highlightMemo = HighlightMemo()
     @State private var typeMenuOpen = false
     @State private var fromFieldFrame: CGRect = .zero
+    /// Рамки полей ввода: тап мимо них убирает курсор.
+    @State private var textFieldFrames: [Int: CGRect] = [:]
     @State private var toFieldFrame: CGRect = .zero
     /// Вкладка «Тест» (07.10): та же таблица, шрифт крупнее, вся таблица в общей карточке.
     private let cardStyle: Bool
@@ -1384,6 +1386,26 @@ struct FlightScheduleDatabaseV130View: View {
             ?? rows.first { Self.flightKey($0) == key }
     }
 
+    /// Выбранный рейс в выбранный день — даже если поля фильтра его не пропускают
+    /// (Денис 07.10 06:22: выделенный рейс остаётся в списке как исключение).
+    private var selectedExceptionRow: FlightScheduleEntryV129? {
+        guard let key = selectedFlightKey else { return nil }
+        let day = selectedUTCDay
+        let candidates = store.entries.filter {
+            Self.flightKey($0) == key && Self.entryDepartsOn(utcDay: day, $0)
+        }
+        return candidates.first { $0.id == selectedRecordID } ?? candidates.first
+    }
+
+    /// Строки таблицы: выбранный рейс (если фильтр его не пропускает) — первым, затем фильтр.
+    private func displayRows(_ filtered: [FlightScheduleEntryV129]) -> [FlightScheduleEntryV129] {
+        guard let extra = selectedExceptionRow,
+              !filtered.contains(where: { Self.flightKey($0) == Self.flightKey(extra) }) else {
+            return filtered
+        }
+        return [extra] + filtered
+    }
+
     private struct Highlight {
         let title: String
         let primary: Set<String>
@@ -1582,10 +1604,11 @@ struct FlightScheduleDatabaseV130View: View {
     var body: some View {
         GeometryReader { geometry in
             let isWide = geometry.size.width >= Self.sideCalendarMinWidth
-            let rows = values
+            let filtered = values
+            let rows = displayRows(filtered)
             let route = highlight(rows: rows)
             HStack(spacing: 0) {
-                tablePane(isWide: isWide, route: route, rows: rows)
+                tablePane(isWide: isWide, route: route, rows: rows, filteredCount: filtered.count)
                     .contentShape(Rectangle())
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 if isWide {
@@ -1607,6 +1630,7 @@ struct FlightScheduleDatabaseV130View: View {
                     let origin = geometry.frame(in: .global).origin
                     ZStack(alignment: .topLeading) {
                         Color.black.opacity(0.001)
+                            .ignoresSafeArea()
                             .onTapGesture { typeMenuOpen = false }
                         ScheduleAircraftMenuPanel(selection: groupsBinding)
                             .offset(
@@ -1618,13 +1642,24 @@ struct FlightScheduleDatabaseV130View: View {
             }
         }
         // Тап в любом месте мимо крутилок часов закрывает крутилку.
+        .background {
+            // Пустое место по всему экрану (и у верхней полосы) ловит тап «мимо».
+            Color.clear.contentShape(Rectangle()).ignoresSafeArea()
+        }
         .simultaneousGesture(
             SpatialTapGesture(coordinateSpace: .global).onEnded { value in
-                guard activeHourField != nil else { return }
-                let inside = [fromFieldFrame, toFieldFrame].contains {
-                    $0.insetBy(dx: -4, dy: -14).contains(value.location)
+                if activeHourField != nil {
+                    let inside = [fromFieldFrame, toFieldFrame].contains {
+                        $0.insetBy(dx: -4, dy: -14).contains(value.location)
+                    }
+                    if !inside { activeHourField = nil }
                 }
-                if !inside { activeHourField = nil }
+                // Тап мимо полей ввода — курсор гаснет, поле перестаёт быть активным.
+                if !textFieldFrames.values.contains(where: { $0.contains(value.location) }) {
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
+                    )
+                }
             }
         )
         // Строку «База расписания» не показываем (Денис 07.10 05:11).
@@ -1638,9 +1673,22 @@ struct FlightScheduleDatabaseV130View: View {
     private func tablePane(
         isWide: Bool,
         route: Highlight?,
-        rows values: [FlightScheduleEntryV129]
+        rows values: [FlightScheduleEntryV129],
+        filteredCount: Int
     ) -> some View {
         VStack(spacing: 8) {
+            // Сверху строка даты (Денис 07.10 06:27), под ней поля фильтра.
+            HStack {
+                Text(isWide
+                    ? "\(fullDateTitle) · дата вылета по UTC · \(flightsCountText(filteredCount))"
+                    : "Дата вылета по UTC · \(flightsCountText(filteredCount))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+
             HStack(spacing: 10) {
                 if !isWide {
                     Button {
@@ -1668,6 +1716,7 @@ struct FlightScheduleDatabaseV130View: View {
                     .keyboardType(.numberPad)
                     .scheduleFilterTile()
                     .frame(width: 66)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { textFieldFrames[0] = $0 }
                     .onChange(of: search) { _, value in
                         let digits = String(value.filter(\.isNumber).prefix(4))
                         if digits != value { search = digits }
@@ -1678,6 +1727,7 @@ struct FlightScheduleDatabaseV130View: View {
                     .autocorrectionDisabled()
                     .scheduleFilterTile()
                     .frame(width: 124)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { textFieldFrames[1] = $0 }
                 // Стрелка меняет вылет и прилёт местами.
                 Button {
                     let value = departureQuery
@@ -1708,6 +1758,7 @@ struct FlightScheduleDatabaseV130View: View {
                         .padding(.trailing, 6)
                     }
                     .frame(width: 124)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { textFieldFrames[2] = $0 }
 
                 ScheduleHourWheelField(
                     title: "с",
@@ -1735,59 +1786,7 @@ struct FlightScheduleDatabaseV130View: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
-            .padding(.top, 8)
 
-            HStack {
-                Text(isWide
-                    ? "\(fullDateTitle) · дата вылета по UTC · \(flightsCountText(values.count))"
-                    : "Дата вылета по UTC · \(flightsCountText(values.count))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-
-            if values.isEmpty,
-               exactSearchNumber != nil,
-               !routeCandidates.isEmpty {
-                VStack(spacing: 6) {
-                    ForEach(routeCandidates) { candidate in
-                        HStack(spacing: 10) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(routeTitle(candidate.flightNumber, candidate.departure, candidate.arrival))
-                                    .font(.subheadline.weight(.semibold))
-                                Text("В выбранную дату не выполняется")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if isWide {
-                                if routeCandidates.count > 1 {
-                                    Button(calendarRouteID == candidate.id ? "Подсвечено" : "Показать дни") {
-                                        calendarRouteID = candidate.id
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                }
-                            } else {
-                                Button("Календарь выполнения") {
-                                    calendarRouteID = candidate.id
-                                    showCalendarPopover = true
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                        )
-                    }
-                }
-                .padding(.horizontal, 12)
-            }
 
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
@@ -1806,24 +1805,29 @@ struct FlightScheduleDatabaseV130View: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
+                            // Подсказки — внутри таблицы, карточки не сдвигаются (Денис 07.10 06:22).
                             if let key = selectedFlightKey,
                                selectedRow(in: values) == nil,
                                let sample = store.entries.first(where: { Self.flightKey($0) == key }) {
-                                HStack(spacing: 10) {
-                                    Text("\(routeTitle(sample.flightNumber, sample.departure, sample.arrival)) в этот день не выполняется")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
+                                hintRow("\(routeTitle(sample.flightNumber, sample.departure, sample.arrival)) в этот день не выполняется") {
                                     Button("Снять выделение") {
                                         selectedFlightKey = nil
                                         selectedRecordID = nil
                                     }
                                     .controlSize(.small)
                                 }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 7)
-                                .background(Color.teal.opacity(0.10))
-                                Divider()
+                            }
+                            if filteredCount == 0, exactSearchNumber != nil {
+                                ForEach(routeCandidates) { candidate in
+                                    hintRow("\(routeTitle(candidate.flightNumber, candidate.departure, candidate.arrival)) — в выбранную дату не выполняется") {
+                                        if routeCandidates.count > 1 {
+                                            Button(calendarRouteID == candidate.id ? "Подсвечено" : "Показать дни") {
+                                                calendarRouteID = candidate.id
+                                            }
+                                            .controlSize(.small)
+                                        }
+                                    }
+                                }
                             }
                             ForEach(values) { entry in
                                 VStack(spacing: 0) {
@@ -1835,7 +1839,7 @@ struct FlightScheduleDatabaseV130View: View {
                     }
                     .onChange(of: selectedDate) { _, _ in
                         // Выбранный рейс в новом дне: раскрыть его запись и прокрутить к нему.
-                        guard let row = selectedRow(in: self.values) else { return }
+                        guard let row = selectedRow(in: displayRows(self.values)) else { return }
                         selectedRecordID = row.id
                         DispatchQueue.main.async {
                             withAnimation(.easeInOut(duration: 0.25)) {
@@ -1929,6 +1933,25 @@ struct FlightScheduleDatabaseV130View: View {
             .background(Color.teal.opacity(0.10))
         }
         Divider()
+    }
+
+    private func hintRow<Trailing: View>(
+        _ text: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Text(text)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                trailing()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Color.teal.opacity(0.10))
+            Divider()
+        }
     }
 
     private func clock(_ minutes: Int) -> String {
