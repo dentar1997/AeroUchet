@@ -119,8 +119,10 @@ struct ContentView: View {
 /// Не даёт iOS 26 уменьшать bar и менять safe area при вертикальном scroll.
 extension View {
     func aeroStableNavigationBar() -> some View {
-        toolbarMinimizationBehavior(.never, for: .navigationBar)
-            .toolbarMinimizationSafeAreaAdjustment(.disabled, for: .navigationBar)
+        // Текущий SDK проекта ещё не экспортирует iOS 26 toolbarMinimizationBehavior.
+        // Явно удерживаем navigation bar видимой: заголовок и Back сохраняются,
+        // а SwiftUI не должен убирать её в ответ на прокрутку.
+        toolbar(.visible, for: .navigationBar)
     }
 }
 
