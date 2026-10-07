@@ -1263,8 +1263,9 @@ struct AircraftReferenceSettingsV129View: View {
 
     private func sortsBefore(_ left: AircraftReferenceV129, _ right: AircraftReferenceV129) -> Bool {
         // «Тарасов» всегда закреплён первой строкой — направление/столбец сортировки не влияют.
-        if left.registration == "RA-73772" { return true }
-        if right.registration == "RA-73772" { return false }
+        let leftIsTarasov = left.registration == "RA-73772"
+        let rightIsTarasov = right.registration == "RA-73772"
+        if leftIsTarasov != rightIsTarasov { return leftIsTarasov }
 
         let order: ComparisonResult
         switch sortColumn {
