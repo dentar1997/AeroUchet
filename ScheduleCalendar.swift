@@ -31,7 +31,8 @@ struct ScheduleMonthsCalendarView: View {
     /// Высота строки заголовков (дни недели и «Рейс · Маршрут…» слева — на одной линии).
     static let headerHeight: CGFloat = 40
     /// Компактная сетка под iPad 12.9: в карточке целиком три месяца по шесть недель + легенда.
-    private static let rowHeight: CGFloat = 35
+    // 07.10 12:12: ровно три месяца (текущий и два следующих) + место под легенду.
+    private static let rowHeight: CGFloat = 38
     private static let dayCircle: CGFloat = 32
 
     var body: some View {
@@ -43,6 +44,8 @@ struct ScheduleMonthsCalendarView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        // Длинный маршрут не обрезается, а уменьшается.
+                        .minimumScaleFactor(0.55)
                     Spacer(minLength: 0)
                 }
                 HStack(spacing: 10) {

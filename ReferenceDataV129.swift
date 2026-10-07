@@ -1344,14 +1344,17 @@ struct FlightScheduleDatabaseV130View: View {
                 sortAscending = true
             }
         } label: {
-            HStack(spacing: 3) {
-                Text(title)
-                    .multilineTextAlignment(.center)
-                if sortColumn == column {
-                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
-                        .font(.caption2.weight(.bold))
+            Text(title)
+                .multilineTextAlignment(.center)
+                .fixedSize()
+                // Стрелка сбоку и не занимает место заголовка: «Полётное время» всегда в две строки.
+                .overlay(alignment: .trailing) {
+                    if sortColumn == column {
+                        Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.bold))
+                            .offset(x: 13)
+                    }
                 }
-            }
             .foregroundStyle(sortColumn == column ? Color.teal : Color.secondary)
         }
         .buttonStyle(.plain)
