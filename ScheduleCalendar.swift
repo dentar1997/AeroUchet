@@ -445,6 +445,9 @@ struct ScheduleAircraftFilterButton: View {
             Text(Self.title(selection))
                 .font(.caption.bold())
                 .monospacedDigit()
+                .lineLimit(1)
+                // Текст всегда целиком, в одну строку: кнопка не сжимается.
+                .fixedSize()
             Image(systemName: "chevron.up.chevron.down")
                 .font(.caption2)
                 .foregroundStyle(.secondary)

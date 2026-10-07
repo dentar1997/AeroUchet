@@ -1192,7 +1192,8 @@ struct FlightScheduleDatabaseV130View: View {
     @State private var sortColumn: SortColumn = .time
     @State private var sortAscending = true
 
-    init(cardStyle: Bool = false) {
+    init(cardStyle: Bool = true) {
+        // Денис 07.10 05:11: основная база — как во «Тесте» (карточка, шрифт крупнее).
         self.cardStyle = cardStyle
     }
     @State private var typeButtonFrame: CGRect = .zero
@@ -1618,7 +1619,8 @@ struct FlightScheduleDatabaseV130View: View {
                 if !inside { activeHourField = nil }
             }
         )
-        .navigationTitle(cardStyle ? "Тест · база расписания" : "База расписания")
+        // Строку «База расписания» не показываем (Денис 07.10 05:11).
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: search) { _, _ in calendarRouteID = nil }
         .onChange(of: fromHour) { _, value in if toHour <= value { toHour = value + 1 } }
@@ -1657,7 +1659,7 @@ struct FlightScheduleDatabaseV130View: View {
                 TextField("Рейс", text: $search)
                     .keyboardType(.numberPad)
                     .scheduleFilterTile()
-                    .frame(width: 76)
+                    .frame(width: 66)
                     .onChange(of: search) { _, value in
                         let digits = String(value.filter(\.isNumber).prefix(4))
                         if digits != value { search = digits }
@@ -1667,7 +1669,7 @@ struct FlightScheduleDatabaseV130View: View {
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .scheduleFilterTile()
-                    .frame(width: 150)
+                    .frame(width: 124)
                 // Стрелка меняет вылет и прилёт местами.
                 Button {
                     let value = departureQuery
@@ -1697,7 +1699,7 @@ struct FlightScheduleDatabaseV130View: View {
                         .buttonStyle(.borderless)
                         .padding(.trailing, 6)
                     }
-                    .frame(width: 150)
+                    .frame(width: 124)
 
                 ScheduleHourWheelField(
                     title: "с",
