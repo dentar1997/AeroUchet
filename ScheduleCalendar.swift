@@ -817,6 +817,7 @@ extension View {
                 // системное размытие, остановленное на части силы, + тёмный оттенок как в v162.
                 ScheduleLightBlur(intensity: ScheduleLightBlur.panelIntensity)
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    .opacity(ScheduleLightBlur.panelOpacity)
                 // Тёмного оттенка нет (Денис 07.10 21:34: «посветлее»).
             }
         }
@@ -834,7 +835,9 @@ extension View {
 struct ScheduleLightBlur: UIViewRepresentable {
     /// Подбирается одним числом: больше — сильнее размыто.
     // 07.10 21:15: в 0.25 было слишком размыто и темно.
-    static let panelIntensity: CGFloat = 0.12
+    // 07.10 21:54: размытие слабее, стекло прозрачнее.
+    static let panelIntensity: CGFloat = 0.06
+    static let panelOpacity: Double = 0.6
     let intensity: CGFloat
 
     final class BlurView: UIVisualEffectView {
