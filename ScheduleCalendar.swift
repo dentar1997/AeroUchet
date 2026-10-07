@@ -878,11 +878,10 @@ struct ScheduleLightBlur: UIViewRepresentable {
                         continue
                     }
                     let name = String(describing: type(of: controller))
-                    if name.contains("Hosting") || name.contains("SwiftUI") {
-                        let root = controller.view
-                        if root != nil, self === root || isDescendant(of: root!) {
-                            return root
-                        }
+                    if name.contains("Hosting") || name.contains("SwiftUI"),
+                       let root = controller.view,
+                       self === root || isDescendant(of: root) {
+                        return root
                     }
                 }
                 responder = current.next
