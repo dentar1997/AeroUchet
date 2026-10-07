@@ -602,7 +602,7 @@ struct ScheduleAircraftFilterButton: View {
     }
 
     static func title(_ selection: Set<FlightScheduleAircraftGroupV131>) -> String {
-        if selection.count >= choices.count { return "Тип ВС" }
+        if selection.count >= choices.count { return "Все ВС" }
         if selection.count == 1, let only = selection.first { return only.rawValue }
         return "Тип ВС · \(selection.count)"
     }
