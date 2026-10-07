@@ -61,16 +61,6 @@ struct ContentView: View {
                 Label("Ещё", systemImage: "ellipsis.circle")
             }
 
-            // Вкладка «Тест» (07.10): база расписания в стиле перспективного плана — для сравнения.
-            NavigationStack {
-                FlightScheduleDatabaseV130View(largeText: true)
-                    // У «Теста» нет заголовка: пустая navigation bar на iOS 26
-                    // меняла safe area при каждом свайпе и визуально дёргала весь экран.
-                    .toolbar(.hidden, for: .navigationBar)
-            }
-            .tabItem {
-                Label("Тест", systemImage: "testtube.2")
-            }
         }
         .environmentObject(store)
         .environmentObject(planStore)
