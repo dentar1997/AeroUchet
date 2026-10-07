@@ -380,9 +380,8 @@ private struct ScheduleMonthYearWheel: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Без заголовка (Денис 07.10 12:45): только галочка справа.
             HStack {
-                Text("Перейти к месяцу")
-                    .font(.headline)
                 Spacer()
                 Button {
                     if let date = moscowCalendar.date(from: DateComponents(year: year, month: month, day: 1)) {
@@ -396,7 +395,8 @@ private struct ScheduleMonthYearWheel: View {
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, Self.gap)
-            .padding(.vertical, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 2)
 
             ZStack {
                 RoundedRectangle(cornerRadius: 9)
@@ -413,7 +413,7 @@ private struct ScheduleMonthYearWheel: View {
                         label: { ScheduleMonthsCalendarView.monthNames[$0 - 1] },
                         alignment: .trailing
                     )
-                    .frame(width: 112)
+                    .frame(width: Self.monthWidth)
                     DrumColumn(
                         count: years.count,
                         isCircular: false,
@@ -422,17 +422,25 @@ private struct ScheduleMonthYearWheel: View {
                         label: { String($0) },
                         alignment: .leading
                     )
-                    .frame(width: 62)
+                    .frame(width: Self.yearWidth)
                 }
                 .padding(.horizontal, Self.gap)
             }
             .frame(height: DrumColumn.height)
             .padding(.bottom, 12)
         }
-        .frame(width: Self.gap * 3 + 112 + 62)
+        .frame(width: Self.gap * 3 + Self.monthWidth + Self.yearWidth)
     }
 
     static let gap: CGFloat = 22
+    // Колонки ровно по самому длинному месяцу и году: слева от месяца и справа от года
+    // остаются одинаковые отступы (= промежутку между ними).
+    private static func textWidth(_ text: String) -> CGFloat {
+        let font = UIFont.preferredFont(forTextStyle: .title3)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width) + 4
+    }
+    static let monthWidth: CGFloat = ScheduleMonthsCalendarView.monthNames.map(textWidth).max() ?? 110
+    static let yearWidth: CGFloat = textWidth("2026")
 }
 
 /// Одна колонка барабана. `valueAt` — значение по номеру строки внутри круга.
@@ -677,20 +685,25 @@ struct ScheduleAircraftMenuPanel: View {
                             .foregroundStyle(.teal)
                     }
                 }
-                .padding(.horizontal, 14)
-                .frame(height: 40)
+                .padding(.horizontal, 12)
+                .frame(height: 32)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     ScheduleAircraftFilterButton.toggle(value, in: &selection)
                 }
                 if value != ScheduleAircraftFilterButton.choices.last {
-                    Divider().padding(.leading, 14)
+                    // Еле заметная полоска, отступы слева и справа одинаковые (Денис 07.10 12:48).
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 12)
                 }
             }
         }
-        .frame(width: 190)
-        .padding(.vertical, 6)
-        .scheduleGlassPanel()
+        // Компактнее: без лишнего места.
+        .frame(width: 140)
+        .padding(.vertical, 4)
+        .scheduleGlassPanel(cornerRadius: 14)
     }
 }
 
@@ -778,7 +791,8 @@ final class ScheduleTapCatcher: NSObject, UIGestureRecognizerDelegate {
 // окантовка, мягкая тень — как системное окно, но без резкой серой рамки.
 extension View {
     func scheduleGlassPanel(cornerRadius: CGFloat = 20) -> some View {
-        background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        // Прозрачнее (Денис 07.10 12:45): сквозь окно видно то, что под ним.
+        background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
