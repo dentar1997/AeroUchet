@@ -830,53 +830,53 @@ extension View {
 struct ScheduleLightBlur: UIViewRepresentable {
     let radius: CGFloat
 
+    final class LinkProxy: NSObject {
+        weak var view: BlurView?
+        @objc func tick() { view?.refresh() }
+    }
+
     final class BlurView: UIView {
         var radius: CGFloat = 6
         private static let context = CIContext(options: [.cacheIntermediates: false])
         private let captureScale: CGFloat = 0.5
 
-        private var refreshWorkItem: DispatchWorkItem?
+        private var link: CADisplayLink?
+        private var linkProxy: LinkProxy?
         private var lastSize: CGSize = .zero
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            if window != nil {
-                requestRefresh(immediate: true)
-            } else {
-                refreshWorkItem?.cancel()
-                refreshWorkItem = nil
-            }
+            stopLink()
+            guard window != nil else { return }
+
+            let proxy = LinkProxy()
+            proxy.view = self
+
+            let link = CADisplayLink(target: proxy, selector: #selector(LinkProxy.tick))
+            link.preferredFramesPerSecond = 10
+            link.add(to: .main, forMode: .common)
+
+            linkProxy = proxy
+            self.link = link
+            refresh()
+        }
+
+        override func willMove(toWindow newWindow: UIWindow?) {
+            super.willMove(toWindow: newWindow)
+            if newWindow == nil { stopLink() }
         }
 
         override func layoutSubviews() {
             super.layoutSubviews()
             guard bounds.size != lastSize else { return }
             lastSize = bounds.size
-            requestRefresh(immediate: true)
+            refresh()
         }
 
-        /// SwiftUI может вызывать updateUIView много раз во время жеста/анимации.
-        /// Держим уже готовый blurred snapshot и пересчитываем его после короткой паузы:
-        /// foreground остаётся плавным, а Gaussian blur не съедает каждый кадр.
-        func update(radius newRadius: CGFloat) {
-            radius = newRadius
-            requestRefresh(immediate: false)
-        }
-
-        func requestRefresh(immediate: Bool) {
-            refreshWorkItem?.cancel()
-
-            let work = DispatchWorkItem { [weak self] in
-                self?.refreshWorkItem = nil
-                self?.refresh()
-            }
-            refreshWorkItem = work
-
-            if immediate {
-                DispatchQueue.main.async(execute: work)
-            } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
-            }
+        private func stopLink() {
+            link?.invalidate()
+            link = nil
+            linkProxy = nil
         }
 
         /// Ближайший контроллер SwiftUI-контента. Navigation/Tab-контейнеры пропускаем:
@@ -971,7 +971,7 @@ struct ScheduleLightBlur: UIViewRepresentable {
     }
 
     func updateUIView(_ view: BlurView, context: Context) {
-        view.update(radius: radius)
+        view.radius = radius
     }
 }
 
