@@ -808,7 +808,7 @@ extension View {
                 ScheduleLightBlur(intensity: ScheduleLightBlur.panelIntensity)
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.black.opacity(0.36))
+                    .fill(Color.black.opacity(0.12))
             }
         }
             .overlay(
@@ -824,7 +824,8 @@ extension View {
 /// остановлена на доле `intensity` (0 — без размытия, 1 — полное системное).
 struct ScheduleLightBlur: UIViewRepresentable {
     /// Подбирается одним числом: больше — сильнее размыто.
-    static let panelIntensity: CGFloat = 0.25
+    // 07.10 21:15: в 0.25 было слишком размыто и темно.
+    static let panelIntensity: CGFloat = 0.12
     let intensity: CGFloat
 
     final class BlurView: UIVisualEffectView {
