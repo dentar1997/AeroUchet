@@ -209,3 +209,4 @@
 | #178 | 170 | 07.10 23:19 | v170: системный live-blur без прыжков интерфейса | NEEDS_VERIFICATION |  |
 | #179 | 171 | 07.10 23:55 | v171: вернуть custom blur в Test и убрать scroll jump | NEEDS_VERIFICATION |  |
 | #180 | 172 | 08.10 00:19 | v172: стабилизировать navigation bar на blur-экранах | NEEDS_VERIFICATION |  |
+| #181 | 173 | 08.10 00:46 | v173: локализовать custom blur и убрать jump | NEEDS_VERIFICATION |  |
