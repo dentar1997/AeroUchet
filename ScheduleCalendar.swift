@@ -432,56 +432,45 @@ private struct DrumColumn: View {
 
 struct ScheduleAircraftFilterButton: View {
     @Binding var selection: Set<FlightScheduleAircraftGroupV131>
-    @State private var isOpen = false
+    /// Открыто ли своё выпадающее окно (рисует его экран расписания, см. `ScheduleAircraftMenuPanel`).
+    @Binding var isOpen: Bool
+    /// Где кнопка на экране — чтобы окно выпало ровно под ней.
+    @Binding var frame: CGRect
 
     static let choices = FlightScheduleAircraftGroupV131.allCases.filter { $0 != .all }
 
     var body: some View {
-        Button {
-            isOpen = true
-        } label: {
-            HStack(spacing: 4) {
-                Text(title)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2)
-            }
+        // Вид как у «с 00 / до 24»: серая плашка, скругление 8, высота 34.
+        HStack(spacing: 6) {
+            Text(Self.title(selection))
+                .font(.caption.bold())
+                .monospacedDigit()
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
-        .buttonStyle(.bordered)
-        .popover(isPresented: $isOpen) {
-            VStack(spacing: 0) {
-                ForEach(Self.choices) { value in
-                    Button {
-                        toggle(value)
-                    } label: {
-                        HStack {
-                            Text(value.rawValue)
-                            Spacer()
-                            if selection.contains(value) {
-                                Image(systemName: "checkmark")
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.teal)
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if value != Self.choices.last { Divider() }
-                }
-            }
-            .frame(width: 220)
-            .presentationCompactAdaptation(.popover)
+        .padding(.horizontal, 10)
+        .frame(height: 34)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(uiColor: isOpen ? .tertiarySystemFill : .secondarySystemFill))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { isOpen.toggle() }
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .global)
+        } action: { value in
+            frame = value
         }
     }
 
-    private var title: String {
-        if selection.count >= Self.choices.count { return "Тип ВС" }
+    static func title(_ selection: Set<FlightScheduleAircraftGroupV131>) -> String {
+        if selection.count >= choices.count { return "Тип ВС" }
         if selection.count == 1, let only = selection.first { return only.rawValue }
         return "Тип ВС · \(selection.count)"
     }
 
-    private func toggle(_ value: FlightScheduleAircraftGroupV131) {
+    static func toggle(_ value: FlightScheduleAircraftGroupV131, in selection: inout Set<FlightScheduleAircraftGroupV131>) {
         if selection.contains(value) {
             guard selection.count > 1 else { return } // последний тип не снимается
             selection.remove(value)
@@ -554,5 +543,48 @@ struct ScheduleHourWheelField: View {
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: onActivate)
+    }
+}
+
+
+/// Своё выпадающее окно типов ВС (скругление как у кнопок фильтра). Не закрывается
+/// при выборе; закрывается тапом мимо — это делает экран, который его показывает.
+struct ScheduleAircraftMenuPanel: View {
+    @Binding var selection: Set<FlightScheduleAircraftGroupV131>
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(ScheduleAircraftFilterButton.choices) { value in
+                HStack {
+                    Text(value.rawValue)
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    if selection.contains(value) {
+                        Image(systemName: "checkmark")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.teal)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 40)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    ScheduleAircraftFilterButton.toggle(value, in: &selection)
+                }
+                if value != ScheduleAircraftFilterButton.choices.last {
+                    Divider().padding(.leading, 14)
+                }
+            }
+        }
+        .frame(width: 190)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
     }
 }

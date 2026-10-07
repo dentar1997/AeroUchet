@@ -1181,7 +1181,9 @@ struct FlightScheduleDatabaseV130View: View {
     /// Какая крутилка часов сейчас крутится: "from" / "to".
     @State private var activeHourField: String?
     @State private var highlightMemo = HighlightMemo()
-    /// Часы вылета по Москве: с `fromHour` до `toHour` (24 — до конца дня).
+    @State private var typeMenuOpen = false
+    @State private var typeButtonFrame: CGRect = .zero
+    /// Часы вылета по UTC: с `fromHour` до `toHour` (24 — до конца суток).
     @State private var fromHour = 0
     @State private var toHour = 24
     @State private var selectedDate = moscowCalendar.startOfDay(for: Date())
@@ -1246,7 +1248,7 @@ struct FlightScheduleDatabaseV130View: View {
             return false
         }
         guard routeMatches(entry) else { return false }
-        let departure = Self.moscowMinutes(entry.departureMinutesUTC)
+        let departure = entry.departureMinutesUTC % 1440
         return departure >= fromHour * 60 && departure < toHour * 60
     }
 
@@ -1265,22 +1267,17 @@ struct FlightScheduleDatabaseV130View: View {
         return AirportDatabase.airport(for: code)?.matches(query) ?? false
     }
 
-    /// Минуты вылета по Москве от начала суток.
-    private static func moscowMinutes(_ utcMinutes: Int) -> Int {
-        let offset = moscowTimeZone.secondsFromGMT() / 60
-        return ((utcMinutes + offset) % 1440 + 1440) % 1440
-    }
 
     private var values: [FlightScheduleEntryV129] {
         store.entries.filter { entry in
             passesFilter(entry)
-                && entryRuns(entry, onMoscowDate: selectedDate)
+                && Self.entryDepartsOn(utcDay: selectedUTCDay, entry)
                 && matchesFields(entry)
         }
-        // Порядок — по московскому времени вылета, с 00:00 МСК (раньше — по UTC).
+        // Всё по UTC (Денис 07.10 03:50): дни недели расписания заданы по UTC.
         .sorted { left, right in
-            let l = Self.moscowMinutes(left.departureMinutesUTC)
-            let r = Self.moscowMinutes(right.departureMinutesUTC)
+            let l = left.departureMinutesUTC % 1440
+            let r = right.departureMinutesUTC % 1440
             if l == r {
                 return FlightScheduleStoreV129.normalizedFlightNumber(left.flightNumber)
                     .localizedStandardCompare(FlightScheduleStoreV129.normalizedFlightNumber(right.flightNumber)) == .orderedAscending
@@ -1416,16 +1413,15 @@ struct FlightScheduleDatabaseV130View: View {
         return parts.isEmpty ? "Календарь" : parts.joined(separator: " · ")
     }
 
-    /// Дни выполнения по Москве — номера суток от 1970-01-01 (быстро, без календаря).
+    /// Дни вылета по UTC — номера суток от 1970-01-01 (быстро, без календаря).
     /// Запись хранит даты действия в UTC (полночь) и дни недели ISO (1 = пн).
     private static func executionDays(_ entries: [FlightScheduleEntryV129]) -> Set<Int> {
-        let offset = moscowTimeZone.secondsFromGMT() / 60
         var result = Set<Int>()
         for entry in entries {
             let first = Int((entry.validFrom.timeIntervalSince1970 / 86_400).rounded(.down))
             let last = Int((entry.validTo.timeIntervalSince1970 / 86_400).rounded(.down))
             guard last >= first else { continue }
-            let shift = Int((Double(entry.departureMinutesUTC + offset) / 1440).rounded(.down))
+            let shift = entry.departureMinutesUTC / 1440
             var weekdays = [Bool](repeating: false, count: 8)
             for day in entry.operatingWeekdays where (1...7).contains(day) { weekdays[day] = true }
             for day in first...last {
@@ -1438,6 +1434,25 @@ struct FlightScheduleDatabaseV130View: View {
     }
 
     private static var dayKeyCache: [Int: String] = [:]
+
+    /// Выбранная дата календаря как сутки UTC (число и месяц те же).
+    private var selectedUTCDay: Int {
+        let parts = moscowCalendar.dateComponents([.year, .month, .day], from: selectedDate)
+        guard let date = Calendar.gregorianUTC.date(
+            from: DateComponents(year: parts.year, month: parts.month, day: parts.day)
+        ) else { return 0 }
+        return Int((date.timeIntervalSince1970 / 86_400).rounded(.down))
+    }
+
+    /// Вылетает ли рейс записи в эти сутки UTC.
+    private static func entryDepartsOn(utcDay: Int, _ entry: FlightScheduleEntryV129) -> Bool {
+        let operating = utcDay - entry.departureMinutesUTC / 1440
+        let first = Int((entry.validFrom.timeIntervalSince1970 / 86_400).rounded(.down))
+        let last = Int((entry.validTo.timeIntervalSince1970 / 86_400).rounded(.down))
+        guard operating >= first, operating <= last else { return false }
+        let iso = ((operating + 3) % 7 + 7) % 7 + 1
+        return entry.operatingWeekdays.contains(iso)
+    }
 
     private static func dayKeys(_ days: Set<Int>) -> Set<String> {
         Set(days.map { day in
@@ -1508,6 +1523,23 @@ struct FlightScheduleDatabaseV130View: View {
                         .padding(12)
                         .frame(width: 380)
                         .frame(maxHeight: .infinity, alignment: .top)
+                }
+            }
+        }
+        .overlay {
+            // Своё окно типов ВС: под кнопкой; тап мимо — закрыть.
+            if typeMenuOpen {
+                GeometryReader { geometry in
+                    let origin = geometry.frame(in: .global).origin
+                    ZStack(alignment: .topLeading) {
+                        Color.black.opacity(0.001)
+                            .onTapGesture { typeMenuOpen = false }
+                        ScheduleAircraftMenuPanel(selection: groupsBinding)
+                            .offset(
+                                x: typeButtonFrame.minX - origin.x,
+                                y: typeButtonFrame.maxY - origin.y + 6
+                            )
+                    }
                 }
             }
         }
@@ -1607,7 +1639,11 @@ struct FlightScheduleDatabaseV130View: View {
                     onActivate: { activeHourField = activeHourField == "to" ? nil : "to" }
                 )
 
-                ScheduleAircraftFilterButton(selection: groupsBinding)
+                ScheduleAircraftFilterButton(
+                    selection: groupsBinding,
+                    isOpen: $typeMenuOpen,
+                    frame: $typeButtonFrame
+                )
 
                 Spacer(minLength: 0)
             }
@@ -1616,8 +1652,8 @@ struct FlightScheduleDatabaseV130View: View {
 
             HStack {
                 Text(isWide
-                    ? "\(fullDateTitle) · дата вылета по Москве · \(flightsCountText(values.count))"
-                    : "Дата вылета по Москве · \(flightsCountText(values.count))")
+                    ? "\(fullDateTitle) · дата вылета по UTC · \(flightsCountText(values.count))"
+                    : "Дата вылета по UTC · \(flightsCountText(values.count))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -1670,7 +1706,7 @@ struct FlightScheduleDatabaseV130View: View {
                 HStack(spacing: 8) {
                     Text("Рейс").frame(width: 54, alignment: .leading)
                     Text("Маршрут").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Время МСК").frame(width: 104, alignment: .leading)
+                    Text("Время UTC").frame(width: 104, alignment: .leading)
                     Text("Тип ВС").frame(width: 70, alignment: .leading)
                     Text("Полётное время").frame(width: 104, alignment: .center)
                 }
@@ -1745,7 +1781,7 @@ struct FlightScheduleDatabaseV130View: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-                Text("\(moscowClock(entry.departureMinutesUTC))–\(moscowClock(entry.arrivalMinutesUTC))")
+                Text("\(clock(entry.departureMinutesUTC))–\(clock(entry.arrivalMinutesUTC))")
                     .font(.caption.monospacedDigit())
                     .frame(width: 104, alignment: .leading)
                 Text(AircraftFamilyV129.display(entry.rawAircraftCode))
@@ -1763,7 +1799,7 @@ struct FlightScheduleDatabaseV130View: View {
         .buttonStyle(.plain)
 
         if isExpanded {
-            Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined()) · код \(entry.rawAircraftCode) · UTC \(clock(entry.departureMinutesUTC))–\(clock(entry.arrivalMinutesUTC))" + (entry.configuration.map { " · \($0)" } ?? ""))
+            Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined()) · код \(entry.rawAircraftCode) · МСК \(moscowClock(entry.departureMinutesUTC))–\(moscowClock(entry.arrivalMinutesUTC))" + (entry.configuration.map { " · \($0)" } ?? ""))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1774,34 +1810,6 @@ struct FlightScheduleDatabaseV130View: View {
         Divider()
     }
 
-    private func entryRuns(_ entry: FlightScheduleEntryV129, onMoscowDate date: Date) -> Bool {
-        for delta in -1...0 {
-            guard let probe = moscowCalendar.date(byAdding: .day, value: delta, to: date) else { continue }
-            let parts = moscowCalendar.dateComponents([.year, .month, .day], from: probe)
-            var components = DateComponents()
-            components.timeZone = TimeZone(secondsFromGMT: 0)
-            components.year = parts.year
-            components.month = parts.month
-            components.day = parts.day
-            guard let operatingDate = utcCalendar.date(from: components),
-                  operatingDate >= entry.validFrom,
-                  operatingDate <= entry.validTo else { continue }
-            let weekday = utcCalendar.component(.weekday, from: operatingDate)
-            let isoWeekday = weekday == 1 ? 7 : weekday - 1
-            guard entry.operatingWeekdays.contains(isoWeekday),
-                  let engineOn = utcCalendar.date(byAdding: .minute, value: entry.departureMinutesUTC, to: operatingDate) else {
-                continue
-            }
-            if moscowCalendar.isDate(engineOn, inSameDayAs: date) { return true }
-        }
-        return false
-    }
-
-    private var utcCalendar: Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        return calendar
-    }
 
     private func clock(_ minutes: Int) -> String {
         String(format: "%02d:%02d", (minutes / 60) % 24, minutes % 60)
