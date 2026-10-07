@@ -1,14 +1,14 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 08.10.2026 02:00 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 08.10.2026 02:10 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
 
 ## Последние записи журнала
+- [2026-10-08_0210_chatgpt-v176-accepted-aircraft-db-plan.md](log/2026-10-08_0210_chatgpt-v176-accepted-aircraft-db-plan.md)
 - [2026-10-08_0200_chatgpt_v176-live-blur-20fps.md](log/2026-10-08_0200_chatgpt_v176-live-blur-20fps.md)
 - [2026-10-08_0153_chatgpt_v175-live-blur-10fps.md](log/2026-10-08_0153_chatgpt_v175-live-blur-10fps.md)
-- [2026-10-08_0152_chatgpt_v175-start.md](log/2026-10-08_0152_chatgpt_v175-start.md)
 
 ## Код
-- **`AppVersion` = 176** (PR #184: live custom blur 20 FPS; safe boundary v173 сохранена; defaults 50/100/25). CI ✅. **Ждёт проверки на iPad.**
+- **`AppVersion` = 176** (PR #184: live custom blur 20 FPS; safe boundary v173; defaults 50/100/25). CI ✅. **iPad: ✅ принят Денисом как «золотая середина»; функция стеклянного blur-окна завершена.**
 - **`AppVersion` = 175** (PR #183: live custom blur 10 FPS; safe boundary v173 сохранена; defaults 50/100/25). CI ✅. **Ждёт проверки на iPad.**
 - **`AppVersion` = 174** (PR #182: cached blur без CADisplayLink). CI ✅. **iPad: ❌ визуально не принят — фон фиксируется снимком при открытии и не обновляется при прокрутке.** Следующий план: live blur 8–12 FPS во время движения + финальный refresh после остановки; boundary v173 сохранить.
 - **`AppVersion` = 173** (PR #181: custom blur ограничен ближайшим SwiftUI hosting-контейнером). CI ✅. **iPad: jump ✅ исправлен, v173 принят.** Open: падение FPS при открытом календаре; defaults стекла 50/100/25.
