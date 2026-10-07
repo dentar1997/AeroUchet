@@ -210,3 +210,4 @@
 | #179 | 171 | 07.10 23:55 | v171: вернуть custom blur в Test и убрать scroll jump | NEEDS_VERIFICATION |  |
 | #180 | 172 | 08.10 00:19 | v172: стабилизировать navigation bar на blur-экранах | NEEDS_VERIFICATION |  |
 | #181 | 173 | 08.10 00:46 | v173: локализовать custom blur и убрать jump | NEEDS_VERIFICATION |  |
+| #182 | 174 | 08.10 01:44 | v174: кэшировать custom blur и убрать постоянные 30 FPS | NEEDS_VERIFICATION |  |
