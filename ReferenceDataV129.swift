@@ -1202,6 +1202,7 @@ struct FlightScheduleDatabaseV130View: View {
         self.largeText = largeText
     }
     @State private var typeButtonFrame: CGRect = .zero
+    @State private var typePanelFrame: CGRect = .zero
     /// Часы вылета по UTC: с `fromHour` до `toHour` (24 — до конца суток).
     @State private var fromHour = 0
     @State private var toHour = 24
@@ -1627,24 +1628,6 @@ struct FlightScheduleDatabaseV130View: View {
         // Нижний отступ карточек — от края экрана, как слева (12).
         // Клавиатура (и строка над ней) не ужимает экран — низ карточек не срезается.
         .ignoresSafeArea([.container, .keyboard], edges: .bottom)
-        .overlay {
-            // Своё окно типов ВС: под кнопкой; тап мимо — закрыть.
-            if typeMenuOpen {
-                GeometryReader { geometry in
-                    let origin = geometry.frame(in: .global).origin
-                    ZStack(alignment: .topLeading) {
-                        Color.black.opacity(0.001)
-                            .ignoresSafeArea()
-                            .onTapGesture { typeMenuOpen = false }
-                        ScheduleAircraftMenuPanel(selection: groupsBinding)
-                            .offset(
-                                x: typeButtonFrame.minX - origin.x,
-                                y: typeButtonFrame.maxY - origin.y + 6
-                            )
-                    }
-                }
-            }
-        }
         // Тап в любом месте мимо крутилок часов закрывает крутилку.
         .background {
             // Пустое место по всему экрану (и у верхней полосы) ловит тап «мимо».
@@ -1652,6 +1635,12 @@ struct FlightScheduleDatabaseV130View: View {
         }
         .onAppear {
             tapCatcher.onTap = { point in
+                // Окно «Тип ВС»: тап мимо кнопки и окна — закрыть (прокрутка не блокируется).
+                if typeMenuOpen,
+                   !typePanelFrame.contains(point),
+                   !typeButtonFrame.contains(point) {
+                    typeMenuOpen = false
+                }
                 guard activeHourField != nil else { return }
                 let inside = [fromFieldFrame, toFieldFrame].contains {
                     $0.insetBy(dx: -4, dy: -14).contains(point)
@@ -1776,12 +1765,15 @@ struct FlightScheduleDatabaseV130View: View {
                 ScheduleAircraftFilterButton(
                     selection: groupsBinding,
                     isOpen: $typeMenuOpen,
-                    frame: $typeButtonFrame
+                    frame: $typeButtonFrame,
+                    panelFrame: $typePanelFrame
                 )
 
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
+            // Окно «Тип ВС» выпадает поверх таблицы.
+            .zIndex(1)
 
 
             VStack(spacing: 0) {

@@ -564,6 +564,8 @@ struct ScheduleAircraftFilterButton: View {
     @Binding var isOpen: Bool
     /// Где кнопка на экране — чтобы окно выпало ровно под ней.
     @Binding var frame: CGRect
+    /// Где окно — тап мимо кнопки и окна его закрывает (без «ловушки», прокрутка работает).
+    @Binding var panelFrame: CGRect
 
     static let choices = FlightScheduleAircraftGroupV131.allCases.filter { $0 != .all }
 
@@ -587,6 +589,14 @@ struct ScheduleAircraftFilterButton: View {
             proxy.frame(in: .global)
         } action: { value in
             frame = value
+        }
+        .overlay(alignment: .topLeading) {
+            if isOpen {
+                ScheduleAircraftMenuPanel(selection: $selection)
+                    .fixedSize()
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { panelFrame = $0 }
+                    .offset(y: ScheduleFilterStyle.height + 6)
+            }
         }
     }
 
@@ -807,8 +817,7 @@ extension View {
                 // системное размытие, остановленное на части силы, + тёмный оттенок как в v162.
                 ScheduleLightBlur(intensity: ScheduleLightBlur.panelIntensity)
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.black.opacity(0.12))
+                // Тёмного оттенка нет (Денис 07.10 21:34: «посветлее»).
             }
         }
             .overlay(
@@ -842,7 +851,8 @@ struct ScheduleLightBlur: UIViewRepresentable {
             animator?.stopAnimation(true)
             effect = nil
             let animator = UIViewPropertyAnimator(duration: 1, curve: .linear) { [weak self] in
-                self?.effect = UIBlurEffect(style: .dark)
+                // Светлое системное «стекло», подстраивается под тему (в тёмной — серое).
+                self?.effect = UIBlurEffect(style: .systemThinMaterial)
             }
             animator.pausesOnCompletion = true
             animator.fractionComplete = intensity
