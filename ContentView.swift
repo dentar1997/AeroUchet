@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 
 struct ContentView: View {
@@ -70,6 +71,8 @@ struct ContentView: View {
         }
         .environmentObject(store)
         .environmentObject(planStore)
+        // Фон как в Stage Manager и во весь экран (Денис 07.10 04:39–04:50).
+        .onAppear { ElevatedAppearance.apply() }
         .onAppear {
             storageNotices = StorageSafety.pendingNotices()
         }
@@ -105,5 +108,25 @@ struct ContentView: View {
         } message: {
             Text("Не удалось сохранить: \(saveFailures.joined(separator: ", ")). Прежние сохранённые данные не тронуты. Сообщи Claude до новых изменений.")
         }
+    }
+}
+
+
+/// «Приподнятый» вид окна: в тёмной теме фон мягкий тёмно-серый, как в Stage Manager,
+/// а не чисто чёрный. Системные цвета (фон, таблицы, плашки) берут свои «приподнятые» оттенки.
+enum ElevatedAppearance {
+    static func apply() {
+        let update = {
+            for scene in UIApplication.shared.connectedScenes {
+                guard let windowScene = scene as? UIWindowScene else { continue }
+                windowScene.traitOverrides.userInterfaceLevel = .elevated
+                for window in windowScene.windows {
+                    window.traitOverrides.userInterfaceLevel = .elevated
+                }
+            }
+        }
+        update()
+        // Окно может появиться чуть позже первого кадра.
+        DispatchQueue.main.async(execute: update)
     }
 }

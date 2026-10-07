@@ -1184,8 +1184,13 @@ struct FlightScheduleDatabaseV130View: View {
     @State private var typeMenuOpen = false
     @State private var fromFieldFrame: CGRect = .zero
     @State private var toFieldFrame: CGRect = .zero
-    /// Вкладка «Тест» (07.10): строки — блоками в стиле перспективного плана.
+    /// Вкладка «Тест» (07.10): та же таблица, шрифт крупнее, вся таблица в общей карточке.
     private let cardStyle: Bool
+
+    /// Сортировка по столбцу (тап по заголовку). При входе — по времени UTC по возрастанию.
+    private enum SortColumn { case flight, route, time, type, duration }
+    @State private var sortColumn: SortColumn = .time
+    @State private var sortAscending = true
 
     init(cardStyle: Bool = false) {
         self.cardStyle = cardStyle
@@ -1283,15 +1288,66 @@ struct FlightScheduleDatabaseV130View: View {
                 && matchesFields(entry)
         }
         // Всё по UTC (Денис 07.10 03:50): дни недели расписания заданы по UTC.
-        .sorted { left, right in
-            let l = left.departureMinutesUTC % 1440
-            let r = right.departureMinutesUTC % 1440
-            if l == r {
-                return FlightScheduleStoreV129.normalizedFlightNumber(left.flightNumber)
-                    .localizedStandardCompare(FlightScheduleStoreV129.normalizedFlightNumber(right.flightNumber)) == .orderedAscending
-            }
-            return l < r
+        .sorted(by: sortsBefore)
+    }
+
+    private static func flightNumberValue(_ entry: FlightScheduleEntryV129) -> Int {
+        Int(FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber).filter(\.isNumber)) ?? Int.max
+    }
+
+    private static func airportName(_ code: String) -> String {
+        AirportDatabase.airport(for: code)?.name ?? code
+    }
+
+    private func sortsBefore(_ left: FlightScheduleEntryV129, _ right: FlightScheduleEntryV129) -> Bool {
+        let order: ComparisonResult
+        switch sortColumn {
+        case .flight:
+            let l = Self.flightNumberValue(left), r = Self.flightNumberValue(right)
+            order = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        case .route:
+            // По названиям аэропортов (городов), не по кодам: сначала вылет, потом прилёт.
+            let l = Self.airportName(left.departure) + " " + Self.airportName(left.arrival)
+            let r = Self.airportName(right.departure) + " " + Self.airportName(right.arrival)
+            order = l.localizedCompare(r)
+        case .time:
+            let l = left.departureMinutesUTC % 1440, r = right.departureMinutesUTC % 1440
+            order = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        case .type:
+            order = AircraftFamilyV129.display(left.rawAircraftCode)
+                .localizedStandardCompare(AircraftFamilyV129.display(right.rawAircraftCode))
+        case .duration:
+            let l = left.flightMinutes, r = right.flightMinutes
+            order = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
         }
+        if order != .orderedSame {
+            return sortAscending ? order == .orderedAscending : order == .orderedDescending
+        }
+        // При равенстве — по времени вылета, затем по номеру.
+        let lt = left.departureMinutesUTC % 1440, rt = right.departureMinutesUTC % 1440
+        if lt != rt { return lt < rt }
+        return Self.flightNumberValue(left) < Self.flightNumberValue(right)
+    }
+
+    private func sortHeader(_ title: String, _ column: SortColumn) -> some View {
+        Button {
+            if sortColumn == column {
+                sortAscending.toggle()
+            } else {
+                sortColumn = column
+                sortAscending = true
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text(title)
+                if sortColumn == column {
+                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.bold))
+                }
+            }
+            .foregroundStyle(sortColumn == column ? Color.teal : Color.secondary)
+        }
+        .buttonStyle(.plain)
     }
 
     private var routeCandidates: [FlightScheduleRouteCandidateV131] {
@@ -1524,6 +1580,7 @@ struct FlightScheduleDatabaseV130View: View {
             let route = highlight(rows: rows)
             HStack(spacing: 0) {
                 tablePane(isWide: isWide, route: route, rows: rows)
+                    .contentShape(Rectangle())
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 if isWide {
                     Divider()
@@ -1723,20 +1780,18 @@ struct FlightScheduleDatabaseV130View: View {
             }
 
             VStack(spacing: 0) {
-                if !cardStyle {
                 HStack(spacing: 8) {
-                    Text("Рейс").frame(width: 54, alignment: .leading)
-                    Text("Маршрут").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("Время UTC").frame(width: 104, alignment: .leading)
-                    Text("Тип ВС").frame(width: 70, alignment: .leading)
-                    Text("Полётное время").frame(width: 104, alignment: .center)
+                    sortHeader("Рейс", .flight).frame(width: numberWidth, alignment: .leading)
+                    sortHeader("Маршрут", .route).frame(maxWidth: .infinity, alignment: .leading)
+                    sortHeader("Время UTC", .time).frame(width: timeWidth, alignment: .leading)
+                    sortHeader("Тип ВС", .type).frame(width: typeWidth, alignment: .leading)
+                    sortHeader("Полётное время", .duration).frame(width: durationWidth, alignment: .center)
                 }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font((cardStyle ? Font.subheadline : Font.caption).weight(.semibold))
                 .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color(uiColor: .secondarySystemGroupedBackground))
-                }
+                .padding(.vertical, cardStyle ? 9 : 6)
+                .background(cardStyle ? Color.clear : Color(uiColor: .secondarySystemGroupedBackground))
+                if cardStyle { Divider() }
 
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -1760,33 +1815,13 @@ struct FlightScheduleDatabaseV130View: View {
                                 .background(Color.teal.opacity(0.10))
                                 Divider()
                             }
-                            if cardStyle {
-                                Text("\(fullDateTitle) · \(flightsCountText(values.count))")
-                                    .font(.headline)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 12)
-                                    .padding(.top, 12)
-                                    .padding(.bottom, 4)
-                            }
                             ForEach(values) { entry in
                                 VStack(spacing: 0) {
-                                    if cardStyle {
-                                        scheduleCardRow(entry, expanded: selectedRow(in: values)?.id == entry.id)
-                                    } else {
-                                        scheduleRow(entry, expanded: selectedRow(in: values)?.id == entry.id)
-                                    }
+                                    scheduleRow(entry, expanded: selectedRow(in: values)?.id == entry.id)
                                 }
                                 .id(entry.id)
                             }
                         }
-                        .padding(.bottom, cardStyle ? 8 : 0)
-                        .background {
-                            if cardStyle {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                            }
-                        }
-                        .padding(cardStyle ? 12 : 0)
                     }
                     .onChange(of: selectedDate) { _, _ in
                         // Выбранный рейс в новом дне: раскрыть его запись и прокрутить к нему.
@@ -1800,8 +1835,25 @@ struct FlightScheduleDatabaseV130View: View {
                     }
                 }
             }
+            // «Тест»: вся таблица — в общей карточке.
+            .background {
+                if cardStyle {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cardStyle ? 14 : 0, style: .continuous))
+            .padding(cardStyle ? 12 : 0)
         }
     }
+
+    // Ширины столбцов и шрифты: во вкладке «Тест» крупнее.
+    private var numberWidth: CGFloat { cardStyle ? 64 : 54 }
+    private var timeWidth: CGFloat { cardStyle ? 124 : 104 }
+    private var typeWidth: CGFloat { cardStyle ? 84 : 70 }
+    private var durationWidth: CGFloat { cardStyle ? 130 : 104 }
+    private var mainFont: Font { cardStyle ? .body : .subheadline }
+    private var cellFont: Font { cardStyle ? .callout : .caption }
 
     @ViewBuilder
     private func scheduleRow(_ entry: FlightScheduleEntryV129, expanded isExpanded: Bool) -> some View {
@@ -1816,25 +1868,25 @@ struct FlightScheduleDatabaseV130View: View {
         } label: {
             HStack(spacing: 8) {
                 Text(FlightScheduleStoreV129.displayFlightNumber(entry.flightNumber))
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .frame(width: 54, alignment: .leading)
+                    .font(mainFont.weight(.semibold).monospacedDigit())
+                    .frame(width: numberWidth, alignment: .leading)
                 Text("\(AirportDatabase.displayName(for: entry.departure)) → \(AirportDatabase.displayName(for: entry.arrival))")
-                    .font(.subheadline)
+                    .font(mainFont)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Text("\(clock(entry.departureMinutesUTC))–\(clock(entry.arrivalMinutesUTC))")
-                    .font(.caption.monospacedDigit())
-                    .frame(width: 104, alignment: .leading)
+                    .font(cellFont.monospacedDigit())
+                    .frame(width: timeWidth, alignment: .leading)
                 Text(AircraftFamilyV129.display(entry.rawAircraftCode))
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 70, alignment: .leading)
+                    .font(cellFont.weight(.semibold))
+                    .frame(width: typeWidth, alignment: .leading)
                 Text(timeText(entry.flightMinutes))
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .frame(width: 104, alignment: .center)
+                    .font(cellFont.weight(.semibold).monospacedDigit())
+                    .frame(width: durationWidth, alignment: .center)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 5)
+            .padding(.vertical, cardStyle ? 8 : 5)
             .background(isExpanded ? Color.teal.opacity(0.10) : Color.clear)
             .contentShape(Rectangle())
         }
@@ -1843,12 +1895,12 @@ struct FlightScheduleDatabaseV130View: View {
         if isExpanded {
             // Доп. информация — по тем же столбцам: МСК под UTC, код и компоновка под типом ВС.
             HStack(spacing: 8) {
-                Color.clear.frame(width: 54, height: 1)
+                Color.clear.frame(width: numberWidth, height: 1)
                 Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined())")
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text("\(moscowClock(entry.departureMinutesUTC))–\(moscowClock(entry.arrivalMinutesUTC))")
                     .monospacedDigit()
-                    .frame(width: 104, alignment: .leading)
+                    .frame(width: timeWidth, alignment: .leading)
                     .overlay(alignment: .leading) {
                         Text("МСК")
                             .fixedSize()
@@ -1856,9 +1908,9 @@ struct FlightScheduleDatabaseV130View: View {
                     }
                 Text(entry.rawAircraftCode + (entry.configuration.map { "  ·  \($0)" } ?? ""))
                     .lineLimit(1)
-                    .frame(width: 70 + 8 + 104, alignment: .leading)
+                    .frame(width: typeWidth + 8 + durationWidth, alignment: .leading)
             }
-            .font(.caption)
+            .font(cellFont)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
             .padding(.bottom, 5)
@@ -1866,65 +1918,6 @@ struct FlightScheduleDatabaseV130View: View {
         }
         Divider()
     }
-
-    /// Вкладка «Тест»: рейс отдельным блоком, как назначение в перспективном плане.
-    @ViewBuilder
-    private func scheduleCardRow(_ entry: FlightScheduleEntryV129, expanded isExpanded: Bool) -> some View {
-        Button {
-            if isExpanded {
-                selectedFlightKey = nil
-                selectedRecordID = nil
-            } else {
-                selectedFlightKey = Self.flightKey(entry)
-                selectedRecordID = entry.id
-            }
-        } label: {
-            HStack(alignment: .top, spacing: 12) {
-                AssignmentEventIconView(
-                    eventType: .flight,
-                    style: AssignmentAppearanceStore.shared.style(for: .flight),
-                    size: 23
-                )
-                .frame(width: 26, height: 26)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(FlightScheduleStoreV129.displayFlightNumber(entry.flightNumber)) · \(AirportDatabase.displayName(for: entry.departure)) → \(AirportDatabase.displayName(for: entry.arrival))")
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Text("\(AircraftFamilyV129.display(entry.rawAircraftCode)) · \(entry.rawAircraftCode)" + (entry.configuration.map { " · \($0)" } ?? "") + " · Полётное время \(timeText(entry.flightMinutes))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if isExpanded {
-                        Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined())")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text("\(clock(entry.departureMinutesUTC))–\(clock(entry.arrivalMinutesUTC)) UTC")
-                        .font(.caption.monospacedDigit())
-                    Text("МСК \(moscowClock(entry.departureMinutesUTC))–\(moscowClock(entry.arrivalMinutesUTC))")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isExpanded ? Color.teal.opacity(0.18) : Color.clear)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 4)
-        Divider().padding(.leading, 52)
-    }
-
 
     private func clock(_ minutes: Int) -> String {
         String(format: "%02d:%02d", (minutes / 60) % 24, minutes % 60)

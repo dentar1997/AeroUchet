@@ -608,7 +608,8 @@ extension View {
             .frame(height: ScheduleFilterStyle.height)
             .background(
                 RoundedRectangle(cornerRadius: ScheduleFilterStyle.cornerRadius)
-                    .fill(active ? Color.teal.opacity(0.32) : ScheduleFilterStyle.fill)
+                    // Без бирюзовой заливки при выборе (Денис 07.10 04:49): бирюзовые только цифры.
+                    .fill(ScheduleFilterStyle.fill)
             )
     }
 }
