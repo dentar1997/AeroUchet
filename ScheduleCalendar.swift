@@ -685,20 +685,25 @@ struct ScheduleAircraftMenuPanel: View {
                             .foregroundStyle(.teal)
                     }
                 }
-                .padding(.horizontal, 14)
-                .frame(height: 40)
+                .padding(.horizontal, 12)
+                .frame(height: 32)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     ScheduleAircraftFilterButton.toggle(value, in: &selection)
                 }
                 if value != ScheduleAircraftFilterButton.choices.last {
-                    Divider().padding(.leading, 14)
+                    // Еле заметная полоска, отступы слева и справа одинаковые (Денис 07.10 12:48).
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 12)
                 }
             }
         }
-        .frame(width: 190)
-        .padding(.vertical, 6)
-        .scheduleGlassPanel()
+        // Компактнее: без лишнего места.
+        .frame(width: 140)
+        .padding(.vertical, 4)
+        .scheduleGlassPanel(cornerRadius: 14)
     }
 }
 
