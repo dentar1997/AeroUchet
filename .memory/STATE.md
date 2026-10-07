@@ -1,11 +1,11 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 08.10.2026 00:26 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 08.10.2026 00:30 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
 
 ## Последние записи журнала
+- [2026-10-08_0030_chatgpt_v173-start.md](log/2026-10-08_0030_chatgpt_v173-start.md)
 - [2026-10-08_0026_chatgpt-v172-fail-presets-rootcause.md](log/2026-10-08_0026_chatgpt-v172-fail-presets-rootcause.md)
 - [2026-10-08_0019_chatgpt_v172-stable-nav.md](log/2026-10-08_0019_chatgpt_v172-stable-nav.md)
-- [2026-10-08_0014_chatgpt_v172-start.md](log/2026-10-08_0014_chatgpt_v172-start.md)
 
 ## Код
 - **`AppVersion` = 172** (PR #180: общий `aeroStableNavigationBar()` через `toolbar(.visible, for: .navigationBar)` для Settings/Вид окон/настроек расписания/базы расписания). CI ✅. **Ждёт проверки на iPad: убрать jump при свайпах, сохранив заголовки/Back и custom blur.**
