@@ -865,23 +865,56 @@ struct ScheduleLightBlur: UIViewRepresentable {
             link = nil
         }
 
-        func refresh() {
-            guard let window, bounds.width > 1, bounds.height > 1 else { return }
-            let rect = convert(bounds, to: window)
+        /// Ближайший контроллер SwiftUI-контента. Navigation/Tab-контейнеры пропускаем:
+        /// их bar-слои нельзя трогать во время snapshot — на iPad это давало вертикальный jump.
+        private func captureRootView() -> UIView? {
+            var responder: UIResponder? = self
+            while let current = responder {
+                if let controller = current as? UIViewController {
+                    if controller is UINavigationController
+                        || controller is UITabBarController
+                        || controller is UISplitViewController {
+                        responder = controller.next
+                        continue
+                    }
+                    let name = String(describing: type(of: controller))
+                    if name.contains("Hosting") || name.contains("SwiftUI"),
+                       let root = controller.view,
+                       self === root || isDescendant(of: root) {
+                        return root
+                    }
+                }
+                responder = current.next
+            }
 
-            // Скрыть всё, что рисуется поверх этого слоя, и сам слой — только на время снимка.
+            // Без безопасной SwiftUI-границы не поднимаемся к UIWindow:
+            // лучше пропустить один кадр blur, чем снова скрыть системную navigation bar.
+            return nil
+        }
+
+        func refresh() {
+            guard bounds.width > 1,
+                  bounds.height > 1,
+                  let root = captureRootView() else { return }
+            let rect = convert(bounds, to: root)
+            let boundary = root.layer
+
+            // Скрываем только то, что рисуется поверх blur ВНУТРИ SwiftUI-hosting view.
+            // Выше boundary не поднимаемся: UINavigationBar/UITabBar/UIWindow не затрагиваются.
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             var hidden: [CALayer] = []
             var child: CALayer = layer
             while let parent = child.superlayer {
-                if let subs = parent.sublayers, let index = subs.firstIndex(where: { $0 === child }) {
+                if let subs = parent.sublayers,
+                   let index = subs.firstIndex(where: { $0 === child }),
+                   index + 1 < subs.count {
                     for above in subs[(index + 1)...] where !above.isHidden {
                         above.isHidden = true
                         hidden.append(above)
                     }
                 }
-                if parent === window.layer { break }
+                if parent === boundary { break }
                 child = parent
             }
             layer.isHidden = true
@@ -891,7 +924,7 @@ struct ScheduleLightBlur: UIViewRepresentable {
             format.opaque = false
             let shot = UIGraphicsImageRenderer(size: bounds.size, format: format).image { ctx in
                 ctx.cgContext.translateBy(x: -rect.minX, y: -rect.minY)
-                window.layer.render(in: ctx.cgContext)
+                boundary.render(in: ctx.cgContext)
             }
 
             layer.isHidden = false
@@ -939,9 +972,9 @@ enum ScheduleGlassSettings {
     static let tintKey = "aerouchet.glass.tint"
     // Размытие: 0…1 ползунка = 0…20 точек своего размытия (v169).
     static let maxBlurRadius: CGFloat = 20
-    static let defaultBlur: Double = 0.3
-    static let defaultOpacity: Double = 0.6
-    static let defaultTint: Double = 0
+    static let defaultBlur: Double = 0.5
+    static let defaultOpacity: Double = 1.0
+    static let defaultTint: Double = 0.2
 }
 
 /// Фон окна «стекло»: размытие, прозрачность и тёмный оттенок из настроек.
