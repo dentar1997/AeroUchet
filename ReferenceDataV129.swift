@@ -1176,6 +1176,11 @@ struct FlightScheduleDatabaseV130View: View {
     @State private var search = ""
     @State private var departureQuery = ""
     @State private var arrivalQuery = ""
+    /// Галочка в поле «Прилёт». Выключена — левое поле ищет аэропорт и в вылете, и в прилёте.
+    @State private var arrivalEnabled = true
+    /// Какая крутилка часов сейчас крутится: "from" / "to".
+    @State private var activeHourField: String?
+    @State private var highlightMemo = HighlightMemo()
     /// Часы вылета по Москве: с `fromHour` до `toHour` (24 — до конца дня).
     @State private var fromHour = 0
     @State private var toHour = 24
@@ -1219,9 +1224,37 @@ struct FlightScheduleDatabaseV130View: View {
         return store.entries.filter {
             FlightScheduleStoreV129.normalizedFlightNumber($0.flightNumber) == number
                 && passesFilter($0)
-                && Self.airport($0.departure, matches: departureQuery)
-                && Self.airport($0.arrival, matches: arrivalQuery)
+                && routeMatches($0)
         }
+    }
+
+    /// Маршрут по полям: «Вылет → Прилёт» или, без галочки, один аэропорт в любую сторону.
+    private func routeMatches(_ entry: FlightScheduleEntryV129) -> Bool {
+        if arrivalEnabled {
+            return Self.airport(entry.departure, matches: departureQuery)
+                && Self.airport(entry.arrival, matches: arrivalQuery)
+        }
+        let query = departureQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        return Self.airport(entry.departure, matches: query) || Self.airport(entry.arrival, matches: query)
+    }
+
+    /// Номер, маршрут и часы — то же, что фильтрует список (без даты и типа ВС).
+    private func matchesFields(_ entry: FlightScheduleEntryV129) -> Bool {
+        if let number = exactSearchNumber,
+           FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber) != number {
+            return false
+        }
+        guard routeMatches(entry) else { return false }
+        let departure = Self.moscowMinutes(entry.departureMinutesUTC)
+        return departure >= fromHour * 60 && departure < toHour * 60
+    }
+
+    private var fieldsAreFilled: Bool {
+        !search.isEmpty
+            || !departureQuery.trimmingCharacters(in: .whitespaces).isEmpty
+            || (arrivalEnabled && !arrivalQuery.trimmingCharacters(in: .whitespaces).isEmpty)
+            || fromHour != 0 || toHour != 24
     }
 
     /// Пустое поле — любой аэропорт; иначе начало кода или название/город.
@@ -1239,22 +1272,10 @@ struct FlightScheduleDatabaseV130View: View {
     }
 
     private var values: [FlightScheduleEntryV129] {
-        let number = exactSearchNumber
-        let fromMinutes = fromHour * 60
-        let toMinutes = toHour * 60
-        return store.entries.filter { entry in
-            guard passesFilter(entry),
-                  entryRuns(entry, onMoscowDate: selectedDate) else {
-                return false
-            }
-            if let number,
-               FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber) != number {
-                return false
-            }
-            guard Self.airport(entry.departure, matches: departureQuery),
-                  Self.airport(entry.arrival, matches: arrivalQuery) else { return false }
-            let departure = Self.moscowMinutes(entry.departureMinutesUTC)
-            return departure >= fromMinutes && departure < toMinutes
+        store.entries.filter { entry in
+            passesFilter(entry)
+                && entryRuns(entry, onMoscowDate: selectedDate)
+                && matchesFields(entry)
         }
         // Порядок — по московскому времени вылета, с 00:00 МСК (раньше — по UTC).
         .sorted { left, right in
@@ -1306,24 +1327,44 @@ struct FlightScheduleDatabaseV130View: View {
         let legend: String?
     }
 
-    /// Дни рейса (номер+маршрут) на типах ВС, не прошедших фильтр, кроме уже показанных.
-    private func otherTypeDays(key: String, excluding shown: Set<String>) -> Set<String> {
-        guard groups.count < ScheduleAircraftFilterButton.choices.count else { return [] }
-        let hidden = store.entries.filter { Self.flightKey($0) == key && !passesFilter($0) }
-        return dayKeys(executionDates(for: hidden)).subtracting(shown)
+    /// Запоминает последнюю подсветку: пересчёт только при смене полей, выбора или расписания.
+    private final class HighlightMemo {
+        var key = ""
+        var value: Highlight?
     }
 
-    /// Выбранный рейс → кнопка у подсказки → точный номер в поиске с одним маршрутом.
     private func highlight(rows: [FlightScheduleEntryV129]) -> Highlight? {
+        let base = "\(groupsRaw)|\(store.entries.count)|\(FlightScheduleStoreV129.generation)"
+        let key: String
+        if let flight = selectedFlightKey {
+            let record = selectedRow(in: rows)?.id ?? selectedRecordID ?? ""
+            key = "1|\(flight)|\(record)|\(base)"
+        } else if let route = calendarRouteID {
+            key = "R|\(route)|\(search)|\(base)"
+        } else if fieldsAreFilled {
+            key = "2|\(search)|\(departureQuery)|\(arrivalEnabled)|\(arrivalQuery)|\(fromHour)|\(toHour)|\(base)"
+        } else {
+            return nil
+        }
+        if highlightMemo.key == key { return highlightMemo.value }
+        let value = computeHighlight(rows: rows)
+        highlightMemo.key = key
+        highlightMemo.value = value
+        return value
+    }
+
+    /// Режим 1 (выбранный рейс, главный) → маршрут кнопкой у подсказки → режим 2 (поля фильтра).
+    private func computeHighlight(rows: [FlightScheduleEntryV129]) -> Highlight? {
+        let allTypes = groups.count >= ScheduleAircraftFilterButton.choices.count
         if let key = selectedFlightKey {
-            let entries = store.entries.filter { Self.flightKey($0) == key && passesFilter($0) }
-            guard let sample = entries.first ?? store.entries.first(where: { Self.flightKey($0) == key }) else {
-                return nil
-            }
+            let sameFlight = store.entries.filter { Self.flightKey($0) == key }
+            let entries = sameFlight.filter(passesFilter)
+            guard let sample = entries.first ?? sameFlight.first else { return nil }
             let record = selectedRow(in: rows)
                 ?? entries.first { $0.id == selectedRecordID }
-            let recordDays = record.map { dayKeys(executionDates(for: [$0])) } ?? []
-            let allDays = dayKeys(executionDates(for: entries))
+            let recordDays = record.map { Self.dayKeys(Self.executionDays([$0])) } ?? []
+            let allDays = Self.dayKeys(Self.executionDays(entries))
+            let otherTypes = allTypes ? [] : Self.dayKeys(Self.executionDays(sameFlight.filter { !passesFilter($0) }))
             let legend = record.map {
                 "эта запись \(FlightScheduleStoreV129.shortDay($0.validFrom))–\(FlightScheduleStoreV129.shortDay($0.validTo)), дни \($0.operatingWeekdays.map(String.init).joined())"
             }
@@ -1331,27 +1372,84 @@ struct FlightScheduleDatabaseV130View: View {
                 title: routeTitle(sample.flightNumber, sample.departure, sample.arrival),
                 primary: recordDays,
                 secondary: allDays.subtracting(recordDays),
-                tertiary: otherTypeDays(key: key, excluding: allDays),
+                tertiary: otherTypes.subtracting(allDays),
                 legend: legend
             )
         }
-        let candidates = routeCandidates
-        let route = calendarRouteID.flatMap { id in candidates.first { $0.id == id } }
-            ?? (candidates.count == 1 ? candidates.first : nil)
-        guard let route, let first = route.entries.first else { return nil }
-        let days = dayKeys(executionDates(for: route.entries))
+        if let id = calendarRouteID, let route = routeCandidates.first(where: { $0.id == id }) {
+            return Highlight(
+                title: routeTitle(route.flightNumber, route.departure, route.arrival),
+                primary: Self.dayKeys(Self.executionDays(route.entries)),
+                secondary: [],
+                tertiary: [],
+                legend: nil
+            )
+        }
+        // Режим 2: всё, что подходит под поля, считается одной записью.
+        let matching = store.entries.filter(matchesFields)
+        let shown = Self.dayKeys(Self.executionDays(matching.filter(passesFilter)))
+        let hidden = allTypes ? [] : Self.dayKeys(Self.executionDays(matching.filter { !passesFilter($0) }))
         return Highlight(
-            title: routeTitle(route.flightNumber, route.departure, route.arrival),
-            primary: days,
+            title: fieldsTitle,
+            primary: shown,
             secondary: [],
-            tertiary: otherTypeDays(key: Self.flightKey(first), excluding: days),
-            legend: nil
+            tertiary: hidden.subtracting(shown),
+            legend: shown.isEmpty ? nil : "по фильтру"
         )
     }
 
-    private func dayKeys(_ dates: [Date]) -> Set<String> {
-        Set(dates.map(ScheduleMonthsCalendarView.dayKey))
+    private var fieldsTitle: String {
+        var parts: [String] = []
+        if !search.isEmpty { parts.append("Рейс \(search)") }
+        let departure = departureQuery.trimmingCharacters(in: .whitespaces).uppercased()
+        let arrival = arrivalQuery.trimmingCharacters(in: .whitespaces).uppercased()
+        if arrivalEnabled {
+            if !departure.isEmpty || !arrival.isEmpty {
+                parts.append("\(departure.isEmpty ? "любой" : departure) → \(arrival.isEmpty ? "любой" : arrival)")
+            }
+        } else if !departure.isEmpty {
+            parts.append("\(departure) ⇄")
+        }
+        if fromHour != 0 || toHour != 24 {
+            parts.append(String(format: "%02d–%02d", fromHour, toHour))
+        }
+        return parts.isEmpty ? "Календарь" : parts.joined(separator: " · ")
     }
+
+    /// Дни выполнения по Москве — номера суток от 1970-01-01 (быстро, без календаря).
+    /// Запись хранит даты действия в UTC (полночь) и дни недели ISO (1 = пн).
+    private static func executionDays(_ entries: [FlightScheduleEntryV129]) -> Set<Int> {
+        let offset = moscowTimeZone.secondsFromGMT() / 60
+        var result = Set<Int>()
+        for entry in entries {
+            let first = Int((entry.validFrom.timeIntervalSince1970 / 86_400).rounded(.down))
+            let last = Int((entry.validTo.timeIntervalSince1970 / 86_400).rounded(.down))
+            guard last >= first else { continue }
+            let shift = Int((Double(entry.departureMinutesUTC + offset) / 1440).rounded(.down))
+            var weekdays = [Bool](repeating: false, count: 8)
+            for day in entry.operatingWeekdays where (1...7).contains(day) { weekdays[day] = true }
+            for day in first...last {
+                // 01.01.1970 — четверг (ISO 4).
+                let iso = ((day + 3) % 7 + 7) % 7 + 1
+                if weekdays[iso] { result.insert(day + shift) }
+            }
+        }
+        return result
+    }
+
+    private static var dayKeyCache: [Int: String] = [:]
+
+    private static func dayKeys(_ days: Set<Int>) -> Set<String> {
+        Set(days.map { day in
+            if let cached = dayKeyCache[day] { return cached }
+            let date = Date(timeIntervalSince1970: TimeInterval(day) * 86_400)
+            let parts = Calendar.gregorianUTC.dateComponents([.year, .month, .day], from: date)
+            let key = String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+            dayKeyCache[day] = key
+            return key
+        })
+    }
+
 
     private func routeTitle(_ number: String, _ departure: String, _ arrival: String) -> String {
         "Рейс \(FlightScheduleStoreV129.displayFlightNumber(number)) · \(AirportDatabase.displayName(for: departure)) → \(AirportDatabase.displayName(for: arrival))"
@@ -1458,21 +1556,56 @@ struct FlightScheduleDatabaseV130View: View {
                         if digits != value { search = digits }
                     }
 
-                TextField("Вылет", text: $departureQuery)
+                TextField(arrivalEnabled ? "Вылет" : "Аэропорт", text: $departureQuery)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 150)
-                Image(systemName: "arrow.right")
-                    .foregroundStyle(.secondary)
+                // Стрелка меняет вылет и прилёт местами.
+                Button {
+                    let value = departureQuery
+                    departureQuery = arrivalQuery
+                    arrivalQuery = value
+                } label: {
+                    Image(systemName: "arrow.left.arrow.right")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!arrivalEnabled)
                 TextField("Прилёт", text: $arrivalQuery)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .textFieldStyle(.roundedBorder)
+                    .disabled(!arrivalEnabled)
+                    .opacity(arrivalEnabled ? 1 : 0.45)
+                    .padding(.trailing, 0)
+                    .overlay(alignment: .trailing) {
+                        // Галочка: выключена — поле серое, пустое, а левое ищет в обе стороны.
+                        Button {
+                            arrivalEnabled.toggle()
+                            arrivalQuery = ""
+                        } label: {
+                            Image(systemName: arrivalEnabled ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(arrivalEnabled ? Color.teal : Color.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .padding(.trailing, 6)
+                    }
                     .frame(width: 150)
 
-                AeroHourPickerButton(title: "с", hour: $fromHour, range: 0...23)
-                AeroHourPickerButton(title: "до", hour: $toHour, range: 1...24)
+                ScheduleHourWheelField(
+                    title: "с",
+                    hour: $fromHour,
+                    range: 0...23,
+                    isActive: activeHourField == "from",
+                    onActivate: { activeHourField = activeHourField == "from" ? nil : "from" }
+                )
+                ScheduleHourWheelField(
+                    title: "до",
+                    hour: $toHour,
+                    range: 1...24,
+                    isActive: activeHourField == "to",
+                    onActivate: { activeHourField = activeHourField == "to" ? nil : "to" }
+                )
 
                 ScheduleAircraftFilterButton(selection: groupsBinding)
 
@@ -1662,24 +1795,6 @@ struct FlightScheduleDatabaseV130View: View {
             if moscowCalendar.isDate(engineOn, inSameDayAs: date) { return true }
         }
         return false
-    }
-
-    private func executionDates(for entries: [FlightScheduleEntryV129]) -> [Date] {
-        var result = Set<Date>()
-        for entry in entries {
-            var day = entry.validFrom
-            while day <= entry.validTo {
-                let weekday = utcCalendar.component(.weekday, from: day)
-                let isoWeekday = weekday == 1 ? 7 : weekday - 1
-                if entry.operatingWeekdays.contains(isoWeekday),
-                   let engineOn = utcCalendar.date(byAdding: .minute, value: entry.departureMinutesUTC, to: day) {
-                    result.insert(moscowCalendar.startOfDay(for: engineOn))
-                }
-                guard let next = utcCalendar.date(byAdding: .day, value: 1, to: day) else { break }
-                day = next
-            }
-        }
-        return result.sorted()
     }
 
     private var utcCalendar: Calendar {
