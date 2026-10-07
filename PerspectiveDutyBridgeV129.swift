@@ -184,17 +184,8 @@ enum DutyAutofillV129 {
     }
 
     static func displayAirport(code: String, terminal: String?) -> String {
-        let base = code.uppercased()
-        let airport = AirportDatabase.airport(for: base)
-        let name = base == "SVO" ? "Шереметьево" : (airport?.name ?? base)
-        let terminalValue = terminal?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
-        let shownTerminal = base == "SVO" && ["D", "E", "F"].contains(terminalValue ?? "")
-            ? terminalValue
-            : nil
-        let shownCode = shownTerminal.map { "\(base)/\($0)" } ?? base
-        return "\(name) (\(shownCode))"
+        let value = terminal?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return AirportDatabase.displayName(for: value.isEmpty ? code : "\(code)/\(value)")
     }
 }
 

@@ -1172,11 +1172,65 @@ struct AircraftReferenceSettingsV129View: View {
 
 struct FlightScheduleDatabaseV130View: View {
     @ObservedObject private var store = FlightScheduleStoreV129.shared
+    /// Номер рейса (до 4 цифр).
     @State private var search = ""
+    @State private var departureQuery = ""
+    @State private var arrivalQuery = ""
+    /// Галочка в поле «Прилёт». Выключена — левое поле ищет аэропорт и в вылете, и в прилёте.
+    @State private var arrivalEnabled = true
+    /// Какая крутилка часов сейчас крутится: "from" / "to".
+    @State private var activeHourField: String?
+    @State private var highlightMemo = HighlightMemo()
+    @State private var typeMenuOpen = false
+    @State private var fromFieldFrame: CGRect = .zero
+    @State private var toFieldFrame: CGRect = .zero
+    /// Вкладка «Тест» (07.10): та же таблица, шрифт крупнее, вся таблица в общей карточке.
+    private let cardStyle: Bool
+
+    /// Сортировка по столбцу (тап по заголовку). При входе — по времени UTC по возрастанию.
+    private enum SortColumn { case flight, route, time, type, duration }
+    @State private var sortColumn: SortColumn = .time
+    @State private var sortAscending = true
+
+    /// Крупный шрифт — только во вкладке «Тест» (Денис 07.10 05:39).
+    private let largeText: Bool
+
+    init(cardStyle: Bool = true, largeText: Bool = false) {
+        // Денис 07.10 05:11: основная база — карточкой; шрифт прежний (05:23).
+        self.cardStyle = cardStyle
+        self.largeText = largeText
+    }
+    @State private var typeButtonFrame: CGRect = .zero
+    /// Часы вылета по UTC: с `fromHour` до `toHour` (24 — до конца суток).
+    @State private var fromHour = 0
+    @State private var toHour = 24
     @State private var selectedDate = moscowCalendar.startOfDay(for: Date())
-    @State private var group: FlightScheduleAircraftGroupV131 = .all
-    @State private var expandedEntryID: String?
-    @State private var calendarRequest: FlightScheduleCalendarRequestV134?
+    @AppStorage(ScheduleAircraftFilterButton.storageKey) private var groupsRaw = ""
+    /// Выбранный рейс: номер + маршрут. Держится при смене дня, пока его не снимут.
+    @State private var selectedFlightKey: String?
+    /// Запись расписания, раскрытая последней (её дни — сплошной круг).
+    @State private var selectedRecordID: String?
+    @State private var showCalendarPopover = false
+    /// Маршрут, для которого календарь открыли кнопкой «Календарь выполнения» (узкий экран).
+    @State private var calendarRouteID: String?
+
+    /// Ширина, с которой календарь стоит справа от таблицы, а не всплывает.
+    private static let sideCalendarMinWidth: CGFloat = 860
+
+    private var groups: Set<FlightScheduleAircraftGroupV131> {
+        ScheduleAircraftFilterButton.decode(groupsRaw)
+    }
+
+    private var groupsBinding: Binding<Set<FlightScheduleAircraftGroupV131>> {
+        Binding(
+            get: { groups },
+            set: { groupsRaw = ScheduleAircraftFilterButton.encode($0) }
+        )
+    }
+
+    private func passesFilter(_ entry: FlightScheduleEntryV129) -> Bool {
+        ScheduleAircraftFilterButton.matches(groups, rawAircraftCode: entry.rawAircraftCode)
+    }
 
     private var exactSearchNumber: String? {
         let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1189,34 +1243,116 @@ struct FlightScheduleDatabaseV130View: View {
         guard let number = exactSearchNumber else { return [] }
         return store.entries.filter {
             FlightScheduleStoreV129.normalizedFlightNumber($0.flightNumber) == number
-                && group.contains(rawAircraftCode: $0.rawAircraftCode)
+                && passesFilter($0)
+                && routeMatches($0)
         }
     }
 
+    /// Маршрут по полям: «Вылет → Прилёт» или, без галочки, один аэропорт в любую сторону.
+    private func routeMatches(_ entry: FlightScheduleEntryV129) -> Bool {
+        if arrivalEnabled {
+            return Self.airport(entry.departure, matches: departureQuery)
+                && Self.airport(entry.arrival, matches: arrivalQuery)
+        }
+        let query = departureQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        return Self.airport(entry.departure, matches: query) || Self.airport(entry.arrival, matches: query)
+    }
+
+    /// Номер, маршрут и часы — то же, что фильтрует список (без даты и типа ВС).
+    private func matchesFields(_ entry: FlightScheduleEntryV129) -> Bool {
+        if let number = exactSearchNumber,
+           FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber) != number {
+            return false
+        }
+        guard routeMatches(entry) else { return false }
+        let departure = entry.departureMinutesUTC % 1440
+        return departure >= fromHour * 60 && departure < toHour * 60
+    }
+
+    private var fieldsAreFilled: Bool {
+        !search.isEmpty
+            || !departureQuery.trimmingCharacters(in: .whitespaces).isEmpty
+            || (arrivalEnabled && !arrivalQuery.trimmingCharacters(in: .whitespaces).isEmpty)
+            || fromHour != 0 || toHour != 24
+    }
+
+    /// Пустое поле — любой аэропорт; иначе начало кода или название/город.
+    private static func airport(_ code: String, matches rawQuery: String) -> Bool {
+        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+        if code.uppercased().hasPrefix(query.uppercased()) { return true }
+        return AirportDatabase.airport(for: code)?.matches(query) ?? false
+    }
+
+
     private var values: [FlightScheduleEntryV129] {
-        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalizedNumber = FlightScheduleStoreV129.normalizedFlightNumber(query)
-        return store.entries.filter { entry in
-            guard group.contains(rawAircraftCode: entry.rawAircraftCode),
-                  entryRuns(entry, onMoscowDate: selectedDate) else {
-                return false
-            }
-            guard !query.isEmpty else { return true }
-            return (!normalizedNumber.isEmpty
-                && FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber) == normalizedNumber)
-                || entry.departure.localizedCaseInsensitiveContains(query)
-                || entry.arrival.localizedCaseInsensitiveContains(query)
-                || (AirportDatabase.airport(for: entry.departure)?.name.localizedCaseInsensitiveContains(query) ?? false)
-                || (AirportDatabase.airport(for: entry.arrival)?.name.localizedCaseInsensitiveContains(query) ?? false)
-                || AircraftFamilyV129.display(entry.rawAircraftCode).localizedCaseInsensitiveContains(query)
+        store.entries.filter { entry in
+            passesFilter(entry)
+                && Self.entryDepartsOn(utcDay: selectedUTCDay, entry)
+                && matchesFields(entry)
         }
-        .sorted { left, right in
-            if left.departureMinutesUTC == right.departureMinutesUTC {
-                return FlightScheduleStoreV129.normalizedFlightNumber(left.flightNumber)
-                    .localizedStandardCompare(FlightScheduleStoreV129.normalizedFlightNumber(right.flightNumber)) == .orderedAscending
-            }
-            return left.departureMinutesUTC < right.departureMinutesUTC
+        // Всё по UTC (Денис 07.10 03:50): дни недели расписания заданы по UTC.
+        .sorted(by: sortsBefore)
+    }
+
+    private static func flightNumberValue(_ entry: FlightScheduleEntryV129) -> Int {
+        Int(FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber).filter(\.isNumber)) ?? Int.max
+    }
+
+    private static func airportName(_ code: String) -> String {
+        AirportDatabase.airport(for: code)?.name ?? code
+    }
+
+    private func sortsBefore(_ left: FlightScheduleEntryV129, _ right: FlightScheduleEntryV129) -> Bool {
+        let order: ComparisonResult
+        switch sortColumn {
+        case .flight:
+            let l = Self.flightNumberValue(left), r = Self.flightNumberValue(right)
+            order = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        case .route:
+            // По названиям аэропортов (городов), не по кодам: сначала вылет, потом прилёт.
+            let l = Self.airportName(left.departure) + " " + Self.airportName(left.arrival)
+            let r = Self.airportName(right.departure) + " " + Self.airportName(right.arrival)
+            order = l.localizedCompare(r)
+        case .time:
+            let l = left.departureMinutesUTC % 1440, r = right.departureMinutesUTC % 1440
+            order = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
+        case .type:
+            order = AircraftFamilyV129.display(left.rawAircraftCode)
+                .localizedStandardCompare(AircraftFamilyV129.display(right.rawAircraftCode))
+        case .duration:
+            let l = left.flightMinutes, r = right.flightMinutes
+            order = l == r ? .orderedSame : (l < r ? .orderedAscending : .orderedDescending)
         }
+        if order != .orderedSame {
+            return sortAscending ? order == .orderedAscending : order == .orderedDescending
+        }
+        // При равенстве — по времени вылета, затем по номеру.
+        let lt = left.departureMinutesUTC % 1440, rt = right.departureMinutesUTC % 1440
+        if lt != rt { return lt < rt }
+        return Self.flightNumberValue(left) < Self.flightNumberValue(right)
+    }
+
+    private func sortHeader(_ title: String, _ column: SortColumn) -> some View {
+        Button {
+            if sortColumn == column {
+                sortAscending.toggle()
+            } else {
+                sortColumn = column
+                sortAscending = true
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text(title)
+                if sortColumn == column {
+                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.bold))
+                }
+            }
+            .foregroundStyle(sortColumn == column ? Color.teal : Color.secondary)
+        }
+        .buttonStyle(.plain)
     }
 
     private var routeCandidates: [FlightScheduleRouteCandidateV131] {
@@ -1235,75 +1371,412 @@ struct FlightScheduleDatabaseV130View: View {
         .sorted { ($0.departure, $0.arrival) < ($1.departure, $1.arrival) }
     }
 
+    // MARK: Выбранный рейс и подсветка дней выполнения
+
+    private static func flightKey(_ entry: FlightScheduleEntryV129) -> String {
+        "\(FlightScheduleStoreV129.normalizedFlightNumber(entry.flightNumber))|\(entry.departure)|\(entry.arrival)"
+    }
+
+    /// Строка выбранного рейса в списке выбранного дня (если в этот день он летает).
+    private func selectedRow(in rows: [FlightScheduleEntryV129]) -> FlightScheduleEntryV129? {
+        guard let key = selectedFlightKey else { return nil }
+        return rows.first { $0.id == selectedRecordID && Self.flightKey($0) == key }
+            ?? rows.first { Self.flightKey($0) == key }
+    }
+
+    private struct Highlight {
+        let title: String
+        let primary: Set<String>
+        let secondary: Set<String>
+        /// Дни, когда рейс летает на неотмеченных в фильтре типах ВС.
+        let tertiary: Set<String>
+        let legend: String?
+    }
+
+    /// Запоминает последнюю подсветку: пересчёт только при смене полей, выбора или расписания.
+    private final class HighlightMemo {
+        var key = ""
+        var value: Highlight?
+    }
+
+    private func highlight(rows: [FlightScheduleEntryV129]) -> Highlight? {
+        let base = "\(groupsRaw)|\(store.entries.count)|\(FlightScheduleStoreV129.generation)"
+        let key: String
+        if let flight = selectedFlightKey {
+            let record = selectedRow(in: rows)?.id ?? selectedRecordID ?? ""
+            key = "1|\(flight)|\(record)|\(base)"
+        } else if let route = calendarRouteID {
+            key = "R|\(route)|\(search)|\(base)"
+        } else if fieldsAreFilled {
+            key = "2|\(search)|\(departureQuery)|\(arrivalEnabled)|\(arrivalQuery)|\(fromHour)|\(toHour)|\(base)"
+        } else {
+            return nil
+        }
+        if highlightMemo.key == key { return highlightMemo.value }
+        let value = computeHighlight(rows: rows)
+        highlightMemo.key = key
+        highlightMemo.value = value
+        return value
+    }
+
+    /// Режим 1 (выбранный рейс, главный) → маршрут кнопкой у подсказки → режим 2 (поля фильтра).
+    private func computeHighlight(rows: [FlightScheduleEntryV129]) -> Highlight? {
+        let allTypes = groups.count >= ScheduleAircraftFilterButton.choices.count
+        if let key = selectedFlightKey {
+            let sameFlight = store.entries.filter { Self.flightKey($0) == key }
+            let entries = sameFlight.filter(passesFilter)
+            guard let sample = entries.first ?? sameFlight.first else { return nil }
+            let record = selectedRow(in: rows)
+                ?? entries.first { $0.id == selectedRecordID }
+            let recordDays = record.map { Self.dayKeys(Self.executionDays([$0])) } ?? []
+            let allDays = Self.dayKeys(Self.executionDays(entries))
+            let otherTypes = allTypes ? [] : Self.dayKeys(Self.executionDays(sameFlight.filter { !passesFilter($0) }))
+            let legend = record.map {
+                "эта запись \(FlightScheduleStoreV129.shortDay($0.validFrom))–\(FlightScheduleStoreV129.shortDay($0.validTo)), дни \($0.operatingWeekdays.map(String.init).joined())"
+            }
+            return Highlight(
+                title: routeTitle(sample.flightNumber, sample.departure, sample.arrival),
+                primary: recordDays,
+                secondary: allDays.subtracting(recordDays),
+                tertiary: otherTypes.subtracting(allDays),
+                legend: legend
+            )
+        }
+        if let id = calendarRouteID, let route = routeCandidates.first(where: { $0.id == id }) {
+            return Highlight(
+                title: routeTitle(route.flightNumber, route.departure, route.arrival),
+                primary: Self.dayKeys(Self.executionDays(route.entries)),
+                secondary: [],
+                tertiary: [],
+                legend: nil
+            )
+        }
+        // Режим 2: всё, что подходит под поля, считается одной записью.
+        let matching = store.entries.filter(matchesFields)
+        let shown = Self.dayKeys(Self.executionDays(matching.filter(passesFilter)))
+        let hidden = allTypes ? [] : Self.dayKeys(Self.executionDays(matching.filter { !passesFilter($0) }))
+        return Highlight(
+            title: fieldsTitle,
+            primary: shown,
+            secondary: [],
+            tertiary: hidden.subtracting(shown),
+            legend: shown.isEmpty ? nil : "по фильтру"
+        )
+    }
+
+    private var fieldsTitle: String {
+        var parts: [String] = []
+        if !search.isEmpty { parts.append("Рейс \(search)") }
+        let departure = departureQuery.trimmingCharacters(in: .whitespaces).uppercased()
+        let arrival = arrivalQuery.trimmingCharacters(in: .whitespaces).uppercased()
+        if arrivalEnabled {
+            if !departure.isEmpty || !arrival.isEmpty {
+                parts.append("\(departure.isEmpty ? "любой" : departure) → \(arrival.isEmpty ? "любой" : arrival)")
+            }
+        } else if !departure.isEmpty {
+            parts.append("\(departure) ⇄")
+        }
+        if fromHour != 0 || toHour != 24 {
+            parts.append(String(format: "%02d–%02d", fromHour, toHour))
+        }
+        return parts.isEmpty ? "Календарь" : parts.joined(separator: " · ")
+    }
+
+    /// Дни вылета по UTC — номера суток от 1970-01-01 (быстро, без календаря).
+    /// Запись хранит даты действия в UTC (полночь) и дни недели ISO (1 = пн).
+    private static func executionDays(_ entries: [FlightScheduleEntryV129]) -> Set<Int> {
+        var result = Set<Int>()
+        for entry in entries {
+            let first = Int((entry.validFrom.timeIntervalSince1970 / 86_400).rounded(.down))
+            let last = Int((entry.validTo.timeIntervalSince1970 / 86_400).rounded(.down))
+            guard last >= first else { continue }
+            let shift = entry.departureMinutesUTC / 1440
+            var weekdays = [Bool](repeating: false, count: 8)
+            for day in entry.operatingWeekdays where (1...7).contains(day) { weekdays[day] = true }
+            for day in first...last {
+                // 01.01.1970 — четверг (ISO 4).
+                let iso = ((day + 3) % 7 + 7) % 7 + 1
+                if weekdays[iso] { result.insert(day + shift) }
+            }
+        }
+        return result
+    }
+
+    private static var dayKeyCache: [Int: String] = [:]
+
+    /// Выбранная дата календаря как сутки UTC (число и месяц те же).
+    private var selectedUTCDay: Int {
+        let parts = moscowCalendar.dateComponents([.year, .month, .day], from: selectedDate)
+        guard let date = Calendar.gregorianUTC.date(
+            from: DateComponents(year: parts.year, month: parts.month, day: parts.day)
+        ) else { return 0 }
+        return Int((date.timeIntervalSince1970 / 86_400).rounded(.down))
+    }
+
+    /// Вылетает ли рейс записи в эти сутки UTC.
+    private static func entryDepartsOn(utcDay: Int, _ entry: FlightScheduleEntryV129) -> Bool {
+        let operating = utcDay - entry.departureMinutesUTC / 1440
+        let first = Int((entry.validFrom.timeIntervalSince1970 / 86_400).rounded(.down))
+        let last = Int((entry.validTo.timeIntervalSince1970 / 86_400).rounded(.down))
+        guard operating >= first, operating <= last else { return false }
+        let iso = ((operating + 3) % 7 + 7) % 7 + 1
+        return entry.operatingWeekdays.contains(iso)
+    }
+
+    private static func dayKeys(_ days: Set<Int>) -> Set<String> {
+        Set(days.map { day in
+            if let cached = dayKeyCache[day] { return cached }
+            let date = Date(timeIntervalSince1970: TimeInterval(day) * 86_400)
+            let parts = Calendar.gregorianUTC.dateComponents([.year, .month, .day], from: date)
+            let key = String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+            dayKeyCache[day] = key
+            return key
+        })
+    }
+
+
+    private func routeTitle(_ number: String, _ departure: String, _ arrival: String) -> String {
+        "Рейс \(FlightScheduleStoreV129.displayFlightNumber(number)) · \(AirportDatabase.displayName(for: departure)) → \(AirportDatabase.displayName(for: arrival))"
+    }
+
+    private func calendarView(_ highlight: Highlight?, cardLayout: Bool = false) -> some View {
+        ScheduleMonthsCalendarView(
+            selectedDate: $selectedDate,
+            primaryDays: highlight?.primary ?? [],
+            secondaryDays: highlight?.secondary ?? [],
+            tertiaryDays: highlight?.tertiary ?? [],
+            title: highlight?.title,
+            legend: highlight?.legend,
+            cardLayout: cardLayout
+        )
+    }
+
+    private var fullDateTitle: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "EE, d MMMM yyyy"
+        let text = formatter.string(from: selectedDate)
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    private func flightsCountText(_ count: Int) -> String {
+        let tail = count % 100
+        let last = count % 10
+        let word: String
+        if (11...14).contains(tail) { word = "рейсов" }
+        else if last == 1 { word = "рейс" }
+        else if (2...4).contains(last) { word = "рейса" }
+        else { word = "рейсов" }
+        return "\(count) \(word)"
+    }
+
     private var selectedDateButtonTitle: String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "ru_RU")
-    formatter.timeZone = moscowTimeZone
-    formatter.dateFormat = "d MMM yyyy"
-    return formatter.string(from: selectedDate).replacingOccurrences(of: ".", with: "")
-}
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.timeZone = moscowTimeZone
+        formatter.dateFormat = "d MMM yyyy"
+        return formatter.string(from: selectedDate).replacingOccurrences(of: ".", with: "")
+    }
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                Button {
-            openDateCalendar()
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "calendar")
-                Text(selectedDateButtonTitle)
-                    .font(.subheadline.monospacedDigit())
+        GeometryReader { geometry in
+            let isWide = geometry.size.width >= Self.sideCalendarMinWidth
+            let rows = values
+            let route = highlight(rows: rows)
+            HStack(spacing: 0) {
+                tablePane(isWide: isWide, route: route, rows: rows)
+                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                if isWide {
+                    calendarView(route, cardLayout: true)
+                        .padding(.top, 8)
+                        .padding(.trailing, 12)
+                        .padding(.bottom, 12)
+                        .frame(width: 380)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                }
             }
         }
-        .buttonStyle(.bordered)
-        .popover(item: $calendarRequest) { request in
-            FlightExecutionCalendarV134View(request: request) { date in
-                selectedDate = date
-                calendarRequest = nil
-            }
-        }
-
-                Picker("Семейство ВС", selection: $group) {
-                    ForEach(FlightScheduleAircraftGroupV131.allCases) { value in
-                        Text(value.rawValue).tag(value)
+        // Нижний отступ карточек — от края экрана, как слева (12).
+        .ignoresSafeArea(.container, edges: .bottom)
+        .overlay {
+            // Своё окно типов ВС: под кнопкой; тап мимо — закрыть.
+            if typeMenuOpen {
+                GeometryReader { geometry in
+                    let origin = geometry.frame(in: .global).origin
+                    ZStack(alignment: .topLeading) {
+                        Color.black.opacity(0.001)
+                            .onTapGesture { typeMenuOpen = false }
+                        ScheduleAircraftMenuPanel(selection: groupsBinding)
+                            .offset(
+                                x: typeButtonFrame.minX - origin.x,
+                                y: typeButtonFrame.maxY - origin.y + 6
+                            )
                     }
                 }
-                .pickerStyle(.menu)
+            }
+        }
+        // Тап в любом месте мимо крутилок часов закрывает крутилку.
+        .simultaneousGesture(
+            SpatialTapGesture(coordinateSpace: .global).onEnded { value in
+                guard activeHourField != nil else { return }
+                let inside = [fromFieldFrame, toFieldFrame].contains {
+                    $0.insetBy(dx: -4, dy: -14).contains(value.location)
+                }
+                if !inside { activeHourField = nil }
+            }
+        )
+        // Строку «База расписания» не показываем (Денис 07.10 05:11).
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: search) { _, _ in calendarRouteID = nil }
+        .onChange(of: fromHour) { _, value in if toHour <= value { toHour = value + 1 } }
+        .onChange(of: toHour) { _, value in if fromHour >= value { fromHour = value - 1 } }
+    }
 
-                TextField("Рейс или аэропорт", text: $search)
+    private func tablePane(
+        isWide: Bool,
+        route: Highlight?,
+        rows values: [FlightScheduleEntryV129]
+    ) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                if !isWide {
+                    Button {
+                        showCalendarPopover = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "calendar")
+                            Text(selectedDateButtonTitle)
+                                .font(.subheadline.monospacedDigit())
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .popover(isPresented: $showCalendarPopover) {
+                        calendarView(route)
+                            .padding(12)
+                            .frame(width: 380, height: 520)
+                            .background(Color(uiColor: .systemBackground))
+                            .presentationBackground(Color(uiColor: .systemBackground))
+                            .presentationCompactAdaptation(.popover)
+                            .onChange(of: selectedDate) { _, _ in showCalendarPopover = false }
+                    }
+                }
+
+                TextField("Рейс", text: $search)
+                    .keyboardType(.numberPad)
+                    .scheduleFilterTile()
+                    .frame(width: 66)
+                    .onChange(of: search) { _, value in
+                        let digits = String(value.filter(\.isNumber).prefix(4))
+                        if digits != value { search = digits }
+                    }
+
+                TextField(arrivalEnabled ? "Вылет" : "Аэропорт", text: $departureQuery)
                     .textInputAutocapitalization(.characters)
-                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .scheduleFilterTile()
+                    .frame(width: 124)
+                // Стрелка меняет вылет и прилёт местами.
+                Button {
+                    let value = departureQuery
+                    departureQuery = arrivalQuery
+                    arrivalQuery = value
+                } label: {
+                    Image(systemName: "arrow.left.arrow.right")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!arrivalEnabled)
+                TextField("Прилёт", text: $arrivalQuery)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .scheduleFilterTile()
+                    .disabled(!arrivalEnabled)
+                    .opacity(arrivalEnabled ? 1 : 0.45)
+                    .padding(.trailing, 0)
+                    .overlay(alignment: .trailing) {
+                        // Галочка: выключена — поле серое, пустое, а левое ищет в обе стороны.
+                        Button {
+                            arrivalEnabled.toggle()
+                            arrivalQuery = ""
+                        } label: {
+                            Image(systemName: arrivalEnabled ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(arrivalEnabled ? Color.teal : Color.secondary)
+                        }
+                        .buttonStyle(.borderless)
+                        .padding(.trailing, 6)
+                    }
+                    .frame(width: 124)
+
+                ScheduleHourWheelField(
+                    title: "с",
+                    hour: $fromHour,
+                    range: 0...23,
+                    isActive: activeHourField == "from",
+                    onActivate: { activeHourField = activeHourField == "from" ? nil : "from" },
+                    frame: $fromFieldFrame
+                )
+                ScheduleHourWheelField(
+                    title: "до",
+                    hour: $toHour,
+                    range: 1...24,
+                    isActive: activeHourField == "to",
+                    onActivate: { activeHourField = activeHourField == "to" ? nil : "to" },
+                    frame: $toFieldFrame
+                )
+
+                ScheduleAircraftFilterButton(
+                    selection: groupsBinding,
+                    isOpen: $typeMenuOpen,
+                    frame: $typeButtonFrame
+                )
+
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)
 
             HStack {
-        Text("Дата вылета по Москве · \(values.count) строк")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        Spacer()
-    }
-    .padding(.horizontal, 12)
+                Text(isWide
+                    ? "\(fullDateTitle) · дата вылета по UTC · \(flightsCountText(values.count))"
+                    : "Дата вылета по UTC · \(flightsCountText(values.count))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
 
             if values.isEmpty,
                exactSearchNumber != nil,
                !routeCandidates.isEmpty {
                 VStack(spacing: 6) {
-                    ForEach(routeCandidates) { route in
+                    ForEach(routeCandidates) { candidate in
                         HStack(spacing: 10) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Рейс \(FlightScheduleStoreV129.displayFlightNumber(route.flightNumber)) · \(route.departure) → \(route.arrival)")
+                                Text(routeTitle(candidate.flightNumber, candidate.departure, candidate.arrival))
                                     .font(.subheadline.weight(.semibold))
                                 Text("В выбранную дату не выполняется")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Button("Календарь выполнения") {
-                                openExecutionCalendar(for: route)
+                            if isWide {
+                                if routeCandidates.count > 1 {
+                                    Button(calendarRouteID == candidate.id ? "Подсвечено" : "Показать дни") {
+                                        calendarRouteID = candidate.id
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            } else {
+                                Button("Календарь выполнения") {
+                                    calendarRouteID = candidate.id
+                                    showCalendarPopover = true
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
@@ -1318,143 +1791,155 @@ struct FlightScheduleDatabaseV130View: View {
 
             VStack(spacing: 0) {
                 HStack(spacing: 8) {
-                    Text("Рейс").frame(width: 54, alignment: .leading)
-                    Text("Маршрут").frame(maxWidth: .infinity, alignment: .leading)
-                    Text("UTC").frame(width: 112, alignment: .leading)
-                    Text("Тип ВС").frame(width: 78, alignment: .leading)
-                    Text("Полёт.").frame(width: 56, alignment: .trailing)
+                    sortHeader("Рейс", .flight).frame(width: numberWidth, alignment: .leading)
+                    sortHeader("Маршрут", .route).frame(maxWidth: .infinity, alignment: .leading)
+                    sortHeader("Время UTC", .time).frame(width: timeWidth, alignment: .leading)
+                    sortHeader("Тип ВС", .type).frame(width: typeWidth, alignment: .leading)
+                    sortHeader("Полётное время", .duration).frame(width: durationWidth, alignment: .center)
                 }
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font((largeText ? Font.subheadline : Font.caption).weight(.semibold))
                 .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color(uiColor: .secondarySystemGroupedBackground))
+                .padding(.vertical, largeText ? 9 : 6)
+                .background(cardStyle ? Color.clear : Color(uiColor: .secondarySystemGroupedBackground))
+                if cardStyle { Divider() }
 
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(values) { entry in
-                            scheduleRow(entry)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            if let key = selectedFlightKey,
+                               selectedRow(in: values) == nil,
+                               let sample = store.entries.first(where: { Self.flightKey($0) == key }) {
+                                HStack(spacing: 10) {
+                                    Text("\(routeTitle(sample.flightNumber, sample.departure, sample.arrival)) в этот день не выполняется")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button("Снять выделение") {
+                                        selectedFlightKey = nil
+                                        selectedRecordID = nil
+                                    }
+                                    .controlSize(.small)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(Color.teal.opacity(0.10))
+                                Divider()
+                            }
+                            ForEach(values) { entry in
+                                VStack(spacing: 0) {
+                                    scheduleRow(entry, expanded: selectedRow(in: values)?.id == entry.id)
+                                }
+                                .id(entry.id)
+                            }
+                        }
+                    }
+                    .onChange(of: selectedDate) { _, _ in
+                        // Выбранный рейс в новом дне: раскрыть его запись и прокрутить к нему.
+                        guard let row = selectedRow(in: self.values) else { return }
+                        selectedRecordID = row.id
+                        DispatchQueue.main.async {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                proxy.scrollTo(row.id, anchor: .center)
+                            }
                         }
                     }
                 }
             }
+            // «Тест»: вся таблица — в общей карточке.
+            .background {
+                if cardStyle {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: cardStyle ? 14 : 0, style: .continuous))
+            // Отступ сверху от строки даты — как между фильтром и датой (8), снизу и по бокам — 12.
+            .padding(.horizontal, cardStyle ? 12 : 0)
+            .padding(.bottom, cardStyle ? 12 : 0)
         }
-        .navigationTitle("База расписания")
-        .navigationBarTitleDisplayMode(.inline)
-
     }
 
+    // Ширины столбцов и шрифты — прежние (Денис 07.10 05:23: шрифт не трогать, только карточка).
+    private var numberWidth: CGFloat { largeText ? 64 : 54 }
+    private var timeWidth: CGFloat { largeText ? 124 : 104 }
+    private var typeWidth: CGFloat { largeText ? 84 : 70 }
+    private var durationWidth: CGFloat { largeText ? 130 : 104 }
+    private var mainFont: Font { largeText ? .body : .subheadline }
+    private var cellFont: Font { largeText ? .callout : .caption }
+
     @ViewBuilder
-    private func scheduleRow(_ entry: FlightScheduleEntryV129) -> some View {
+    private func scheduleRow(_ entry: FlightScheduleEntryV129, expanded isExpanded: Bool) -> some View {
         Button {
-            expandedEntryID = expandedEntryID == entry.id ? nil : entry.id
+            if isExpanded {
+                selectedFlightKey = nil
+                selectedRecordID = nil
+            } else {
+                selectedFlightKey = Self.flightKey(entry)
+                selectedRecordID = entry.id
+            }
         } label: {
             HStack(spacing: 8) {
                 Text(FlightScheduleStoreV129.displayFlightNumber(entry.flightNumber))
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .frame(width: 54, alignment: .leading)
-                Text("\(entry.departure) → \(entry.arrival)")
-                    .font(.subheadline)
+                    .font(mainFont.weight(.semibold).monospacedDigit())
+                    .frame(width: numberWidth, alignment: .leading)
+                Text("\(AirportDatabase.displayName(for: entry.departure)) → \(AirportDatabase.displayName(for: entry.arrival))")
+                    .font(mainFont)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 Text("\(clock(entry.departureMinutesUTC))–\(clock(entry.arrivalMinutesUTC))")
-                    .font(.caption.monospacedDigit())
-                    .frame(width: 112, alignment: .leading)
+                    .font(cellFont.monospacedDigit())
+                    .frame(width: timeWidth, alignment: .leading)
                 Text(AircraftFamilyV129.display(entry.rawAircraftCode))
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 78, alignment: .leading)
+                    .font(cellFont.weight(.semibold))
+                    .frame(width: typeWidth, alignment: .leading)
                 Text(timeText(entry.flightMinutes))
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .frame(width: 56, alignment: .trailing)
+                    .font(cellFont.weight(.semibold).monospacedDigit())
+                    .frame(width: durationWidth, alignment: .center)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 5)
+            .padding(.vertical, largeText ? 8 : 5)
+            .background(isExpanded ? Color.teal.opacity(0.10) : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
 
-        if expandedEntryID == entry.id {
-            Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined()) · код \(entry.rawAircraftCode)" + (entry.configuration.map { " · \($0)" } ?? ""))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 74)
-                .padding(.bottom, 5)
+        if isExpanded {
+            // Доп. информация — по тем же столбцам: МСК под UTC, код и компоновка под типом ВС.
+            HStack(spacing: 8) {
+                Color.clear.frame(width: numberWidth, height: 1)
+                Text("\(FlightScheduleStoreV129.shortDay(entry.validFrom))–\(FlightScheduleStoreV129.shortDay(entry.validTo)) · дни \(entry.operatingWeekdays.map(String.init).joined())")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("\(moscowClock(entry.departureMinutesUTC))–\(moscowClock(entry.arrivalMinutesUTC))")
+                    .monospacedDigit()
+                    .frame(width: timeWidth, alignment: .leading)
+                    .overlay(alignment: .leading) {
+                        Text("МСК")
+                            .fixedSize()
+                            .offset(x: -30)
+                    }
+                Text(entry.rawAircraftCode + (entry.configuration.map { "  ·  \($0)" } ?? ""))
+                    .lineLimit(1)
+                    .frame(width: typeWidth + 8 + durationWidth, alignment: .leading)
+            }
+            .font(cellFont)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 5)
+            .background(Color.teal.opacity(0.10))
         }
         Divider()
     }
 
-    private func entryRuns(_ entry: FlightScheduleEntryV129, onMoscowDate date: Date) -> Bool {
-        for delta in -1...0 {
-            guard let probe = moscowCalendar.date(byAdding: .day, value: delta, to: date) else { continue }
-            let parts = moscowCalendar.dateComponents([.year, .month, .day], from: probe)
-            var components = DateComponents()
-            components.timeZone = TimeZone(secondsFromGMT: 0)
-            components.year = parts.year
-            components.month = parts.month
-            components.day = parts.day
-            guard let operatingDate = utcCalendar.date(from: components),
-                  operatingDate >= entry.validFrom,
-                  operatingDate <= entry.validTo else { continue }
-            let weekday = utcCalendar.component(.weekday, from: operatingDate)
-            let isoWeekday = weekday == 1 ? 7 : weekday - 1
-            guard entry.operatingWeekdays.contains(isoWeekday),
-                  let engineOn = utcCalendar.date(byAdding: .minute, value: entry.departureMinutesUTC, to: operatingDate) else {
-                continue
-            }
-            if moscowCalendar.isDate(engineOn, inSameDayAs: date) { return true }
-        }
-        return false
-    }
-
-    private func openDateCalendar() {
-    if exactSearchNumber != nil,
-       routeCandidates.count == 1,
-       let route = routeCandidates.first {
-        openExecutionCalendar(for: route)
-        return
-    }
-    calendarRequest = FlightScheduleCalendarRequestV134(
-        title: nil,
-        executionDates: nil,
-        selectedDate: selectedDate
-    )
-}
-
-    private func openExecutionCalendar(for route: FlightScheduleRouteCandidateV131) {
-        calendarRequest = FlightScheduleCalendarRequestV134(
-            title: "Рейс \(FlightScheduleStoreV129.displayFlightNumber(route.flightNumber)) · \(route.departure) → \(route.arrival)",
-            executionDates: executionDates(for: route.entries),
-            selectedDate: selectedDate
-        )
-    }
-
-    private func executionDates(for entries: [FlightScheduleEntryV129]) -> [Date] {
-        var result = Set<Date>()
-        for entry in entries {
-            var day = entry.validFrom
-            while day <= entry.validTo {
-                let weekday = utcCalendar.component(.weekday, from: day)
-                let isoWeekday = weekday == 1 ? 7 : weekday - 1
-                if entry.operatingWeekdays.contains(isoWeekday),
-                   let engineOn = utcCalendar.date(byAdding: .minute, value: entry.departureMinutesUTC, to: day) {
-                    result.insert(moscowCalendar.startOfDay(for: engineOn))
-                }
-                guard let next = utcCalendar.date(byAdding: .day, value: 1, to: day) else { break }
-                day = next
-            }
-        }
-        return result.sorted()
-    }
-
-    private var utcCalendar: Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        return calendar
-    }
-
     private func clock(_ minutes: Int) -> String {
         String(format: "%02d:%02d", (minutes / 60) % 24, minutes % 60)
+    }
+
+    /// Время по Москве из минут UTC (Москва — UTC+3 круглый год).
+    private func moscowClock(_ utcMinutes: Int) -> String {
+        let offset = moscowTimeZone.secondsFromGMT() / 60
+        let value = ((utcMinutes + offset) % 1440 + 1440) % 1440
+        return clock(value)
     }
 }
 
@@ -1468,153 +1953,18 @@ private struct FlightScheduleRouteCandidateV131: Identifiable {
 }
 
 
-private struct FlightScheduleCalendarRequestV134: Identifiable {
-    let id = UUID()
-    let title: String?
-    let executionDates: [Date]?
-    let selectedDate: Date
-}
-
-
-private struct FlightExecutionCalendarV134View: View {
-    let request: FlightScheduleCalendarRequestV134
-    let onSelect: (Date) -> Void
-
-    var body: some View {
-        VStack(spacing: 8) {
-            if let title = request.title {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            SystemScheduleCalendarV134(
-                selectedDate: request.selectedDate,
-                executionDates: request.executionDates,
-                onSelect: onSelect
-            )
-            .frame(width: 360, height: 350)
-
-            if request.executionDates != nil {
-                Text("Бирюзовая точка — день выполнения рейса по загруженному расписанию и текущему фильтру ВС.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding(12)
-        .frame(width: 384)
-    }
-}
-
-
-private struct SystemScheduleCalendarV134: UIViewRepresentable {
-    let selectedDate: Date
-    let executionDates: [Date]?
-    let onSelect: (Date) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onSelect: onSelect)
-    }
-
-    func makeUIView(context: Context) -> UICalendarView {
-        let view = UICalendarView()
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.locale = Locale(identifier: "ru_RU")
-        calendar.timeZone = moscowTimeZone
-        view.calendar = calendar
-        view.locale = Locale(identifier: "ru_RU")
-        view.timeZone = moscowTimeZone
-        view.tintColor = .systemTeal
-        view.wantsDateDecorations = true
-        view.delegate = context.coordinator
-
-        let selection = UICalendarSelectionSingleDate(delegate: context.coordinator)
-        view.selectionBehavior = selection
-        context.coordinator.selection = selection
-        context.coordinator.calendar = calendar
-        update(view: view, coordinator: context.coordinator, animated: false)
-        return view
-    }
-
-    func updateUIView(_ uiView: UICalendarView, context: Context) {
-        context.coordinator.onSelect = onSelect
-        update(view: uiView, coordinator: context.coordinator, animated: false)
-    }
-
-    private func update(view: UICalendarView, coordinator: Coordinator, animated: Bool) {
-        let newComponents = (executionDates ?? []).map { coordinator.dayComponents(for: $0) }
-        let oldComponents = coordinator.executionComponents
-        coordinator.executionComponents = newComponents
-        coordinator.restrictToExecutionDates = executionDates != nil
-        coordinator.executionDayKeys = Set(newComponents.map { coordinator.key(for: $0) })
-
-        let selected = coordinator.dayComponents(for: selectedDate)
-        coordinator.selection?.selectedDate = selected
-        var visible = selected
-        visible.day = nil
-        view.setVisibleDateComponents(visible, animated: animated)
-
-        let reload = oldComponents + newComponents
-        if !reload.isEmpty {
-            view.reloadDecorations(forDateComponents: reload, animated: false)
-        }
-    }
-
-    final class Coordinator: NSObject, UICalendarViewDelegate, UICalendarSelectionSingleDateDelegate {
-        var onSelect: (Date) -> Void
-        var selection: UICalendarSelectionSingleDate?
-        var calendar = moscowCalendar
-        var restrictToExecutionDates = false
-        var executionDayKeys = Set<String>()
-        var executionComponents: [DateComponents] = []
-
-        init(onSelect: @escaping (Date) -> Void) {
-            self.onSelect = onSelect
-        }
-
-        func dayComponents(for date: Date) -> DateComponents {
-            calendar.dateComponents([.calendar, .timeZone, .year, .month, .day], from: date)
-        }
-
-        func key(for components: DateComponents) -> String {
-            guard let year = components.year,
-                  let month = components.month,
-                  let day = components.day else { return "" }
-            return String(format: "%04d-%02d-%02d", year, month, day)
-        }
-
-        func calendarView(
-            _ calendarView: UICalendarView,
-            decorationFor dateComponents: DateComponents
-        ) -> UICalendarView.Decoration? {
-            guard executionDayKeys.contains(key(for: dateComponents)) else { return nil }
-            return .default(color: .systemTeal, size: .large)
-        }
-
-        func dateSelection(
-            _ selection: UICalendarSelectionSingleDate,
-            canSelectDate dateComponents: DateComponents?
-        ) -> Bool {
-            guard restrictToExecutionDates else { return true }
-            guard let dateComponents else { return false }
-            return executionDayKeys.contains(key(for: dateComponents))
-        }
-
-        func dateSelection(
-            _ selection: UICalendarSelectionSingleDate,
-            didSelectDate dateComponents: DateComponents?
-        ) {
-            guard let dateComponents,
-                  let date = calendar.date(from: dateComponents) else { return }
-            onSelect(calendar.startOfDay(for: date))
-        }
-    }
-}
-
-
 struct FlightScheduleSettingsV129View: View {
     @ObservedObject private var store = FlightScheduleStoreV129.shared
+
+    /// Коды из расписания, которых нет в справочнике аэропортов (пришли скрин — допишем).
+    private var unknownAirports: [String] {
+        var codes = Set<String>()
+        for entry in store.entries {
+            codes.insert(entry.departure)
+            codes.insert(entry.arrival)
+        }
+        return codes.filter { !AirportDatabase.isKnown($0) }.sorted()
+    }
     @State private var showImporter = false
     @State private var message = ""
     @State private var showMessage = false
@@ -1627,6 +1977,12 @@ struct FlightScheduleSettingsV129View: View {
                 LabeledContent("Строк в базе", value: String(store.entries.count))
                 LabeledContent("Покрытие", value: store.coverageText)
                 LabeledContent("Импортов", value: String(store.imports.count))
+                LabeledContent("Аэропорты без названия", value: String(unknownAirports.count))
+                if !unknownAirports.isEmpty {
+                    Text(unknownAirports.joined(separator: ", "))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
 
                 NavigationLink {
                     FlightScheduleDatabaseV130View()

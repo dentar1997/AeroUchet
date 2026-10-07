@@ -469,14 +469,6 @@ struct FlightsView: View {
                         )
                     }
 
-                    Button {
-                    } label: {
-                        Label(
-                            "Добавить перспективный план · в разработке",
-                            systemImage: "calendar.badge.plus"
-                        )
-                    }
-                    .disabled(true)
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -557,6 +549,7 @@ struct FlightsView: View {
         return duty.legs.contains { leg in
             contains(leg.departure)
                 || contains(AirportDatabase.displayName(for: leg.departure))
+                || contains(AirportDatabase.airport(for: leg.departure)?.city ?? "")
                 || contains(leg.flightNumber)
                 || contains(leg.legNumber ?? "")
                 || contains(formattedRegistration(leg.registration))
