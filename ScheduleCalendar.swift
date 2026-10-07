@@ -30,8 +30,15 @@ struct ScheduleMonthsCalendarView: View {
     var body: some View {
         if cardLayout {
             VStack(spacing: 8) {
-                HStack(spacing: 10) {
+                // Сверху строка рейса (как строка даты слева), под ней кнопки у левого края.
+                HStack {
+                    Text(title ?? "Календарь")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                     Spacer(minLength: 0)
+                }
+                HStack(spacing: 10) {
                     jumpButton
                         .scheduleFilterTile()
                     Text("Сегодня")
@@ -39,12 +46,6 @@ struct ScheduleMonthsCalendarView: View {
                         .scheduleFilterTile()
                         .contentShape(Rectangle())
                         .onTapGesture(perform: goToday)
-                }
-                HStack {
-                    Text(title ?? "Календарь")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
                     Spacer(minLength: 0)
                 }
                 VStack(spacing: 0) {
@@ -115,7 +116,8 @@ struct ScheduleMonthsCalendarView: View {
         HStack(spacing: 0) {
             ForEach(Self.weekdaySymbols, id: \.self) { symbol in
                 Text(symbol)
-                    .foregroundStyle(symbol == "Сб" || symbol == "Вс" ? .secondary : .primary)
+                    // Все дни недели серым, как заголовки таблицы слева.
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -235,6 +237,8 @@ struct ScheduleMonthsCalendarView: View {
                 }
             }
         }
+        // Отступ сверху внутри месяца: при прокрутке к нему название не срезается.
+        .padding(.top, 8)
     }
 
     private func dayCell(_ day: Date) -> some View {
