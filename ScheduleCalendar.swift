@@ -823,110 +823,49 @@ extension View {
 }
 
 
-/// Своё размытие (Денис 07.10 22:43): системное «дробное» размытие сбрасывалось
-/// при перерисовке. Здесь каждый кадр снимается то, что лежит ПОД окном (всё, что
-/// выше этого слоя — текст и рамка окна, — на время снимка скрывается), и снимок
-/// размывается фильтром CIGaussianBlur. Сила `radius` — в точках.
+/// Системное live-размытие. Никаких снимков window.layer, CADisplayLink,
+/// Core Image и paused animator: UIVisualEffectView сам постоянно размывает
+/// реальное содержимое под окном и не вмешивается в отрисовку остального интерфейса.
 struct ScheduleLightBlur: UIViewRepresentable {
-    let radius: CGFloat
+    /// 0 = без blur; 1...4 = от ultraThin до thick.
+    let level: Int
 
-    final class LinkProxy: NSObject {
-        weak var view: BlurView?
-        @objc func tick() { view?.refresh() }
-    }
+    final class BlurView: UIVisualEffectView {
+        var currentLevel = -1
 
-    final class BlurView: UIView {
-        var radius: CGFloat = 6
-        private var link: CADisplayLink?
-        private static let context = CIContext(options: [.cacheIntermediates: false])
-        // Снимок в половинном разрешении: после размытия разницы не видно, а считать вдвое меньше.
-        private let captureScale: CGFloat = 0.5
+        func apply(level: Int) {
+            let clamped = min(max(level, 0), 4)
+            guard currentLevel != clamped else { return }
+            currentLevel = clamped
 
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            stopLink()
-            guard window != nil else { return }
-            let proxy = LinkProxy()
-            proxy.view = self
-            let link = CADisplayLink(target: proxy, selector: #selector(LinkProxy.tick))
-            link.preferredFrameRateRange = CAFrameRateRange(minimum: 20, maximum: 30, preferred: 30)
-            link.add(to: .main, forMode: .common)
-            self.link = link
-            refresh()
-        }
-
-        override func willMove(toWindow newWindow: UIWindow?) {
-            super.willMove(toWindow: newWindow)
-            if newWindow == nil { stopLink() }
-        }
-
-        private func stopLink() {
-            link?.invalidate()
-            link = nil
-        }
-
-        func refresh() {
-            guard let window, bounds.width > 1, bounds.height > 1 else { return }
-            let rect = convert(bounds, to: window)
-
-            // Скрыть всё, что рисуется поверх этого слоя, и сам слой — только на время снимка.
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            var hidden: [CALayer] = []
-            var child: CALayer = layer
-            while let parent = child.superlayer {
-                if let subs = parent.sublayers, let index = subs.firstIndex(where: { $0 === child }) {
-                    for above in subs[(index + 1)...] where !above.isHidden {
-                        above.isHidden = true
-                        hidden.append(above)
-                    }
-                }
-                if parent === window.layer { break }
-                child = parent
-            }
-            layer.isHidden = true
-
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = captureScale
-            format.opaque = false
-            let shot = UIGraphicsImageRenderer(size: bounds.size, format: format).image { ctx in
-                ctx.cgContext.translateBy(x: -rect.minX, y: -rect.minY)
-                window.layer.render(in: ctx.cgContext)
+            let style: UIBlurEffect.Style?
+            switch clamped {
+            case 0:
+                style = nil
+            case 1:
+                style = .systemUltraThinMaterialDark
+            case 2:
+                style = .systemThinMaterialDark
+            case 3:
+                style = .systemMaterialDark
+            default:
+                style = .systemThickMaterialDark
             }
 
-            layer.isHidden = false
-            for item in hidden { item.isHidden = false }
-            CATransaction.commit()
-
-            guard let cg = shot.cgImage else { return }
-            let input = CIImage(cgImage: cg)
-            let sigma = radius * captureScale
-            var result = cg
-            if sigma > 0.05 {
-                let blurred = input.clampedToExtent()
-                    .applyingGaussianBlur(sigma: Double(sigma))
-                    .cropped(to: input.extent)
-                if let out = Self.context.createCGImage(blurred, from: input.extent) {
-                    result = out
-                }
-            }
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            layer.contents = result
-            CATransaction.commit()
+            effect = style.map(UIBlurEffect.init(style:))
         }
     }
 
     func makeUIView(context: Context) -> BlurView {
-        let view = BlurView()
+        let view = BlurView(effect: nil)
         view.isUserInteractionEnabled = false
-        view.layer.contentsGravity = .resize
-        view.radius = radius
+        view.backgroundColor = .clear
+        view.apply(level: level)
         return view
     }
 
     func updateUIView(_ view: BlurView, context: Context) {
-        view.radius = radius
+        view.apply(level: level)
     }
 }
 
@@ -937,9 +876,9 @@ enum ScheduleGlassSettings {
     static let blurKey = "aerouchet.glass.blur"
     static let opacityKey = "aerouchet.glass.opacity"
     static let tintKey = "aerouchet.glass.tint"
-    // Размытие: 0…1 ползунка = 0…20 точек своего размытия (v169).
-    static let maxBlurRadius: CGFloat = 20
-    static let defaultBlur: Double = 0.3
+    // Системный blur: 0…1 ползунка выбирает 5 устойчивых уровней
+    // (нет / ultraThin / thin / material / thick), без аниматора и снимков.
+    static let defaultBlur: Double = 0.25
     static let defaultOpacity: Double = 0.6
     static let defaultTint: Double = 0
 }
@@ -954,7 +893,7 @@ struct ScheduleGlassBackground: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         ZStack {
-            ScheduleLightBlur(radius: CGFloat(blur) * ScheduleGlassSettings.maxBlurRadius)
+            ScheduleLightBlur(level: Int((blur * 4).rounded()))
                 .clipShape(shape)
                 .opacity(opacity)
             shape.fill(Color.black.opacity(tint))
@@ -997,7 +936,7 @@ struct GlassAppearanceSettingsView: View {
             }
 
             Section {
-                slider("Размытие", value: $blur, range: 0...1, text: percent(blur))
+                slider("Размытие", value: $blur, range: 0...1, step: 0.25, text: percent(blur))
                 slider("Прозрачность стекла", value: $opacity, range: 0...1, text: percent(opacity))
                 slider("Тёмный оттенок", value: $tint, range: 0...0.6, text: percent(tint))
             } footer: {
@@ -1020,7 +959,13 @@ struct GlassAppearanceSettingsView: View {
         "\(Int((value * 100).rounded())) %"
     }
 
-    private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, text: String) -> some View {
+    private func slider(
+        _ title: String,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double = 0.01,
+        text: String
+    ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(title)
@@ -1029,7 +974,7 @@ struct GlassAppearanceSettingsView: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
-            Slider(value: value, in: range, step: 0.01)
+            Slider(value: value, in: range, step: step)
                 .tint(.teal)
         }
     }
