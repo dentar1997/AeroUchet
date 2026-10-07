@@ -380,8 +380,10 @@ private struct ScheduleMonthYearWheel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Без заголовка (Денис 07.10 12:45): только галочка справа.
+            // Надпись слева сверху, галочка справа (Денис 07.10 13:26).
             HStack {
+                Text("Перейти к месяцу")
+                    .font(.subheadline.weight(.semibold))
                 Spacer()
                 Button {
                     if let date = moscowCalendar.date(from: DateComponents(year: year, month: month, day: 1)) {
@@ -801,11 +803,11 @@ extension View {
         // сквозь окно видно то, что под ним; на любой подложке один вид.
         background {
             ZStack {
+                // Больше размытия (Денис 07.10 13:26), прозрачность и темнота — как в v162.
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(.ultraThinMaterial)
-                    .opacity(0.55)
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.black.opacity(0.38))
+                    .fill(Color.black.opacity(0.32))
             }
         }
             .overlay(
