@@ -1,11 +1,11 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 07.10.2026 23:41 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 07.10.2026 23:52 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
 
 ## Последние записи журнала
+- [2026-10-07_2352_chatgpt_v171-start.md](log/2026-10-07_2352_chatgpt_v171-start.md)
 - [2026-10-07_2341_chatgpt-test-custom-blur-plan.md](log/2026-10-07_2341_chatgpt-test-custom-blur-plan.md)
 - [2026-10-07_2338_chatgpt_v169-jump-cause.md](log/2026-10-07_2338_chatgpt_v169-jump-cause.md)
-- [2026-10-07_2328_chatgpt_v169-swipe-jump-correction.md](log/2026-10-07_2328_chatgpt_v169-swipe-jump-correction.md)
 
 ## Код
 - **`AppVersion` = 170** (PR #178: системный live-blur). Денис 07.10 23:26: визуально не даёт нужного эффекта как v169. Уточнение Дениса: скачок v169 происходит при каждом свайпе. **Диагностика: можно ли сохранить custom blur v169 и убрать touch-triggered скачок.**
