@@ -116,6 +116,7 @@ struct SettingsRootV116View: View {
                 }
             }
             .navigationTitle("Ещё")
+            .aeroStableNavigationBar()
         }
     }
 
