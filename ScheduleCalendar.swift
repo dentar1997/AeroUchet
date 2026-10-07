@@ -830,39 +830,53 @@ extension View {
 struct ScheduleLightBlur: UIViewRepresentable {
     let radius: CGFloat
 
-    final class LinkProxy: NSObject {
-        weak var view: BlurView?
-        @objc func tick() { view?.refresh() }
-    }
-
     final class BlurView: UIView {
         var radius: CGFloat = 6
-        private var link: CADisplayLink?
         private static let context = CIContext(options: [.cacheIntermediates: false])
-        // Снимок в половинном разрешении: после размытия разницы не видно, а считать вдвое меньше.
         private let captureScale: CGFloat = 0.5
+
+        private var refreshWorkItem: DispatchWorkItem?
+        private var lastSize: CGSize = .zero
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            stopLink()
-            guard window != nil else { return }
-            let proxy = LinkProxy()
-            proxy.view = self
-            let link = CADisplayLink(target: proxy, selector: #selector(LinkProxy.tick))
-            link.preferredFrameRateRange = CAFrameRateRange(minimum: 20, maximum: 30, preferred: 30)
-            link.add(to: .main, forMode: .common)
-            self.link = link
-            refresh()
+            if window != nil {
+                requestRefresh(immediate: true)
+            } else {
+                refreshWorkItem?.cancel()
+                refreshWorkItem = nil
+            }
         }
 
-        override func willMove(toWindow newWindow: UIWindow?) {
-            super.willMove(toWindow: newWindow)
-            if newWindow == nil { stopLink() }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            guard bounds.size != lastSize else { return }
+            lastSize = bounds.size
+            requestRefresh(immediate: true)
         }
 
-        private func stopLink() {
-            link?.invalidate()
-            link = nil
+        /// SwiftUI может вызывать updateUIView много раз во время жеста/анимации.
+        /// Держим уже готовый blurred snapshot и пересчитываем его после короткой паузы:
+        /// foreground остаётся плавным, а Gaussian blur не съедает каждый кадр.
+        func update(radius newRadius: CGFloat) {
+            radius = newRadius
+            requestRefresh(immediate: false)
+        }
+
+        func requestRefresh(immediate: Bool) {
+            refreshWorkItem?.cancel()
+
+            let work = DispatchWorkItem { [weak self] in
+                self?.refreshWorkItem = nil
+                self?.refresh()
+            }
+            refreshWorkItem = work
+
+            if immediate {
+                DispatchQueue.main.async(execute: work)
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+            }
         }
 
         /// Ближайший контроллер SwiftUI-контента. Navigation/Tab-контейнеры пропускаем:
@@ -887,20 +901,17 @@ struct ScheduleLightBlur: UIViewRepresentable {
                 responder = current.next
             }
 
-            // Без безопасной SwiftUI-границы не поднимаемся к UIWindow:
-            // лучше пропустить один кадр blur, чем снова скрыть системную navigation bar.
             return nil
         }
 
         func refresh() {
-            guard bounds.width > 1,
+            guard window != nil,
+                  bounds.width > 1,
                   bounds.height > 1,
                   let root = captureRootView() else { return }
             let rect = convert(bounds, to: root)
             let boundary = root.layer
 
-            // Скрываем только то, что рисуется поверх blur ВНУТРИ SwiftUI-hosting view.
-            // Выше boundary не поднимаемся: UINavigationBar/UITabBar/UIWindow не затрагиваются.
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             var hidden: [CALayer] = []
@@ -943,6 +954,7 @@ struct ScheduleLightBlur: UIViewRepresentable {
                     result = out
                 }
             }
+
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             layer.contents = result
@@ -959,7 +971,7 @@ struct ScheduleLightBlur: UIViewRepresentable {
     }
 
     func updateUIView(_ view: BlurView, context: Context) {
-        view.radius = radius
+        view.update(radius: radius)
     }
 }
 
@@ -974,7 +986,7 @@ enum ScheduleGlassSettings {
     static let maxBlurRadius: CGFloat = 20
     static let defaultBlur: Double = 0.5
     static let defaultOpacity: Double = 1.0
-    static let defaultTint: Double = 0.2
+    static let defaultTint: Double = 0.25
 }
 
 /// Фон окна «стекло»: размытие, прозрачность и тёмный оттенок из настроек.
