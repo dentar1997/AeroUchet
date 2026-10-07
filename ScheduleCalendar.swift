@@ -853,7 +853,7 @@ struct ScheduleLightBlur: UIViewRepresentable {
             proxy.view = self
 
             let link = CADisplayLink(target: proxy, selector: #selector(LinkProxy.tick))
-            link.preferredFramesPerSecond = 10
+            link.preferredFramesPerSecond = 20
             link.add(to: .main, forMode: .common)
 
             linkProxy = proxy
