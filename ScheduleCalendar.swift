@@ -18,6 +18,9 @@ struct ScheduleMonthsCalendarView: View {
     let title: String?
     /// Подпись под календарём, например «эта запись 05.10–25.10, дни 257».
     let legend: String?
+    /// Колонка справа от таблицы (Денис 07.10 05:39): кнопки как у фильтра, заголовок как строка
+    /// даты, сам календарь — в карточке; дни недели на одной линии с заголовками таблицы.
+    var cardLayout = false
 
     @State private var scrollTarget: String?
     @State private var showJump = false
@@ -25,96 +28,150 @@ struct ScheduleMonthsCalendarView: View {
     private static let weekdaySymbols = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
-                Text(title ?? "Календарь")
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                Button {
-                    showJump = true
-                } label: {
-                    Image(systemName: "calendar")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .popover(isPresented: $showJump) {
-                    ScheduleMonthYearWheel(
-                        initial: selectedDate,
-                        years: Self.years
-                    ) { month in
-                        showJump = false
-                        scrollTarget = Self.monthID(month)
-                    }
-                    .presentationCompactAdaptation(.popover)
-                }
-                Button("Сегодня") {
-                    let today = moscowCalendar.startOfDay(for: Date())
-                    selectedDate = today
-                    scrollTarget = Self.monthID(today)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-
-            HStack(spacing: 0) {
-                ForEach(Self.weekdaySymbols, id: \.self) { symbol in
-                    Text(symbol)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(symbol == "Сб" || symbol == "Вс" ? .secondary : .primary)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            Divider()
-
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
-                        ForEach(Self.months, id: \.self) { month in
-                            monthSection(month)
-                                .id(Self.monthID(month))
-                        }
-                    }
-                    .padding(.vertical, 6)
-                }
-                .onAppear {
-                    proxy.scrollTo(Self.monthID(selectedDate), anchor: .top)
-                }
-                .onChange(of: scrollTarget) { _, target in
-                    guard let target else { return }
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        proxy.scrollTo(target, anchor: .top)
-                    }
-                    scrollTarget = nil
-                }
-            }
-
-            if !primaryDays.isEmpty || !secondaryDays.isEmpty || !tertiaryDays.isEmpty {
+        if cardLayout {
+            VStack(spacing: 8) {
                 HStack(spacing: 10) {
-                    if let legend, !primaryDays.isEmpty {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.teal).frame(width: 10, height: 10)
-                            Text(legend)
-                        }
-                    }
-                    if !secondaryDays.isEmpty {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.teal.opacity(0.35)).frame(width: 10, height: 10)
-                            Text("другие периоды")
-                        }
-                    }
-                    if !tertiaryDays.isEmpty {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.gray.opacity(0.45)).frame(width: 10, height: 10)
-                            Text("на других типах ВС")
-                        }
-                    }
+                    Spacer(minLength: 0)
+                    jumpButton
+                        .scheduleFilterTile()
+                    Text("Сегодня")
+                        .font(.caption.bold())
+                        .scheduleFilterTile()
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: goToday)
+                }
+                HStack {
+                    Text(title ?? "Календарь")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                     Spacer(minLength: 0)
                 }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                VStack(spacing: 0) {
+                    weekdayRow
+                        .font(.caption.weight(.semibold))
+                        .padding(.vertical, 6)
+                    Divider()
+                    monthsList
+                        .padding(.horizontal, 8)
+                    legendRow
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
+        } else {
+            VStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(title ?? "Календарь")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    jumpButton
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    Button("Сегодня", action: goToday)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+                weekdayRow
+                    .font(.caption2.weight(.semibold))
+                Divider()
+                monthsList
+                legendRow
+            }
+        }
+    }
+
+    private func goToday() {
+        let today = moscowCalendar.startOfDay(for: Date())
+        selectedDate = today
+        scrollTarget = Self.monthID(today)
+    }
+
+    private var jumpButton: some View {
+        Button {
+            showJump = true
+        } label: {
+            Image(systemName: "calendar")
+        }
+        .popover(isPresented: $showJump) {
+            ScheduleMonthYearWheel(
+                initial: selectedDate,
+                years: Self.years
+            ) { month in
+                showJump = false
+                scrollTarget = Self.monthID(month)
+            }
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private var weekdayRow: some View {
+        HStack(spacing: 0) {
+            ForEach(Self.weekdaySymbols, id: \.self) { symbol in
+                Text(symbol)
+                    .foregroundStyle(symbol == "Сб" || symbol == "Вс" ? .secondary : .primary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var monthsList: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    ForEach(Self.months, id: \.self) { month in
+                        monthSection(month)
+                            .id(Self.monthID(month))
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+            .onAppear {
+                proxy.scrollTo(Self.monthID(selectedDate), anchor: .top)
+            }
+            .onChange(of: scrollTarget) { _, target in
+                guard let target else { return }
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    proxy.scrollTo(target, anchor: .top)
+                }
+                scrollTarget = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var legendRow: some View {
+        if !primaryDays.isEmpty || !secondaryDays.isEmpty || !tertiaryDays.isEmpty {
+            HStack(spacing: 10) {
+                if let legend, !primaryDays.isEmpty {
+                    HStack(spacing: 4) {
+                        Circle().fill(Color.teal).frame(width: 10, height: 10)
+                        Text(legend)
+                    }
+                }
+                if !secondaryDays.isEmpty {
+                    HStack(spacing: 4) {
+                        Circle().fill(Color.teal.opacity(0.35)).frame(width: 10, height: 10)
+                        Text("другие периоды")
+                    }
+                }
+                if !tertiaryDays.isEmpty {
+                    HStack(spacing: 4) {
+                        Circle().fill(Color.gray.opacity(0.45)).frame(width: 10, height: 10)
+                        Text("на других типах ВС")
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
         }
     }
 

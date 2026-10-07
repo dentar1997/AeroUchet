@@ -63,7 +63,7 @@ struct ContentView: View {
 
             // Вкладка «Тест» (07.10): база расписания в стиле перспективного плана — для сравнения.
             NavigationStack {
-                FlightScheduleDatabaseV130View(cardStyle: true)
+                FlightScheduleDatabaseV130View(largeText: true)
             }
             .tabItem {
                 Label("Тест", systemImage: "testtube.2")

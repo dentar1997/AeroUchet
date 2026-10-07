@@ -1192,9 +1192,13 @@ struct FlightScheduleDatabaseV130View: View {
     @State private var sortColumn: SortColumn = .time
     @State private var sortAscending = true
 
-    init(cardStyle: Bool = true) {
-        // Денис 07.10 05:11: основная база — как во «Тесте» (карточка, шрифт крупнее).
+    /// Крупный шрифт — только во вкладке «Тест» (Денис 07.10 05:39).
+    private let largeText: Bool
+
+    init(cardStyle: Bool = true, largeText: Bool = false) {
+        // Денис 07.10 05:11: основная база — карточкой; шрифт прежний (05:23).
         self.cardStyle = cardStyle
+        self.largeText = largeText
     }
     @State private var typeButtonFrame: CGRect = .zero
     /// Часы вылета по UTC: с `fromHour` до `toHour` (24 — до конца суток).
@@ -1535,14 +1539,15 @@ struct FlightScheduleDatabaseV130View: View {
         "Рейс \(FlightScheduleStoreV129.displayFlightNumber(number)) · \(AirportDatabase.displayName(for: departure)) → \(AirportDatabase.displayName(for: arrival))"
     }
 
-    private func calendarView(_ highlight: Highlight?) -> some View {
+    private func calendarView(_ highlight: Highlight?, cardLayout: Bool = false) -> some View {
         ScheduleMonthsCalendarView(
             selectedDate: $selectedDate,
             primaryDays: highlight?.primary ?? [],
             secondaryDays: highlight?.secondary ?? [],
             tertiaryDays: highlight?.tertiary ?? [],
             title: highlight?.title,
-            legend: highlight?.legend
+            legend: highlight?.legend,
+            cardLayout: cardLayout
         )
     }
 
@@ -1584,14 +1589,17 @@ struct FlightScheduleDatabaseV130View: View {
                     .contentShape(Rectangle())
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 if isWide {
-                    Divider()
-                    calendarView(route)
-                        .padding(12)
+                    calendarView(route, cardLayout: true)
+                        .padding(.top, 8)
+                        .padding(.trailing, 12)
+                        .padding(.bottom, 12)
                         .frame(width: 380)
                         .frame(maxHeight: .infinity, alignment: .top)
                 }
             }
         }
+        // Нижний отступ карточек — от края экрана, как слева (12).
+        .ignoresSafeArea(.container, edges: .bottom)
         .overlay {
             // Своё окно типов ВС: под кнопкой; тап мимо — закрыть.
             if typeMenuOpen {
@@ -1789,9 +1797,9 @@ struct FlightScheduleDatabaseV130View: View {
                     sortHeader("Тип ВС", .type).frame(width: typeWidth, alignment: .leading)
                     sortHeader("Полётное время", .duration).frame(width: durationWidth, alignment: .center)
                 }
-                .font(.caption.weight(.semibold))
+                .font((largeText ? Font.subheadline : Font.caption).weight(.semibold))
                 .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.vertical, largeText ? 9 : 6)
                 .background(cardStyle ? Color.clear : Color(uiColor: .secondarySystemGroupedBackground))
                 if cardStyle { Divider() }
 
@@ -1845,17 +1853,19 @@ struct FlightScheduleDatabaseV130View: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: cardStyle ? 14 : 0, style: .continuous))
-            .padding(cardStyle ? 12 : 0)
+            // Отступ сверху от строки даты — как между фильтром и датой (8), снизу и по бокам — 12.
+            .padding(.horizontal, cardStyle ? 12 : 0)
+            .padding(.bottom, cardStyle ? 12 : 0)
         }
     }
 
     // Ширины столбцов и шрифты — прежние (Денис 07.10 05:23: шрифт не трогать, только карточка).
-    private var numberWidth: CGFloat { 54 }
-    private var timeWidth: CGFloat { 104 }
-    private var typeWidth: CGFloat { 70 }
-    private var durationWidth: CGFloat { 104 }
-    private var mainFont: Font { .subheadline }
-    private var cellFont: Font { .caption }
+    private var numberWidth: CGFloat { largeText ? 64 : 54 }
+    private var timeWidth: CGFloat { largeText ? 124 : 104 }
+    private var typeWidth: CGFloat { largeText ? 84 : 70 }
+    private var durationWidth: CGFloat { largeText ? 130 : 104 }
+    private var mainFont: Font { largeText ? .body : .subheadline }
+    private var cellFont: Font { largeText ? .callout : .caption }
 
     @ViewBuilder
     private func scheduleRow(_ entry: FlightScheduleEntryV129, expanded isExpanded: Bool) -> some View {
@@ -1888,7 +1898,7 @@ struct FlightScheduleDatabaseV130View: View {
                     .frame(width: durationWidth, alignment: .center)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 5)
+            .padding(.vertical, largeText ? 8 : 5)
             .background(isExpanded ? Color.teal.opacity(0.10) : Color.clear)
             .contentShape(Rectangle())
         }
