@@ -1,0 +1,11 @@
+# 08.10 01:53 · ChatGPT · v175 — live custom blur 10 FPS
+- Денис: после v174 с замороженным фоном сказал «Программируй».
+- Сделано: PR #183 → v175.
+- Вернут CADisplayLink, но частота ограничена 10 FPS вместо 30 FPS v173.
+- Cache-only/debounce механика v174 удалена, поэтому фон под blur снова должен обновляться во время прокрутки.
+- Safe SwiftUI-boundary из v173 сохранена: UINavigationBar/UITabBar/UIWindow не затрагиваются.
+- При изменении размера blur обновляется сразу.
+- Defaults стекла: blur 50%, opacity 100%, dark tint 25%.
+- Проверки: Build iOS app ✅, Static Analyze ✅, Swift quality checks ✅, Privacy Guard ✅; squash merge 9279cb7; auto-version → 175.
+- Статус: ждёт проверки на iPad.
+- Проверить: живое движение фона под окном, плавность основного интерфейса по сравнению с v173, отсутствие jump.
