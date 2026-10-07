@@ -803,11 +803,12 @@ extension View {
         // сквозь окно видно то, что под ним; на любой подложке один вид.
         background {
             ZStack {
-                // Больше размытия (Денис 07.10 13:26), прозрачность и темнота — как в v162.
+                // Лёгкое размытие при сохранённой прозрачности (Денис 07.10 14:30):
+                // системное размытие, остановленное на части силы, + тёмный оттенок как в v162.
+                ScheduleLightBlur(intensity: ScheduleLightBlur.panelIntensity)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(Color.black.opacity(0.32))
+                    .fill(Color.black.opacity(0.36))
             }
         }
             .overlay(
@@ -815,5 +816,51 @@ extension View {
                     .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
             )
             .shadow(color: .black.opacity(0.28), radius: 18, y: 8)
+    }
+}
+
+
+/// Размытие с регулируемой силой: системный UIBlurEffect, анимация которого
+/// остановлена на доле `intensity` (0 — без размытия, 1 — полное системное).
+struct ScheduleLightBlur: UIViewRepresentable {
+    /// Подбирается одним числом: больше — сильнее размыто.
+    static let panelIntensity: CGFloat = 0.25
+    let intensity: CGFloat
+
+    final class BlurView: UIVisualEffectView {
+        var animator: UIViewPropertyAnimator?
+        var intensity: CGFloat = 0.25
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            // После возврата в окно анимацию нужно собрать заново, иначе размытие пропадает.
+            if window != nil { rebuild() }
+        }
+
+        func rebuild() {
+            animator?.stopAnimation(true)
+            effect = nil
+            let animator = UIViewPropertyAnimator(duration: 1, curve: .linear) { [weak self] in
+                self?.effect = UIBlurEffect(style: .dark)
+            }
+            animator.pausesOnCompletion = true
+            animator.fractionComplete = intensity
+            self.animator = animator
+        }
+
+        deinit { animator?.stopAnimation(true) }
+    }
+
+    func makeUIView(context: Context) -> BlurView {
+        let view = BlurView(effect: nil)
+        view.intensity = intensity
+        return view
+    }
+
+    func updateUIView(_ view: BlurView, context: Context) {
+        if view.intensity != intensity {
+            view.intensity = intensity
+            view.rebuild()
+        }
     }
 }
