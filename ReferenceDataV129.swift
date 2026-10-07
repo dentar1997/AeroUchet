@@ -1653,6 +1653,7 @@ struct FlightScheduleDatabaseV130View: View {
         // Строку «База расписания» не показываем (Денис 07.10 05:11).
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .aeroStableNavigationBar()
         .onChange(of: search) { _, _ in calendarRouteID = nil }
         .onChange(of: fromHour) { _, value in if toHour <= value { toHour = value + 1 } }
         .onChange(of: toHour) { _, value in if fromHour >= value { fromHour = value - 1 } }
@@ -2045,6 +2046,7 @@ struct FlightScheduleSettingsV129View: View {
         }
         .navigationTitle("Расписание рейсов")
         .navigationBarTitleDisplayMode(.inline)
+        .aeroStableNavigationBar()
         .fileImporter(
             isPresented: $showImporter,
             allowedContentTypes: [UTType(filenameExtension: "xls") ?? .data]

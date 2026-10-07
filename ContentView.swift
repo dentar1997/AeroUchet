@@ -115,6 +115,19 @@ struct ContentView: View {
 }
 
 
+/// Стабильная navigation bar для экранов со стеклянными/custom-blur окнами.
+/// Не даёт iOS 26 уменьшать bar и менять safe area при вертикальном scroll.
+extension View {
+    func aeroStableNavigationBar() -> some View {
+        // Текущий SDK проекта ещё не экспортирует iOS 26 toolbarMinimizationBehavior.
+        // Явно удерживаем navigation bar видимой: заголовок и Back сохраняются,
+        // а SwiftUI не должен убирать её в ответ на прокрутку.
+        toolbar(.visible, for: .navigationBar)
+    }
+}
+
+
+
 /// «Приподнятый» вид окна: в тёмной теме фон мягкий тёмно-серый, как в Stage Manager,
 /// а не чисто чёрный. Системные цвета (фон, таблицы, плашки) берут свои «приподнятые» оттенки.
 enum ElevatedAppearance {

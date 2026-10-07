@@ -1014,6 +1014,7 @@ struct GlassAppearanceSettingsView: View {
         }
         .navigationTitle("Вид окон")
         .navigationBarTitleDisplayMode(.inline)
+        .aeroStableNavigationBar()
     }
 
     private func percent(_ value: Double) -> String {
