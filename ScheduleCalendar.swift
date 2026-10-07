@@ -314,12 +314,12 @@ private struct ScheduleMonthYearWheel: View {
                         alignment: .leading
                     )
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, 6)
             }
             .frame(height: DrumColumn.height)
             .padding(.bottom, 12)
         }
-        .frame(width: 320)
+        .frame(width: 250)
     }
 }
 
@@ -366,7 +366,7 @@ private struct DrumColumn: View {
                         .monospacedDigit()
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: alignment)
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, 6)
                         .frame(height: Self.rowHeight)
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -508,5 +508,51 @@ struct ScheduleAircraftFilterButton: View {
     static func matches(_ selection: Set<FlightScheduleAircraftGroupV131>, rawAircraftCode: String) -> Bool {
         if selection.count >= choices.count { return true }
         return selection.contains { $0.contains(rawAircraftCode: rawAircraftCode) }
+    }
+}
+
+
+// MARK: - Часы «с / до» нашей крутилкой из задания на полёт (только часы)
+
+struct ScheduleHourWheelField: View {
+    let title: String
+    @Binding var hour: Int
+    let range: ClosedRange<Int>
+    let isActive: Bool
+    let onActivate: () -> Void
+
+    private func text(_ value: Int) -> String { String(format: "%02d", value) }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            InlineFlightWheelSegment(
+                value: text(hour),
+                previous: hour > range.lowerBound ? text(hour - 1) : "",
+                next: hour < range.upperBound ? text(hour + 1) : "",
+                width: 17,
+                hitWidth: 44,
+                hitOffset: 0,
+                hitHeight: 48,
+                isEditing: true,
+                isActive: isActive,
+                valueColor: isActive ? Color.teal : Color.primary,
+                onActivate: onActivate,
+                onStep: { delta in
+                    hour = min(range.upperBound, max(range.lowerBound, hour + delta))
+                },
+                canStepPrevious: true
+            )
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 34)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(uiColor: isActive ? .tertiarySystemFill : .secondarySystemFill))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onActivate)
     }
 }
