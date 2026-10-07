@@ -848,7 +848,15 @@ struct ScheduleLightBlur: UIViewRepresentable {
             self.animator = animator
         }
 
-        deinit { animator?.stopAnimation(true) }
+        // Остановить анимацию до ухода из окна: приостановленная анимация не должна
+        // удаляться активной (иначе UIKit падает), а deinit для этого не годится.
+        override func willMove(toWindow newWindow: UIWindow?) {
+            super.willMove(toWindow: newWindow)
+            if newWindow == nil {
+                animator?.stopAnimation(true)
+                animator = nil
+            }
+        }
     }
 
     func makeUIView(context: Context) -> BlurView {
