@@ -1,0 +1,11 @@
+# 08.10 01:44 · ChatGPT · v174 — кэшированный custom blur
+- Денис: разрешил оптимизацию после того, как v173 полностью убрал прыжки, но при открытом календаре проседал FPS.
+- Сделано: PR #182 → v174.
+- Удалён CADisplayLink и постоянные 20–30 snapshot/CIGaussianBlur в секунду.
+- Blur теперь хранит последний готовый кадр в layer.contents.
+- Немедленное обновление: при появлении окна и изменении его размера.
+- SwiftUI-обновления коалесцируются: новый snapshot считается через 120 мс после затишья, поэтому во время непрерывного свайпа/анимации foreground не конкурирует с Gaussian blur каждый кадр.
+- Безопасная SwiftUI-boundary из v173 сохранена; UIKit navigation/window layers не затрагиваются.
+- Defaults стекла: blur 50%, opacity 100%, dark tint 25%.
+- Проверки: Build iOS app ✅, Static Analyze ✅, Swift quality checks ✅, Privacy Guard ✅; squash merge 9a229cb; auto-version → 174.
+- Статус: ждёт проверки на iPad — FPS при открытом календаре, внешний вид blur и отсутствие jump.
