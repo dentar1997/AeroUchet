@@ -1346,6 +1346,7 @@ struct FlightScheduleDatabaseV130View: View {
         } label: {
             HStack(spacing: 3) {
                 Text(title)
+                    .multilineTextAlignment(.center)
                 if sortColumn == column {
                     Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
                         .font(.caption2.weight(.bold))
@@ -1786,11 +1787,13 @@ struct FlightScheduleDatabaseV130View: View {
                     sortHeader("Маршрут", .route).frame(maxWidth: .infinity, alignment: .leading)
                     sortHeader("Время UTC", .time).frame(width: timeWidth, alignment: .leading)
                     sortHeader("Тип ВС", .type).frame(width: typeWidth, alignment: .leading)
-                    sortHeader("Полётное время", .duration).frame(width: durationWidth, alignment: .center)
+                    // В две строки и по центру — столбец уже (Денис 07.10 11:43).
+                    sortHeader("Полётное\nвремя", .duration).frame(width: durationWidth, alignment: .center)
                 }
                 .font((largeText ? Font.subheadline : Font.caption).weight(.semibold))
                 .padding(.horizontal, 12)
-                .padding(.vertical, largeText ? 9 : 6)
+                // Высота как у строки дней недели календаря справа — на одной линии.
+                .frame(height: ScheduleMonthsCalendarView.headerHeight + (largeText ? 8 : 0))
                 .background(cardStyle ? Color.clear : Color(uiColor: .secondarySystemGroupedBackground))
                 if cardStyle { Divider() }
 
@@ -1859,7 +1862,7 @@ struct FlightScheduleDatabaseV130View: View {
     private var numberWidth: CGFloat { largeText ? 64 : 54 }
     private var timeWidth: CGFloat { largeText ? 124 : 104 }
     private var typeWidth: CGFloat { largeText ? 84 : 70 }
-    private var durationWidth: CGFloat { largeText ? 130 : 104 }
+    private var durationWidth: CGFloat { largeText ? 90 : 70 }
     private var mainFont: Font { largeText ? .body : .subheadline }
     private var cellFont: Font { largeText ? .callout : .caption }
 

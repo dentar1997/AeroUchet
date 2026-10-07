@@ -24,8 +24,15 @@ struct ScheduleMonthsCalendarView: View {
 
     @State private var scrollTarget: String?
     @State private var showJump = false
+    @State private var jumpPanelFrame: CGRect = .zero
+    @State private var jumpButtonFrame: CGRect = .zero
 
     private static let weekdaySymbols = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    /// Высота строки заголовков (дни недели и «Рейс · Маршрут…» слева — на одной линии).
+    static let headerHeight: CGFloat = 40
+    /// Компактная сетка под iPad 12.9: в карточке целиком три месяца по шесть недель + легенда.
+    private static let rowHeight: CGFloat = 35
+    private static let dayCircle: CGFloat = 32
 
     var body: some View {
         if cardLayout {
@@ -39,8 +46,28 @@ struct ScheduleMonthsCalendarView: View {
                     Spacer(minLength: 0)
                 }
                 HStack(spacing: 10) {
-                    jumpButton
+                    Image(systemName: "calendar")
+                        .foregroundStyle(.teal)
                         .scheduleFilterTile()
+                        .contentShape(Rectangle())
+                        .onTapGesture { showJump.toggle() }
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { jumpButtonFrame = $0 }
+                        .overlay(alignment: .topLeading) {
+                            // Своё окно «стекло» под кнопкой (Денис 07.10 11:37), не системный popover.
+                            if showJump {
+                                ScheduleMonthYearWheel(
+                                    initial: selectedDate,
+                                    years: Self.years
+                                ) { month in
+                                    showJump = false
+                                    scrollTarget = Self.monthID(month)
+                                }
+                                .scheduleGlassPanel()
+                                .fixedSize()
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { jumpPanelFrame = $0 }
+                                .offset(y: ScheduleFilterStyle.height + 6)
+                            }
+                        }
                     Text("Сегодня")
                         .font(.caption.bold())
                         .scheduleFilterTile()
@@ -48,16 +75,25 @@ struct ScheduleMonthsCalendarView: View {
                         .onTapGesture(perform: goToday)
                     Spacer(minLength: 0)
                 }
+                .zIndex(1)
+                .onReceive(NotificationCenter.default.publisher(for: ScheduleTapCatcher.tapNotification)) { note in
+                    guard showJump, let point = note.object as? CGPoint else { return }
+                    if !jumpPanelFrame.contains(point) && !jumpButtonFrame.contains(point) {
+                        showJump = false
+                    }
+                }
                 VStack(spacing: 0) {
                     weekdayRow
                         .font(.caption.weight(.semibold))
-                        .padding(.vertical, 6)
+                        // Та же высота, что у строки заголовков таблицы слева.
+                        .frame(height: ScheduleMonthsCalendarView.headerHeight)
                     Divider()
                     monthsList
                         .padding(.horizontal, 8)
+                    // Место под легенду есть всегда: выбрал рейс — дни не срезаются.
                     legendRow
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
+                        .frame(height: 30)
                 }
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -126,7 +162,7 @@ struct ScheduleMonthsCalendarView: View {
     private var monthsList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(Self.months, id: \.self) { month in
                         monthSection(month)
                             .id(Self.monthID(month))
@@ -205,13 +241,13 @@ struct ScheduleMonthsCalendarView: View {
         let count = primaryDays.isEmpty && secondaryDays.isEmpty
             ? 0
             : primaryDays.union(secondaryDays).filter { $0.hasPrefix(monthKeyPrefix) }.count
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text(Self.monthTitle(month))
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                 if count > 0 {
                     Text("· \(count) дн.")
-                        .font(.subheadline)
+                        .font(.caption)
                         .foregroundStyle(.teal)
                 }
             }
@@ -232,7 +268,7 @@ struct ScheduleMonthsCalendarView: View {
                             if column < row.count, let day = row[column] {
                                 dayCell(day)
                             } else {
-                                Color.clear.frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+                                Color.clear.frame(maxWidth: .infinity, minHeight: Self.rowHeight, maxHeight: Self.rowHeight)
                             }
                         }
                     }
@@ -240,7 +276,7 @@ struct ScheduleMonthsCalendarView: View {
             }
         }
         // Отступ сверху внутри месяца: при прокрутке к нему название не срезается.
-        .padding(.top, 8)
+        .padding(.top, 6)
     }
 
     private func dayCell(_ day: Date) -> some View {
@@ -270,8 +306,8 @@ struct ScheduleMonthsCalendarView: View {
                     // Сегодня — красная цифра на любом фоне (Денис 07.10).
                     .foregroundStyle(isToday ? Color.red : (isPrimary ? Color.white : Color.primary))
             }
-            .frame(width: 38, height: 38)
-            .frame(maxWidth: .infinity, minHeight: 40, maxHeight: 40)
+            .frame(width: Self.dayCircle, height: Self.dayCircle)
+            .frame(maxWidth: .infinity, minHeight: Self.rowHeight, maxHeight: Self.rowHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -345,21 +381,27 @@ private struct ScheduleMonthYearWheel: View {
                 Text("Перейти к месяцу")
                     .font(.headline)
                 Spacer()
-                Button("Перейти") {
+                Button {
                     if let date = moscowCalendar.date(from: DateComponents(year: year, month: month, day: 1)) {
                         onGo(date)
                     }
+                } label: {
+                    Image(systemName: "checkmark")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.teal)
                 }
-                .fontWeight(.semibold)
+                .buttonStyle(.plain)
             }
-            .padding()
+            .padding(.horizontal, Self.gap)
+            .padding(.vertical, 14)
 
             ZStack {
                 RoundedRectangle(cornerRadius: 9)
                     .fill(Color(uiColor: .tertiarySystemFill))
                     .frame(height: DrumColumn.rowHeight)
                     .padding(.horizontal, 10)
-                HStack(spacing: 0) {
+                // Месяц и год разнесены; отступы до краёв окна — как промежуток между ними.
+                HStack(spacing: Self.gap) {
                     DrumColumn(
                         count: 12,
                         isCircular: true,
@@ -368,6 +410,7 @@ private struct ScheduleMonthYearWheel: View {
                         label: { ScheduleMonthsCalendarView.monthNames[$0 - 1] },
                         alignment: .trailing
                     )
+                    .frame(width: 112)
                     DrumColumn(
                         count: years.count,
                         isCircular: false,
@@ -376,14 +419,17 @@ private struct ScheduleMonthYearWheel: View {
                         label: { String($0) },
                         alignment: .leading
                     )
+                    .frame(width: 62)
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, Self.gap)
             }
             .frame(height: DrumColumn.height)
             .padding(.bottom, 12)
         }
-        .frame(width: 250)
+        .frame(width: Self.gap * 3 + 112 + 62)
     }
+
+    static let gap: CGFloat = 22
 }
 
 /// Одна колонка барабана. `valueAt` — значение по номеру строки внутри круга.
@@ -429,7 +475,7 @@ private struct DrumColumn: View {
                         .monospacedDigit()
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: alignment)
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 2)
                         .frame(height: Self.rowHeight)
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -640,15 +686,8 @@ struct ScheduleAircraftMenuPanel: View {
             }
         }
         .frame(width: 190)
-        .background(
-            RoundedRectangle(cornerRadius: ScheduleFilterStyle.cornerRadius)
-                .fill(Color(uiColor: .secondarySystemBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: ScheduleFilterStyle.cornerRadius)
-                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+        .padding(.vertical, 6)
+        .scheduleGlassPanel()
     }
 }
 
@@ -689,6 +728,7 @@ final class ScheduleTapCatcher: NSObject, UIGestureRecognizerDelegate {
     private var recognizer: UITapGestureRecognizer?
     private weak var window: UIWindow?
     var onTap: ((CGPoint) -> Void)?
+    static let tapNotification = Notification.Name("AeroUchet.scheduleTap")
 
     func install() {
         guard recognizer == nil,
@@ -721,10 +761,25 @@ final class ScheduleTapCatcher: NSObject, UIGestureRecognizerDelegate {
         }
         if !onTextField { window.endEditing(true) }
         onTap?(point)
+        NotificationCenter.default.post(name: Self.tapNotification, object: point)
     }
 
     func gestureRecognizer(
         _ gestureRecognizer: UIGestureRecognizer,
         shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
     ) -> Bool { true }
+}
+
+
+// MARK: - Выпадающие окна «стекло» (Денис 07.10 11:37): матовый фон, едва заметная
+// окантовка, мягкая тень — как системное окно, но без резкой серой рамки.
+extension View {
+    func scheduleGlassPanel(cornerRadius: CGFloat = 20) -> some View {
+        background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.07), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.28), radius: 18, y: 8)
+    }
 }
