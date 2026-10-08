@@ -1351,11 +1351,13 @@ struct AircraftReferenceSettingsV129View: View {
         // 24 = внутренние horizontal padding, 40 = пять spacing по 8.
         let usable = max(totalWidth - 24 - 40, 0)
         return ColumnWidths(
-            registration: usable * 0.18,
-            oldRegistration: usable * 0.22,
-            msn: usable * 0.09,
+            // Более равномерная сетка: убираем лишний разрыв слева,
+            // даём MSN/компоновке чуть больше воздуха, фамилию оставляем широкой.
+            registration: usable * 0.16,
+            oldRegistration: usable * 0.18,
+            msn: usable * 0.12,
             type: usable * 0.12,
-            configuration: usable * 0.12,
+            configuration: usable * 0.15,
             surname: usable * 0.27
         )
     }
