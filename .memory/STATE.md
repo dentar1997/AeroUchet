@@ -1,13 +1,14 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 08.10.2026 10:55 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 08.10.2026 11:13 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
 
 ## Последние записи журнала
+- [2026-10-08_1113_chatgpt_v179-aircraft-ui-fixes.md](log/2026-10-08_1113_chatgpt_v179-aircraft-ui-fixes.md)
+- [2026-10-08_1102_chatgpt_v179-aircraft-ui-fix-start.md](log/2026-10-08_1102_chatgpt_v179-aircraft-ui-fix-start.md)
 - [2026-10-08_1055_chatgpt-v178-aircraft-db-fixes.md](log/2026-10-08_1055_chatgpt-v178-aircraft-db-fixes.md)
-- [2026-10-08_1049_chatgpt_v178-aircraft-filters-global-blur.md](log/2026-10-08_1049_chatgpt_v178-aircraft-filters-global-blur.md)
-- [2026-10-08_1045_chatgpt_v178-start.md](log/2026-10-08_1045_chatgpt_v178-start.md)
 
 ## Код
+- **`AppVersion` = 179** (PR #187: база ВС подтверждена как полная 96 строк; исправлены счётчик фильтра, положение glass-меню «Тип ВС», правое выравнивание и стабильная ширина MSN/борт + «от/до»). CI ✅. **Ждёт проверки на iPad.**
 - **`AppVersion` = 178** (PR #186: база ВС — полноширинная таблица, фильтр типов, диапазон RA/MSN, Тарасов только стартово первый; custom blur — общие 30 FPS). CI ✅. **Ждёт проверки на iPad.**
 - **`AppVersion` = 177** (PR #185: «Все ВС», удалён Test, база ВС переведена на сортируемую таблицу по шаблону базы расписания; RA-73772 всегда первый). CI ✅. **Ждёт проверки на iPad.**
 - **`AppVersion` = 176** (PR #184: live custom blur 20 FPS; safe boundary v173; defaults 50/100/25). CI ✅. **iPad: ✅ принят Денисом как «золотая середина»; функция стеклянного blur-окна завершена.**
