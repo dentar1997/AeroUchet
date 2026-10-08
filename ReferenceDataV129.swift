@@ -1271,8 +1271,13 @@ struct AircraftReferenceSettingsV129View: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.horizontal, 12)
             }
-            // Реальный внешний отступ от нижнего края экрана, как слева/справа.
-            .padding(.bottom, 12)
+            // Не внутренний padding, а физически уменьшаем доступную высоту контента:
+            // под карточкой всегда остаётся реальный зазор 12 pt, как по бокам.
+            .frame(
+                width: geometry.size.width,
+                height: max(geometry.size.height - 12, 0),
+                alignment: .top
+            )
         }
         .background {
             Color.clear.contentShape(Rectangle()).ignoresSafeArea()
@@ -1366,19 +1371,19 @@ struct AircraftReferenceSettingsV129View: View {
                 HStack(spacing: 8) {
                     Text(aircraft.registration)
                         .font(.subheadline.weight(.semibold).monospacedDigit())
-                        .frame(width: widths.registration, alignment: .leading)
+                        .frame(width: widths.registration, alignment: .center)
                     Text(aircraft.oldRegistration ?? "—")
                         .font(.caption.monospaced())
-                        .frame(width: widths.oldRegistration, alignment: .leading)
+                        .frame(width: widths.oldRegistration, alignment: .center)
                     Text(aircraft.msn ?? "—")
                         .font(.caption.monospacedDigit())
-                        .frame(width: widths.msn, alignment: .leading)
+                        .frame(width: widths.msn, alignment: .center)
                     Text(aircraft.type.rawValue)
                         .font(.caption.weight(.semibold))
                         .frame(width: widths.type, alignment: .leading)
                     Text(aircraft.configuration ?? "—")
                         .font(.caption.monospacedDigit())
-                        .frame(width: widths.configuration, alignment: .leading)
+                        .frame(width: widths.configuration, alignment: .center)
                     Text(aircraft.surname)
                         .font(.caption)
                         .frame(width: widths.surname, alignment: .leading)
