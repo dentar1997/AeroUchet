@@ -1,11 +1,11 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 08.10.2026 11:39 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 08.10.2026 11:45 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
 
 ## Последние записи журнала
+- [2026-10-08_1145_chatgpt-aircraft-layout-selection-plan.md](log/2026-10-08_1145_chatgpt-aircraft-layout-selection-plan.md)
 - [2026-10-08_1139_chatgpt_v180-complete-aircraft-data-layout.md](log/2026-10-08_1139_chatgpt_v180-complete-aircraft-data-layout.md)
 - [2026-10-08_1128_chatgpt_v180-start.md](log/2026-10-08_1128_chatgpt_v180-start.md)
-- [2026-10-08_1122_chatgpt-v179-fixes-needed.md](log/2026-10-08_1122_chatgpt-v179-fixes-needed.md)
 
 ## Код
 - **`AppVersion` = 180** (PR #188: база ВС полностью заполнена из двух таблиц Numbers — 96 MSN, 95 старых номеров, exactType 96; фиксирована плитка MSN/борт, убран navigation title, добавлен реальный нижний отступ 12 pt). CI ✅. **Ждёт проверки на iPad.**
