@@ -74,6 +74,7 @@ struct AircraftReferenceV129: Identifiable, Codable, Hashable {
     let oldRegistration: String?
     let msn: String?
     let exactType: String?
+    let configuration: String?
 
     var id: String { registration }
 
@@ -128,7 +129,8 @@ final class AircraftReferenceStoreV129: ObservableObject {
         _ type: AircraftFamilyV129,
         old: String? = nil,
         msn: String? = nil,
-        exact: String? = nil
+        exact: String? = nil,
+        configuration: String? = nil
     ) -> AircraftReferenceV129 {
         AircraftReferenceV129(
             registration: "RA-\(digits)",
@@ -136,7 +138,8 @@ final class AircraftReferenceStoreV129: ObservableObject {
             surname: surname,
             oldRegistration: old,
             msn: msn,
-            exactType: exact
+            exactType: exact,
+            configuration: configuration
         )
     }
 
@@ -144,102 +147,102 @@ final class AircraftReferenceStoreV129: ObservableObject {
     // MSN и старые регистрации перенесены из обеих таблиц Numbers; у RA-73716
     // старый регистрационный номер в источнике отсутствует.
     private static let seed: [AircraftReferenceV129] = [
-        row("73160", "Вахтангов", .a321, old: "VP-BTL", msn: "5881", exact: "A321-211"),
-        row("73161", "Бернес", .a321S, old: "VP-BKZ", msn: "8205", exact: "A321-211"),
-        row("73162", "Вишневская", .a321, old: "VP-BOE", msn: "5755", exact: "A321-211"),
-        row("73163", "Станиславский", .a321, old: "VP-BTG", msn: "5790", exact: "A321-211"),
-        row("73164", "Дягилев", .a321, old: "VP-BTR", msn: "5913", exact: "A321-211"),
-        row("73165", "Михалков", .a321, old: "VP-BOC", msn: "5720", exact: "A321-211"),
-        row("73166", "Гомельский", .a321S, old: "VQ-BTT", msn: "8363", exact: "A321-211"),
-        row("73167", "Толбухин", .a320S, old: "VQ-BTW", msn: "8418", exact: "A320-214"),
-        row("73168", "Гагарин", .a320S, old: "VP-BIX", msn: "8319", exact: "A320-214"),
-        row("73169", "Федотов", .a320S, old: "VQ-BTX", msn: "8452", exact: "A320-214"),
-        row("73170", "Герасимов", .a320S, old: "VP-BCB", msn: "7279", exact: "A320-214"),
-        row("73171", "Фет", .a320S, old: "VP-BEO", msn: "7038", exact: "A320-214"),
-        row("73172", "Поддубный", .a320S, old: "VP-BIL", msn: "8234", exact: "A320-214"),
-        row("73173", "Северянин", .a320S, old: "VP-BIP", msn: "8276", exact: "A320-214"),
-        row("73174", "Толстой", .a320S, old: "VP-BAC", msn: "7215", exact: "A320-214"),
-        row("73175", "Маршак", .a320S, old: "VP-BJY", msn: "6963", exact: "A320-214"),
-        row("73176", "Вернадский", .a320, old: "VQ-BKT", msn: "4712", exact: "A320-214"),
-        row("73177", "Белов", .a321S, old: "VQ-BTU", msn: "8378", exact: "A321-211"),
-        row("73178", "Набоков", .a321S, old: "VP-BKJ", msn: "8147", exact: "A321-211"),
-        row("73179", "Паустовский", .a320S, old: "VP-BJW", msn: "6954", exact: "A320-214"),
-        row("73180", "Иоффе", .a320S, old: "VP-BAD", msn: "7240", exact: "A320-214"),
-        row("73181", "Вознесенский", .a320S, old: "VP-BET", msn: "7071", exact: "A320-214"),
-        row("73703", "Вавилов Н.", .a321N, old: "VP-BPP", msn: "10193", exact: "A321-251NX"),
-        row("73704", "Годенко", .a321N, old: "VP-BRC", msn: "10314", exact: "A321-251NX"),
-        row("73705", "Салманов", .a321N, old: "VP-BXT", msn: "10595", exact: "A321-251NX"),
-        row("73706", "Мичурин", .a321, old: "VQ-BEA", msn: "4058", exact: "A321-211"),
-        row("73707", "Пирогов", .a321, old: "VQ-BED", msn: "4074", exact: "A321-211"),
-        row("73708", "Грибоедова", .a321, old: "VQ-BEG", msn: "4116", exact: "A321-211"),
+        row("73160", "Вахтангов", .a321, old: "VP-BTL", msn: "5881", exact: "A321-211", configuration: "28/142"),
+        row("73161", "Бернес", .a321S, old: "VP-BKZ", msn: "8205", exact: "A321-211", configuration: "16/167"),
+        row("73162", "Вишневская", .a321, old: "VP-BOE", msn: "5755", exact: "A321-211", configuration: "28/142"),
+        row("73163", "Станиславский", .a321, old: "VP-BTG", msn: "5790", exact: "A321-211", configuration: "28/142"),
+        row("73164", "Дягилев", .a321, old: "VP-BTR", msn: "5913", exact: "A321-211", configuration: "28/142"),
+        row("73165", "Михалков", .a321, old: "VP-BOC", msn: "5720", exact: "A321-211", configuration: "28/142"),
+        row("73166", "Гомельский", .a321S, old: "VQ-BTT", msn: "8363", exact: "A321-211", configuration: "16/167"),
+        row("73167", "Толбухин", .a320S, old: "VQ-BTW", msn: "8418", exact: "A320-214", configuration: "8/150"),
+        row("73168", "Гагарин", .a320S, old: "VP-BIX", msn: "8319", exact: "A320-214", configuration: "8/150"),
+        row("73169", "Федотов", .a320S, old: "VQ-BTX", msn: "8452", exact: "A320-214", configuration: "8/150"),
+        row("73170", "Герасимов", .a320S, old: "VP-BCB", msn: "7279", exact: "A320-214", configuration: "8/150"),
+        row("73171", "Фет", .a320S, old: "VP-BEO", msn: "7038", exact: "A320-214", configuration: "8/150"),
+        row("73172", "Поддубный", .a320S, old: "VP-BIL", msn: "8234", exact: "A320-214", configuration: "8/150"),
+        row("73173", "Северянин", .a320S, old: "VP-BIP", msn: "8276", exact: "A320-214", configuration: "8/150"),
+        row("73174", "Толстой", .a320S, old: "VP-BAC", msn: "7215", exact: "A320-214", configuration: "8/150"),
+        row("73175", "Маршак", .a320S, old: "VP-BJY", msn: "6963", exact: "A320-214", configuration: "8/150"),
+        row("73176", "Вернадский", .a320, old: "VQ-BKT", msn: "4712", exact: "A320-214", configuration: "20/120"),
+        row("73177", "Белов", .a321S, old: "VQ-BTU", msn: "8378", exact: "A321-211", configuration: "16/167"),
+        row("73178", "Набоков", .a321S, old: "VP-BKJ", msn: "8147", exact: "A321-211", configuration: "16/167"),
+        row("73179", "Паустовский", .a320S, old: "VP-BJW", msn: "6954", exact: "A320-214", configuration: "8/150"),
+        row("73180", "Иоффе", .a320S, old: "VP-BAD", msn: "7240", exact: "A320-214", configuration: "8/150"),
+        row("73181", "Вознесенский", .a320S, old: "VP-BET", msn: "7071", exact: "A320-214", configuration: "8/150"),
+        row("73703", "Вавилов Н.", .a321N, old: "VP-BPP", msn: "10193", exact: "A321-251NX", configuration: "12/184"),
+        row("73704", "Годенко", .a321N, old: "VP-BRC", msn: "10314", exact: "A321-251NX", configuration: "12/184"),
+        row("73705", "Салманов", .a321N, old: "VP-BXT", msn: "10595", exact: "A321-251NX", configuration: "12/184"),
+        row("73706", "Мичурин", .a321, old: "VQ-BEA", msn: "4058", exact: "A321-211", configuration: "28/142"),
+        row("73707", "Пирогов", .a321, old: "VQ-BED", msn: "4074", exact: "A321-211", configuration: "28/142"),
+        row("73708", "Грибоедова", .a321, old: "VQ-BEG", msn: "4116", exact: "A321-211", configuration: "28/142"),
         row("73709", "Шнитке", .a321S, old: "VP-BEA", msn: "6678", exact: "A321-211"),
         row("73710", "Любимов", .a321S, old: "VP-BEE", msn: "6726", exact: "A321-211"),
         row("73711", "Немирович-Данченко", .a321S, old: "VP-BEG", msn: "6756", exact: "A321-211"),
         row("73712", "Дунаевский", .a321S, old: "VP-BES", msn: "6817", exact: "A321-211"),
-        row("73713", "Гончаров", .a321S, old: "VP-BJX", msn: "6945", exact: "A321-211"),
-        row("73714", "Ушаков", .a321S, old: "VP-BAV", msn: "7037", exact: "A321-211"),
-        row("73715", "Зощенко", .a321S, old: "VP-BEW", msn: "7072", exact: "A321-211"),
-        row("73716", "Рихтер", .a321S, msn: "7084", exact: "A321-211"),
-        row("73717", "Рябушинский", .a321S, old: "VP-BKI", msn: "7137", exact: "A321-211"),
-        row("73718", "Бондарчук", .a321S, old: "VP-BAE", msn: "7193", exact: "A321-211"),
-        row("73719", "Тарковский", .a321S, old: "VP-BAF", msn: "7202", exact: "A321-211"),
-        row("73720", "Шукшин", .a321S, old: "VP-BAY", msn: "7255", exact: "A321-211"),
-        row("73721", "Левитан", .a321S, old: "VP-BAZ", msn: "7300", exact: "A321-211"),
-        row("73722", "Рязанов", .a321S, old: "VP-BFF", msn: "7645", exact: "A321-211"),
-        row("73723", "Волков", .a321S, old: "VP-BFK", msn: "7667", exact: "A321-211"),
-        row("73724", "Александров", .a321S, old: "VP-BFO", msn: "7678", exact: "A321-211"),
-        row("73725", "Шишкин", .a321S, old: "VP-BFX", msn: "7749", exact: "A321-211"),
-        row("73726", "Рахманинов", .a321S, old: "VP-BKR", msn: "7782", exact: "A321-211"),
-        row("73727", "Менделеев", .a321S, old: "VP-BKO", msn: "7801", exact: "A321-211"),
-        row("73728", "Рождественский", .a321S, old: "VP-BTH", msn: "7878", exact: "A321-211"),
-        row("73729", "Вертинский", .a321S, old: "VP-BTK", msn: "7934", exact: "A321-211"),
-        row("73730", "Добрынин", .a320N, old: "VP-BPQ", msn: "10126", exact: "A320-251N"),
-        row("73731", "Этуш", .a320N, old: "VP-BPR", msn: "10167", exact: "A320-251N"),
-        row("73732", "Жуковский", .a320N, old: "VP-BRG", msn: "10180", exact: "A320-251N"),
-        row("73733", "Лазарев", .a320N, old: "VP-BPM", msn: "10258", exact: "A320-251N"),
-        row("73734", "Мешалкин", .a320N, old: "VP-BSE", msn: "10481", exact: "A320-251N"),
-        row("73735", "Беллинсгаузен", .a320N, old: "VP-BSN", msn: "10525", exact: "A320-251N"),
-        row("73738", "Вавилов С.", .a320, old: "VQ-BHL", msn: "4453", exact: "A320-214"),
-        row("73739", "Лобачевский", .a320, old: "VQ-BHN", msn: "4498", exact: "A320-214"),
-        row("73740", "Джалиль", .a320, old: "VQ-BIW", msn: "4579", exact: "A320-214"),
-        row("73743", "Тимирязев", .a320, old: "VQ-BIU", msn: "4684", exact: "A320-214"),
-        row("73744", "Николаев", .a320, old: "VQ-BKU", msn: "4835", exact: "A320-214"),
-        row("73745", "Тамм", .a320, old: "VP-BID", msn: "5421", exact: "A320-214"),
-        row("73746", "Мечников", .a320S, old: "VP-BJA", msn: "5536", exact: "A320-214"),
-        row("73747", "Черенков", .a320S, old: "VP-BLH", msn: "5565", exact: "A320-214"),
-        row("73748", "Басов", .a320S, old: "VP-BUL", msn: "5572", exact: "A320-214"),
-        row("73749", "SKYTEAM", .a320S, old: "VP-BLP", msn: "5578", exact: "A320-214"),
-        row("73750", "Суворов", .a320S, old: "VP-BNL", msn: "5580", exact: "A320-214"),
-        row("73752", "Яблочков", .a320S, old: "VP-BLR", msn: "5585", exact: "A320-214"),
-        row("73753", "Ретро ливрея", .a320S, old: "VP-BNT", msn: "5614", exact: "A320-214"),
-        row("73754", "Мейерхольд", .a320S, old: "VP-BTI", msn: "5873", exact: "A320-214"),
-        row("73755", "Лихачёв", .a320S, old: "VQ-BPU", msn: "5921", exact: "A320-214"),
-        row("73756", "Столетов", .a320S, old: "VQ-BPV", msn: "5970", exact: "A320-214"),
-        row("73757", "SKYTEAM", .a320S, old: "VQ-BRW", msn: "5974", exact: "A320-214"),
-        row("73758", "Вишневский", .a320S, old: "VQ-BPW", msn: "5982", exact: "A320-214"),
-        row("73759", "Комаров", .a320S, old: "VQ-BSI", msn: "6043", exact: "A320-214"),
-        row("73760", "Егоров", .a320S, old: "VQ-BSJ", msn: "6044", exact: "A320-214"),
-        row("73761", "Феоктистов", .a320S, old: "VQ-BSL", msn: "6060", exact: "A320-214"),
-        row("73762", "Попович", .a320S, old: "VQ-BST", msn: "6071", exact: "A320-214"),
-        row("73763", "Жуков", .a320S, old: "VQ-BSU", msn: "6090", exact: "A320-214"),
-        row("73764", "Герман", .a320S, old: "VP-BCA", msn: "7275", exact: "A320-214"),
-        row("73765", "Достоевский", .a320S, old: "VP-BCE", msn: "7295", exact: "A320-214"),
-        row("73766", "Шаляпин", .a320S, old: "VP-BFA", msn: "7561", exact: "A320-214"),
-        row("73767", "Левитан", .a320S, old: "VP-BFE", msn: "7593", exact: "A320-214"),
-        row("73768", "Флёров", .a320S, old: "VP-BFG", msn: "7646", exact: "A320-214"),
-        row("73769", "Малевич", .a320S, old: "VP-BFH", msn: "7653", exact: "A320-214"),
-        row("73770", "Прокофьев", .a320S, old: "VP-BKP", msn: "7806", exact: "A320-214"),
-        row("73771", "Бородин", .a320S, old: "VP-BTA", msn: "7836", exact: "A320-214"),
-        row("73772", "Тарасов", .a320S, old: "VP-BLN", msn: "7843", exact: "A320-214"),
-        row("73773", "Челюскин", .a320S, old: "VP-BTC", msn: "7846", exact: "A320-214"),
-        row("73774", "Репин", .a320S, old: "VP-BLO", msn: "7863", exact: "A320-214"),
-        row("73775", "Рублёв", .a320S, old: "VP-BTJ", msn: "7902", exact: "A320-214"),
-        row("73776", "Семашко", .a320S, old: "VP-BTO", msn: "7932", exact: "A320-214"),
-        row("73777", "Гайдай", .a320S, old: "VP-BIF", msn: "8067", exact: "A320-214"),
-        row("73778", "Брюсов", .a320S, old: "VP-BIY", msn: "8073", exact: "A320-214"),
-        row("73779", "Довлатов", .a320S, old: "VP-BII", msn: "8133", exact: "A320-214"),
-        row("73780", "Глазунов", .a320S, old: "VP-BIW", msn: "8188", exact: "A320-214"),
-        row("73781", "Лиена", .a320S, old: "VP-BIJ", msn: "8201", exact: "A320-214"),
+        row("73713", "Гончаров", .a321S, old: "VP-BJX", msn: "6945", exact: "A321-211", configuration: "16/167"),
+        row("73714", "Ушаков", .a321S, old: "VP-BAV", msn: "7037", exact: "A321-211", configuration: "16/167"),
+        row("73715", "Зощенко", .a321S, old: "VP-BEW", msn: "7072", exact: "A321-211", configuration: "16/167"),
+        row("73716", "Рихтер", .a321S, msn: "7084", exact: "A321-211", configuration: "16/167"),
+        row("73717", "Рябушинский", .a321S, old: "VP-BKI", msn: "7137", exact: "A321-211", configuration: "16/167"),
+        row("73718", "Бондарчук", .a321S, old: "VP-BAE", msn: "7193", exact: "A321-211", configuration: "16/167"),
+        row("73719", "Тарковский", .a321S, old: "VP-BAF", msn: "7202", exact: "A321-211", configuration: "16/167"),
+        row("73720", "Шукшин", .a321S, old: "VP-BAY", msn: "7255", exact: "A321-211", configuration: "16/167"),
+        row("73721", "Левитан", .a321S, old: "VP-BAZ", msn: "7300", exact: "A321-211", configuration: "16/167"),
+        row("73722", "Рязанов", .a321S, old: "VP-BFF", msn: "7645", exact: "A321-211", configuration: "16/167"),
+        row("73723", "Волков", .a321S, old: "VP-BFK", msn: "7667", exact: "A321-211", configuration: "16/167"),
+        row("73724", "Александров", .a321S, old: "VP-BFO", msn: "7678", exact: "A321-211", configuration: "16/167"),
+        row("73725", "Шишкин", .a321S, old: "VP-BFX", msn: "7749", exact: "A321-211", configuration: "16/167"),
+        row("73726", "Рахманинов", .a321S, old: "VP-BKR", msn: "7782", exact: "A321-211", configuration: "16/167"),
+        row("73727", "Менделеев", .a321S, old: "VP-BKO", msn: "7801", exact: "A321-211", configuration: "16/167"),
+        row("73728", "Рождественский", .a321S, old: "VP-BTH", msn: "7878", exact: "A321-211", configuration: "16/167"),
+        row("73729", "Вертинский", .a321S, old: "VP-BTK", msn: "7934", exact: "A321-211", configuration: "16/167"),
+        row("73730", "Добрынин", .a320N, old: "VP-BPQ", msn: "10126", exact: "A320-251N", configuration: "12/144"),
+        row("73731", "Этуш", .a320N, old: "VP-BPR", msn: "10167", exact: "A320-251N", configuration: "12/144"),
+        row("73732", "Жуковский", .a320N, old: "VP-BRG", msn: "10180", exact: "A320-251N", configuration: "12/144"),
+        row("73733", "Лазарев", .a320N, old: "VP-BPM", msn: "10258", exact: "A320-251N", configuration: "12/144"),
+        row("73734", "Мешалкин", .a320N, old: "VP-BSE", msn: "10481", exact: "A320-251N", configuration: "12/144"),
+        row("73735", "Беллинсгаузен", .a320N, old: "VP-BSN", msn: "10525", exact: "A320-251N", configuration: "12/144"),
+        row("73738", "Вавилов С.", .a320, old: "VQ-BHL", msn: "4453", exact: "A320-214", configuration: "20/120"),
+        row("73739", "Лобачевский", .a320, old: "VQ-BHN", msn: "4498", exact: "A320-214", configuration: "20/120"),
+        row("73740", "Джалиль", .a320, old: "VQ-BIW", msn: "4579", exact: "A320-214", configuration: "20/120"),
+        row("73743", "Тимирязев", .a320, old: "VQ-BIU", msn: "4684", exact: "A320-214", configuration: "20/120"),
+        row("73744", "Николаев", .a320, old: "VQ-BKU", msn: "4835", exact: "A320-214", configuration: "20/120"),
+        row("73745", "Тамм", .a320, old: "VP-BID", msn: "5421", exact: "A320-214", configuration: "20/120"),
+        row("73746", "Мечников", .a320S, old: "VP-BJA", msn: "5536", exact: "A320-214", configuration: "8/150"),
+        row("73747", "Черенков", .a320S, old: "VP-BLH", msn: "5565", exact: "A320-214", configuration: "8/150"),
+        row("73748", "Басов", .a320S, old: "VP-BUL", msn: "5572", exact: "A320-214", configuration: "8/150"),
+        row("73749", "SKYTEAM", .a320S, old: "VP-BLP", msn: "5578", exact: "A320-214", configuration: "8/150"),
+        row("73750", "Суворов", .a320S, old: "VP-BNL", msn: "5580", exact: "A320-214", configuration: "8/150"),
+        row("73752", "Яблочков", .a320S, old: "VP-BLR", msn: "5585", exact: "A320-214", configuration: "8/150"),
+        row("73753", "Ретро ливрея", .a320S, old: "VP-BNT", msn: "5614", exact: "A320-214", configuration: "8/150"),
+        row("73754", "Мейерхольд", .a320S, old: "VP-BTI", msn: "5873", exact: "A320-214", configuration: "8/150"),
+        row("73755", "Лихачёв", .a320S, old: "VQ-BPU", msn: "5921", exact: "A320-214", configuration: "8/150"),
+        row("73756", "Столетов", .a320S, old: "VQ-BPV", msn: "5970", exact: "A320-214", configuration: "8/150"),
+        row("73757", "SKYTEAM", .a320S, old: "VQ-BRW", msn: "5974", exact: "A320-214", configuration: "8/150"),
+        row("73758", "Вишневский", .a320S, old: "VQ-BPW", msn: "5982", exact: "A320-214", configuration: "8/150"),
+        row("73759", "Комаров", .a320S, old: "VQ-BSI", msn: "6043", exact: "A320-214", configuration: "8/150"),
+        row("73760", "Егоров", .a320S, old: "VQ-BSJ", msn: "6044", exact: "A320-214", configuration: "8/150"),
+        row("73761", "Феоктистов", .a320S, old: "VQ-BSL", msn: "6060", exact: "A320-214", configuration: "8/150"),
+        row("73762", "Попович", .a320S, old: "VQ-BST", msn: "6071", exact: "A320-214", configuration: "8/150"),
+        row("73763", "Жуков", .a320S, old: "VQ-BSU", msn: "6090", exact: "A320-214", configuration: "8/150"),
+        row("73764", "Герман", .a320S, old: "VP-BCA", msn: "7275", exact: "A320-214", configuration: "8/150"),
+        row("73765", "Достоевский", .a320S, old: "VP-BCE", msn: "7295", exact: "A320-214", configuration: "8/150"),
+        row("73766", "Шаляпин", .a320S, old: "VP-BFA", msn: "7561", exact: "A320-214", configuration: "8/150"),
+        row("73767", "Левитан", .a320S, old: "VP-BFE", msn: "7593", exact: "A320-214", configuration: "8/150"),
+        row("73768", "Флёров", .a320S, old: "VP-BFG", msn: "7646", exact: "A320-214", configuration: "8/150"),
+        row("73769", "Малевич", .a320S, old: "VP-BFH", msn: "7653", exact: "A320-214", configuration: "8/150"),
+        row("73770", "Прокофьев", .a320S, old: "VP-BKP", msn: "7806", exact: "A320-214", configuration: "8/150"),
+        row("73771", "Бородин", .a320S, old: "VP-BTA", msn: "7836", exact: "A320-214", configuration: "8/150"),
+        row("73772", "Тарасов", .a320S, old: "VP-BLN", msn: "7843", exact: "A320-214", configuration: "8/150"),
+        row("73773", "Челюскин", .a320S, old: "VP-BTC", msn: "7846", exact: "A320-214", configuration: "8/150"),
+        row("73774", "Репин", .a320S, old: "VP-BLO", msn: "7863", exact: "A320-214", configuration: "8/150"),
+        row("73775", "Рублёв", .a320S, old: "VP-BTJ", msn: "7902", exact: "A320-214", configuration: "8/150"),
+        row("73776", "Семашко", .a320S, old: "VP-BTO", msn: "7932", exact: "A320-214", configuration: "8/150"),
+        row("73777", "Гайдай", .a320S, old: "VP-BIF", msn: "8067", exact: "A320-214", configuration: "8/150"),
+        row("73778", "Брюсов", .a320S, old: "VP-BIY", msn: "8073", exact: "A320-214", configuration: "8/150"),
+        row("73779", "Довлатов", .a320S, old: "VP-BII", msn: "8133", exact: "A320-214", configuration: "8/150"),
+        row("73780", "Глазунов", .a320S, old: "VP-BIW", msn: "8188", exact: "A320-214", configuration: "8/150"),
+        row("73781", "Лиена", .a320S, old: "VP-BIJ", msn: "8201", exact: "A320-214", configuration: "8/150"),
     ]
 }
 
@@ -1137,19 +1140,21 @@ struct AircraftReferenceSettingsV129View: View {
     @State private var rangeTo = ""
 
     private enum SortColumn {
-        case registration, oldRegistration, msn, type, surname
+        case registration, oldRegistration, msn, type, configuration, surname
     }
 
     /// nil = стартовый порядок: Тарасов первым, затем RA по возрастанию.
     /// После первого тапа по заголовку Тарасов сортируется как обычная строка.
     @State private var sortColumn: SortColumn?
     @State private var sortAscending = true
+    @State private var selectedAircraftID: String?
 
     private struct ColumnWidths {
         let registration: CGFloat
         let oldRegistration: CGFloat
         let msn: CGFloat
         let type: CGFloat
+        let configuration: CGFloat
         let surname: CGFloat
     }
 
@@ -1163,6 +1168,7 @@ struct AircraftReferenceSettingsV129View: View {
                     || aircraft.registration.localizedCaseInsensitiveContains(query)
                     || aircraft.surname.localizedCaseInsensitiveContains(query)
                     || aircraft.type.rawValue.localizedCaseInsensitiveContains(query)
+                    || (aircraft.configuration?.localizedCaseInsensitiveContains(query) ?? false)
                     || (aircraft.oldRegistration?.localizedCaseInsensitiveContains(query) ?? false)
                     || (aircraft.msn?.localizedCaseInsensitiveContains(query) ?? false))
         }
@@ -1238,6 +1244,8 @@ struct AircraftReferenceSettingsV129View: View {
                             .frame(width: widths.msn, alignment: .leading)
                         sortHeader("Тип ВС", .type)
                             .frame(width: widths.type, alignment: .leading)
+                        sortHeader("Компоновка", .configuration)
+                            .frame(width: widths.configuration, alignment: .leading)
                         sortHeader("Фамилия", .surname)
                             .frame(width: widths.surname, alignment: .leading)
                     }
@@ -1338,39 +1346,50 @@ struct AircraftReferenceSettingsV129View: View {
     }
 
     private func columnWidths(for totalWidth: CGFloat) -> ColumnWidths {
-        // 24 = внутренние horizontal padding, 32 = четыре spacing по 8.
-        let usable = max(totalWidth - 24 - 32, 0)
+        // 24 = внутренние horizontal padding, 40 = пять spacing по 8.
+        let usable = max(totalWidth - 24 - 40, 0)
         return ColumnWidths(
-            registration: usable * 0.21,
-            oldRegistration: usable * 0.25,
-            msn: usable * 0.10,
-            type: usable * 0.14,
-            surname: usable * 0.30
+            registration: usable * 0.18,
+            oldRegistration: usable * 0.22,
+            msn: usable * 0.09,
+            type: usable * 0.12,
+            configuration: usable * 0.12,
+            surname: usable * 0.27
         )
     }
 
     private func aircraftRow(_ aircraft: AircraftReferenceV129, widths: ColumnWidths) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text(aircraft.registration)
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .frame(width: widths.registration, alignment: .leading)
-                Text(aircraft.oldRegistration ?? "—")
-                    .font(.caption.monospaced())
-                    .frame(width: widths.oldRegistration, alignment: .leading)
-                Text(aircraft.msn ?? "—")
-                    .font(.caption.monospacedDigit())
-                    .frame(width: widths.msn, alignment: .leading)
-                Text(aircraft.type.rawValue)
-                    .font(.caption.weight(.semibold))
-                    .frame(width: widths.type, alignment: .leading)
-                Text(aircraft.surname)
-                    .font(.caption)
-                    .frame(width: widths.surname, alignment: .leading)
-                    .lineLimit(1)
+            Button {
+                selectedAircraftID = selectedAircraftID == aircraft.id ? nil : aircraft.id
+            } label: {
+                HStack(spacing: 8) {
+                    Text(aircraft.registration)
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                        .frame(width: widths.registration, alignment: .leading)
+                    Text(aircraft.oldRegistration ?? "—")
+                        .font(.caption.monospaced())
+                        .frame(width: widths.oldRegistration, alignment: .leading)
+                    Text(aircraft.msn ?? "—")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: widths.msn, alignment: .leading)
+                    Text(aircraft.type.rawValue)
+                        .font(.caption.weight(.semibold))
+                        .frame(width: widths.type, alignment: .leading)
+                    Text(aircraft.configuration ?? "—")
+                        .font(.caption.monospacedDigit())
+                        .frame(width: widths.configuration, alignment: .leading)
+                    Text(aircraft.surname)
+                        .font(.caption)
+                        .frame(width: widths.surname, alignment: .leading)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(selectedAircraftID == aircraft.id ? Color.teal.opacity(0.10) : Color.clear)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
+            .buttonStyle(.plain)
 
             Divider()
         }
@@ -1428,6 +1447,9 @@ struct AircraftReferenceSettingsV129View: View {
             }
         case .type:
             order = left.type.rawValue.localizedStandardCompare(right.type.rawValue)
+        case .configuration:
+            if let fixed = missingValueOrder(left.configuration, right.configuration) { return fixed }
+            order = (left.configuration ?? "").localizedStandardCompare(right.configuration ?? "")
         case .surname:
             order = left.surname.localizedStandardCompare(right.surname)
         }
