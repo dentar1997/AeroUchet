@@ -1,11 +1,11 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 08.10.2026 10:49 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 08.10.2026 10:55 МСК · ChatGPT. Перед работой с кодом сверить с живым `main`.
 
 ## Последние записи журнала
+- [2026-10-08_1055_chatgpt-v178-aircraft-db-fixes.md](log/2026-10-08_1055_chatgpt-v178-aircraft-db-fixes.md)
 - [2026-10-08_1049_chatgpt_v178-aircraft-filters-global-blur.md](log/2026-10-08_1049_chatgpt_v178-aircraft-filters-global-blur.md)
 - [2026-10-08_1045_chatgpt_v178-start.md](log/2026-10-08_1045_chatgpt_v178-start.md)
-- [2026-10-08_1039_chatgpt-aircraft-db-refine-plan.md](log/2026-10-08_1039_chatgpt-aircraft-db-refine-plan.md)
 
 ## Код
 - **`AppVersion` = 178** (PR #186: база ВС — полноширинная таблица, фильтр типов, диапазон RA/MSN, Тарасов только стартово первый; custom blur — общие 30 FPS). CI ✅. **Ждёт проверки на iPad.**
