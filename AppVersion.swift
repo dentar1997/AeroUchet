@@ -1,9 +1,9 @@
 enum AppVersion {
-    static let number = 184
-    static let label = "Версия 184"
+    static let number = 185
+    static let label = "Версия 185"
 
     // Заполняет автоматическая проверка (.github/workflows/auto-version.yml). Вручную не менять.
-    static let sourceCommit = "8930ba2"
-    static let pullRequest = 192 // 0 — изменение без PR
-    static let date = "08.10.2026 15:59"
+    static let sourceCommit = "bd042e2"
+    static let pullRequest = 193 // 0 — изменение без PR
+    static let date = "08.10.2026 19:18"
 }
