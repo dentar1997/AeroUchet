@@ -1348,17 +1348,18 @@ struct AircraftReferenceSettingsV129View: View {
     }
 
     private func columnWidths(for totalWidth: CGFloat) -> ColumnWidths {
+        // Все шесть столбцов занимают одинаковые ячейки:
+        // центры колонок идут с одинаковым шагом по всей ширине таблицы.
         // 24 = внутренние horizontal padding, 40 = пять spacing по 8.
         let usable = max(totalWidth - 24 - 40, 0)
+        let equal = usable / 6
         return ColumnWidths(
-            // Более равномерная сетка: убираем лишний разрыв слева,
-            // даём MSN/компоновке чуть больше воздуха, фамилию оставляем широкой.
-            registration: usable * 0.16,
-            oldRegistration: usable * 0.18,
-            msn: usable * 0.12,
-            type: usable * 0.12,
-            configuration: usable * 0.15,
-            surname: usable * 0.27
+            registration: equal,
+            oldRegistration: equal,
+            msn: equal,
+            type: equal,
+            configuration: equal,
+            surname: equal
         )
     }
 
