@@ -214,3 +214,4 @@
 | #183 | 175 | 08.10 01:53 | v175: вернуть live blur на 10 FPS | NEEDS_VERIFICATION |  |
 | #184 | 176 | 08.10 02:00 | v176: поднять live blur до 20 FPS | NEEDS_VERIFICATION |  |
 | #185 | 177 | 08.10 02:21 | v177: база ВС по табличному шаблону | NEEDS_VERIFICATION |  |
+| #186 | 178 | 08.10 10:49 | v178: фильтры базы ВС и общие 30 FPS blur | NEEDS_VERIFICATION |  |
