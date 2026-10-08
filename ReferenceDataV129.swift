@@ -1178,7 +1178,7 @@ struct AircraftReferenceSettingsV129View: View {
 
             VStack(spacing: 8) {
                 HStack {
-                    Text("Воздушные суда · \(values.count)")
+                    Text(aircraftCountTitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -1211,6 +1211,9 @@ struct AircraftReferenceSettingsV129View: View {
                     }
                     .buttonStyle(.plain)
                     .scheduleFilterTile()
+                    // Фиксируем по длинному варианту «Бортовой номер»:
+                    // при переключении MSN/борт соседние поля не должны прыгать.
+                    .frame(width: 142)
 
                     AircraftFamilyFilterButton(
                         selection: $selectedTypes,
@@ -1218,9 +1221,8 @@ struct AircraftReferenceSettingsV129View: View {
                         frame: $typeButtonFrame,
                         panelFrame: $typePanelFrame
                     )
-
-                    Spacer(minLength: 0)
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 12)
                 .zIndex(1)
 
@@ -1288,6 +1290,13 @@ struct AircraftReferenceSettingsV129View: View {
         }
     }
 
+    private var aircraftCountTitle: String {
+        let total = store.aircraft.count
+        return values.count == total
+            ? "Воздушные суда · \(total)"
+            : "Воздушные суда · \(values.count) из \(total)"
+    }
+
     private func rangeField(_ title: String, text: Binding<String>) -> some View {
         HStack(spacing: 4) {
             Text(title)
@@ -1297,7 +1306,8 @@ struct AircraftReferenceSettingsV129View: View {
                 .keyboardType(.numberPad)
                 .font(.caption.monospacedDigit())
                 .multilineTextAlignment(.center)
-                .frame(width: rangeUsesMSN ? 52 : 58)
+                // Одинаковая ширина в обоих режимах — без сдвига «от/до».
+                .frame(width: 58)
         }
         .scheduleFilterTile()
     }
