@@ -755,8 +755,10 @@ struct AircraftFamilyFilterButton: View {
         } action: { value in
             frame = value
         }
-        .overlay(alignment: .topLeading) {
+        .overlay(alignment: .topTrailing) {
             if isOpen {
+                // У правого края раскрываем панель влево:
+                // её правый край совпадает с правым краем кнопки.
                 AircraftFamilyMenuPanel(selection: $selection)
                     .fixedSize()
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { panelFrame = $0 }
