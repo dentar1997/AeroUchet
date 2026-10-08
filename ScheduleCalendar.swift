@@ -727,6 +727,97 @@ struct ScheduleAircraftMenuPanel: View {
 }
 
 
+/// Тот же визуальный фильтр «Тип ВС», но для справочника конкретных семейств A320/A321.
+struct AircraftFamilyFilterButton: View {
+    @Binding var selection: Set<AircraftFamilyV129>
+    @Binding var isOpen: Bool
+    @Binding var frame: CGRect
+    @Binding var panelFrame: CGRect
+
+    static let choices = AircraftFamilyV129.allCases
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(Self.title(selection))
+                .font(.caption.bold())
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize()
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .scheduleFilterTile(active: isOpen)
+        .contentShape(Rectangle())
+        .onTapGesture { isOpen.toggle() }
+        .onGeometryChange(for: CGRect.self) { proxy in
+            proxy.frame(in: .global)
+        } action: { value in
+            frame = value
+        }
+        .overlay(alignment: .topLeading) {
+            if isOpen {
+                AircraftFamilyMenuPanel(selection: $selection)
+                    .fixedSize()
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { panelFrame = $0 }
+                    .offset(y: ScheduleFilterStyle.height + 6)
+            }
+        }
+    }
+
+    static func title(_ selection: Set<AircraftFamilyV129>) -> String {
+        if selection.count >= choices.count { return "Все ВС" }
+        if selection.count == 1, let only = selection.first { return only.rawValue }
+        return "Тип ВС · \(selection.count)"
+    }
+
+    static func toggle(_ value: AircraftFamilyV129, in selection: inout Set<AircraftFamilyV129>) {
+        if selection.contains(value) {
+            guard selection.count > 1 else { return }
+            selection.remove(value)
+        } else {
+            selection.insert(value)
+        }
+    }
+}
+
+struct AircraftFamilyMenuPanel: View {
+    @Binding var selection: Set<AircraftFamilyV129>
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(AircraftFamilyFilterButton.choices) { value in
+                HStack {
+                    Text(value.rawValue)
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    if selection.contains(value) {
+                        Image(systemName: "checkmark")
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.teal)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 32)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    AircraftFamilyFilterButton.toggle(value, in: &selection)
+                }
+                if value != AircraftFamilyFilterButton.choices.last {
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 12)
+                }
+            }
+        }
+        .frame(width: 140)
+        .padding(.vertical, 4)
+        .scheduleGlassPanel(cornerRadius: 14)
+    }
+}
+
+
 // MARK: - Единый вид полей и кнопок фильтра (Денис 07.10 04:15–04:17)
 //
 // Форма — как ячейка задания на полёт («Начало работы»): та же пропорция скругления
@@ -853,7 +944,7 @@ struct ScheduleLightBlur: UIViewRepresentable {
             proxy.view = self
 
             let link = CADisplayLink(target: proxy, selector: #selector(LinkProxy.tick))
-            link.preferredFramesPerSecond = 20
+            link.preferredFramesPerSecond = ScheduleGlassSettings.liveBlurFPS
             link.add(to: .main, forMode: .common)
 
             linkProxy = proxy
@@ -987,6 +1078,8 @@ enum ScheduleGlassSettings {
     static let defaultBlur: Double = 0.5
     static let defaultOpacity: Double = 1.0
     static let defaultTint: Double = 0.25
+    // Общая частота live custom blur для всех наших стеклянных окон.
+    static let liveBlurFPS = 30
 }
 
 /// Фон окна «стекло»: размытие, прозрачность и тёмный оттенок из настроек.
