@@ -1237,15 +1237,15 @@ struct AircraftReferenceSettingsV129View: View {
                 VStack(spacing: 0) {
                     HStack(spacing: 8) {
                         sortHeader("Бортовой номер", .registration)
-                            .frame(width: widths.registration, alignment: .leading)
+                            .frame(width: widths.registration, alignment: .center)
                         sortHeader("Старый бортовой номер", .oldRegistration)
-                            .frame(width: widths.oldRegistration, alignment: .leading)
+                            .frame(width: widths.oldRegistration, alignment: .center)
                         sortHeader("MSN", .msn)
-                            .frame(width: widths.msn, alignment: .leading)
+                            .frame(width: widths.msn, alignment: .center)
                         sortHeader("Тип ВС", .type)
                             .frame(width: widths.type, alignment: .leading)
                         sortHeader("Компоновка", .configuration)
-                            .frame(width: widths.configuration, alignment: .leading)
+                            .frame(width: widths.configuration, alignment: .center)
                         sortHeader("Фамилия", .surname)
                             .frame(width: widths.surname, alignment: .leading)
                     }
@@ -1270,15 +1270,12 @@ struct AircraftReferenceSettingsV129View: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.horizontal, 12)
+                .padding(.bottom, 12)
             }
-            // Не внутренний padding, а физически уменьшаем доступную высоту контента:
-            // под карточкой всегда остаётся реальный зазор 12 pt, как по бокам.
-            .frame(
-                width: geometry.size.width,
-                height: max(geometry.size.height - 12, 0),
-                alignment: .top
-            )
         }
+        // Тот же принцип, что в базе расписания: экран занимает нижнюю safe area,
+        // а сама карточка оставляет физический зазор 12 pt от нижнего края.
+        .ignoresSafeArea([.container, .keyboard], edges: .bottom)
         .background {
             Color.clear.contentShape(Rectangle()).ignoresSafeArea()
         }
