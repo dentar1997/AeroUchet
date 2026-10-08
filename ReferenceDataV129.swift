@@ -1271,8 +1271,13 @@ struct AircraftReferenceSettingsV129View: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .padding(.horizontal, 12)
             }
-            // Реальный внешний отступ от нижнего края экрана, как слева/справа.
-            .padding(.bottom, 12)
+            // Не внутренний padding, а физически уменьшаем доступную высоту контента:
+            // под карточкой всегда остаётся реальный зазор 12 pt, как по бокам.
+            .frame(
+                width: geometry.size.width,
+                height: max(geometry.size.height - 12, 0),
+                alignment: .top
+            )
         }
         .background {
             Color.clear.contentShape(Rectangle()).ignoresSafeArea()
