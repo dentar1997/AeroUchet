@@ -1,13 +1,14 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 09.10.2026 04:04 МСК · ChatGPT. Начата настройка CI-профиля iPad Pro 12,9″, альбомная ориентация, тёмная тема.
+**Обновлено:** 09.10.2026 04:33 МСК · ChatGPT. PR #195: iPad Pro 12,9″ / landscape / dark CI-профиль проверен и слит; код AeroUchet v185 без изменений.
 
 ## Последние записи журнала
+- [2026-10-09_0433_chatgpt_ipad-profile-success.md](log/2026-10-09_0433_chatgpt_ipad-profile-success.md)
 - [2026-10-09_0404_chatgpt_ipad-profile-start.md](log/2026-10-09_0404_chatgpt_ipad-profile-start.md)
 - [2026-10-09_0357_chatgpt_simulator-success.md](log/2026-10-09_0357_chatgpt_simulator-success.md)
-- [2026-10-09_0347_chatgpt_simulator-start.md](log/2026-10-09_0347_chatgpt_simulator-start.md)
 
 ## CI / iPad Simulator
+- **PR #195** ✅ слит в `main` (`9580a1546`); эталон UI-проверок — **iPad Pro 12,9″ (3rd generation в CI), альбомная ориентация, тёмная тема**, iOS 26.5. Run 37869623157 ✅; `simulator-smoke-diagnostics` artifact 11589569681 (`main-screen.png` 2732×2048, `raw-screen.png` 2048×2732, manifest, лог). Важный нюанс: `simctl` отдаёт портретный сырой буфер с повёрнутым интерфейсом; нормализованный PNG создан *после реального поворота Simulator*; исходник сохраняется. На физическом iPad проверки этого PR не нужны, приложение v185 неизменно. Следующая отдельная задача — UI-тесты навигации/таблиц.
 - **PR #194** ✅ слит в `main` (`89f58b5`); `ios-ci.yml` запускает новый экспериментальный этап `simulator-smoke` после успешной сборки. Реальный запуск на **iPad Pro 13-inch (M5), iOS 26.5** ✅: установка, процесс и снимок главного экрана версии 185. Артефакт run 37866664164, id 11589265033. Это не проверка интерфейса или настоящего iPad; UI-автоматизация отложена (см. BACKLOG).
 
 ## Код
