@@ -105,3 +105,48 @@ jobs:
           path: ${{ runner.temp }}/AeroUchet-Simulator.zip
           if-no-files-found: error
           retention-days: 7
+
+  # An exploratory simulator boot, independent of the established build checks.
+  # A failed launch is visible in the job summary but does not block a PR.
+  simulator-smoke:
+    name: iPad Simulator smoke (experimental)
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download simulator bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: AeroUchet-Simulator
+          path: ${{ runner.temp }}/aerouchet-simulator-bundle
+
+      - name: Boot iPad Simulator and capture first screen
+        id: smoke
+        continue-on-error: true
+        run: |
+          bash Scripts/ci-simulator-smoke.sh \
+            "$RUNNER_TEMP/aerouchet-simulator-bundle/AeroUchet-Simulator.zip" \
+            "$RUNNER_TEMP/aerouchet-smoke-results"
+
+      - name: Summarize smoke test
+        if: always()
+        run: |
+          echo '### iPad Simulator (experimental)' >> "$GITHUB_STEP_SUMMARY"
+          echo 'This first-stage check is diagnostic and does not block the existing CI.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Execution outcome: ${{ steps.smoke.outcome }}' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/aerouchet-smoke-results/status.txt" ]; then
+            echo "Last stage: $(cat "$RUNNER_TEMP/aerouchet-smoke-results/status.txt")" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'See the simulator-smoke-diagnostics artifact for the screenshot and log.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload screenshot and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulator-smoke-diagnostics
+          path: ${{ runner.temp }}/aerouchet-smoke-results/
+          if-no-files-found: warn
+          retention-days: 7
