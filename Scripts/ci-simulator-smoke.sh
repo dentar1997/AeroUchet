@@ -154,6 +154,27 @@ xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
 echo "LAUNCHED" > "$RESULTS/status.txt"
 sleep 8
 
+# simctl has no supported rotate subcommand. Try the same Device > Rotate
+# menu that a developer uses in Simulator.app. On locked-down hosted runners,
+# macOS may deny AppleScript accessibility; that failure is logged explicitly.
+echo "Requesting landscape orientation from Simulator.app"
+open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID" || true
+sleep 5
+if osascript <<'APPLESCRIPT'
+tell application "Simulator" to activate
+tell application "System Events"
+  tell application process "Simulator"
+    click menu item "Rotate Right" of menu 1 of menu bar item "Device" of menu bar 1
+  end tell
+end tell
+APPLESCRIPT
+then
+  echo "Simulator Device > Rotate Right requested"
+else
+  echo "WARN: simulator GUI rotation failed (possibly macOS accessibility restrictions)"
+fi
+sleep 4
+
 xcrun simctl io "$DEVICE_ID" screenshot "$RESULTS/main-screen.png"
 echo "SCREENSHOT" > "$RESULTS/status.txt"
 
