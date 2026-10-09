@@ -1,11 +1,11 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 09.10.2026 09:20 МСК · ChatGPT. Первичный аудит производительности: CI ~7:34, ~4 мин занимает boot симулятора; внутренняя скорость приложения на iPad пока не измерена. Код не менялся.
+**Обновлено:** 09.10.2026 10:51 МСК · ChatGPT. Пользователь уточнил: открытие проекта в Playgrounds ~5 с, задержка ~50–60 с после ▶ Run. Замерить повторный Run без правок; код не менялся.
 
-## Последние записи журнала
-- [2026-10-09_0920_chatgpt_startup-performance-audit.md](log/2026-10-09_0920_chatgpt_startup-performance-audit.md)
-- [2026-10-09_0910_chatgpt_screenshot-speed-planning.md](log/2026-10-09_0910_chatgpt_screenshot-speed-planning.md)
-- [2026-10-09_0433_chatgpt_ipad-profile-success.md](log/2026-10-09_0433_chatgpt_ipad-profile-success.md)
+## Последни## Последние записи журнала
+- [2026-10-09_1051_chatgpt_playgrounds-run-time.md](log/2026-10-09_1051_chatgpt_playgrounds-run-time.md)
+- [2026-10-09_1044_chatgpt-build-pipeline-explained.md](log/2026-10-09_1044_chatgpt-build-pipeline-explained.md)
+- [2026-10-09_1042_chatgpt_ipad-one-minute-launch.md](log/2026-10-09_1042_chatgpt_ipad-one-minute-launch.md)
 
 ## CI / iPad Simulator
 - **PR #195** ✅ слит в `main` (`9580a1546`); эталон UI-проверок — **iPad Pro 12,9″ (3rd generation в CI), альбомная ориентация, тёмная тема**, iOS 26.5. Run 37869623157 ✅; `simulator-smoke-diagnostics` artifact 11589569681 (`main-screen.png` 2732×2048, `raw-screen.png` 2048×2732, manifest, лог). Важный нюанс: `simctl` отдаёт портретный сырой буфер с повёрнутым интерфейсом; нормализованный PNG создан *после реального поворота Simulator*; исходник сохраняется. На физическом iPad проверки этого PR не нужны, приложение v185 неизменно. Следующая отдельная задача — UI-тесты навигации/таблиц.
