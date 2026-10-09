@@ -1,11 +1,11 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 09.10.2026 03:21 МСК · ChatGPT. Анализ запуска iPad Simulator в CI (без правок кода). Перед работой с кодом сверить с живым `main`.
+**Обновлено:** 09.10.2026 03:47 МСК · ChatGPT. Начата экспериментальная проверка запуска в iPad Simulator; код пока не менялся.
 
 ## Последние записи журнала
+- [2026-10-09_0347_chatgpt_simulator-start.md](log/2026-10-09_0347_chatgpt_simulator-start.md)
 - [2026-10-09_0321_chatgpt_ios-simulator-audit.md](log/2026-10-09_0321_chatgpt_ios-simulator-audit.md)
 - [2026-10-08_1918_chatgpt_v185-equal-columns.md](log/2026-10-08_1918_chatgpt_v185-equal-columns.md)
-- [2026-10-08_1917_chatgpt_v185-start.md](log/2026-10-08_1917_chatgpt_v185-start.md)
 
 ## Код
 - **`AppVersion` = 185** (PR #193: все 6 колонок базы ВС получили одинаковую ширину; центры столбцов равноудалены). CI ✅. **Ждёт проверки на iPad.**
