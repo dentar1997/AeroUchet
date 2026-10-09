@@ -1,11 +1,11 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 09.10.2026 03:57 МСК · ChatGPT. PR #194 CI: первый запуск AeroUchet в iPad Simulator успешно проверен; версия приложения 185 без изменений.
+**Обновлено:** 09.10.2026 04:04 МСК · ChatGPT. Начата настройка CI-профиля iPad Pro 12,9″, альбомная ориентация, тёмная тема.
 
 ## Последние записи журнала
+- [2026-10-09_0404_chatgpt_ipad-profile-start.md](log/2026-10-09_0404_chatgpt_ipad-profile-start.md)
 - [2026-10-09_0357_chatgpt_simulator-success.md](log/2026-10-09_0357_chatgpt_simulator-success.md)
 - [2026-10-09_0347_chatgpt_simulator-start.md](log/2026-10-09_0347_chatgpt_simulator-start.md)
-- [2026-10-09_0321_chatgpt_ios-simulator-audit.md](log/2026-10-09_0321_chatgpt_ios-simulator-audit.md)
 
 ## CI / iPad Simulator
 - **PR #194** ✅ слит в `main` (`89f58b5`); `ios-ci.yml` запускает новый экспериментальный этап `simulator-smoke` после успешной сборки. Реальный запуск на **iPad Pro 13-inch (M5), iOS 26.5** ✅: установка, процесс и снимок главного экрана версии 185. Артефакт run 37866664164, id 11589265033. Это не проверка интерфейса или настоящего iPad; UI-автоматизация отложена (см. BACKLOG).
