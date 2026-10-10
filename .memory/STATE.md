@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 10.10.2026 10:50 МСК · ChatGPT. Аудит компиляции: 31 Swift-файл (~0,93 МиБ), SwiftCompile — 116,543 с суммарно по 6 параллельным CI-задачам/двум симуляторным архитектурам. Это не время iPad Run. Следующий шаг — compiler type-check timings в диагностическом CI по «Программируй»; код не менялся.
+**Обновлено:** 10.10.2026 14:06 МСК · ChatGPT. Среднее по двум полным Playgrounds Run ~59,5 с; план диагностировать тяжёлые выражения Swift и сравнить компиляцию до/после, без изменения приложения.
 
 
 ## Последние записи журнала
+- [2026-10-10_1406_chatgpt-playgrounds-compile-plan.md](log/2026-10-10_1406_chatgpt-playgrounds-compile-plan.md)
 - [2026-10-10_1050_chatgpt-swift-build-timing-audit.md](log/2026-10-10_1050_chatgpt-swift-build-timing-audit.md)
 - [2026-10-10_0224_chatgpt-playgrounds-video-timings.md](log/2026-10-10_0224_chatgpt-playgrounds-video-timings.md)
-- [2026-10-09_1051_chatgpt_playgrounds-run-time.md](log/2026-10-09_1051_chatgpt_playgrounds-run-time.md)
 
 ## CI / iPad Simulator
 - **PR #195** ✅ слит в `main` (`9580a1546`); эталон UI-проверок — **iPad Pro 12,9″ (3rd generation в CI), альбомная ориентация, тёмная тема**, iOS 26.5. Run 37869623157 ✅; `simulator-smoke-diagnostics` artifact 11589569681 (`main-screen.png` 2732×2048, `raw-screen.png` 2048×2732, manifest, лог). Важный нюанс: `simctl` отдаёт портретный сырой буфер с повёрнутым интерфейсом; нормализованный PNG создан *после реального поворота Simulator*; исходник сохраняется. На физическом iPad проверки этого PR не нужны, приложение v185 неизменно. Следующая отдельная задача — UI-тесты навигации/таблиц.
