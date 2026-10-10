@@ -22,6 +22,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # Start iPadOS while the same runner is still compiling the PR's Swift.
+      # The Simulator does not need an .app until installation after build.
+      - name: Prewarm 12.9-inch iPad while compiling
+        run: |
+          mkdir -p "$RUNNER_TEMP/aerouchet-smoke-results"
+          date +%s > "$RUNNER_TEMP/aerouchet-smoke-results/ci-start-epoch.txt"
+          # Disable runner background cleanup for this one scoped preboot process.
+          RUNNER_TRACKING_ID="" nohup bash Scripts/ci-simulator-smoke.sh \
+            --preboot "$RUNNER_TEMP/aerouchet-smoke-results" \
+            > "$RUNNER_TEMP/aerouchet-preboot-launch.log" 2>&1 < /dev/null &
+          echo "$!" > "$RUNNER_TEMP/aerouchet-preboot.pid"
+          echo "Preboot started with PID $(cat "$RUNNER_TEMP/aerouchet-preboot.pid")"
+
       - name: Toolchain
         run: |
           xcodebuild -version
@@ -106,43 +119,35 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # An exploratory simulator boot, independent of the established build checks.
-  # A failed launch is visible in the job summary but does not block a PR.
-  simulator-smoke:
-    name: iPad Simulator smoke (experimental)
-    needs: build
-    runs-on: macos-26
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Download simulator bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: AeroUchet-Simulator
-          path: ${{ runner.temp }}/aerouchet-simulator-bundle
-
-      - name: Boot iPad Simulator and capture first screen
+      # Runs only after compiler, analyzer and packaging passed.
+      # The same runner is already warming the iPad in parallel.
+      - name: Capture main and aircraft/Tamm screenshots
         id: smoke
         continue-on-error: true
         run: |
           bash Scripts/ci-simulator-smoke.sh \
-            "$RUNNER_TEMP/aerouchet-simulator-bundle/AeroUchet-Simulator.zip" \
+            "$RUNNER_TEMP/AeroUchet-Simulator.zip" \
             "$RUNNER_TEMP/aerouchet-smoke-results"
 
-      - name: Summarize smoke test
+      - name: Summarize simulator and elapsed wall time
         if: always()
         run: |
-          echo '### iPad Simulator (experimental)' >> "$GITHUB_STEP_SUMMARY"
-          echo 'This first-stage check is diagnostic and does not block the existing CI.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Execution outcome: ${{ steps.smoke.outcome }}' >> "$GITHUB_STEP_SUMMARY"
+          echo '### iPad 12.9-inch simulator (parallel preboot experiment)' >> "$GITHUB_STEP_SUMMARY"
+          echo "Screenshot step: ${{ steps.smoke.outcome }}" >> "$GITHUB_STEP_SUMMARY"
           if [ -f "$RUNNER_TEMP/aerouchet-smoke-results/status.txt" ]; then
-            echo "Last stage: $(cat "$RUNNER_TEMP/aerouchet-smoke-results/status.txt")" >> "$GITHUB_STEP_SUMMARY"
+            echo "Last smoke stage: $(cat "$RUNNER_TEMP/aerouchet-smoke-results/status.txt")" >> "$GITHUB_STEP_SUMMARY"
           fi
-          echo 'See the simulator-smoke-diagnostics artifact for the screenshot and log.' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/aerouchet-smoke-results/preboot.status" ]; then
+            echo "Preboot stage: $(cat "$RUNNER_TEMP/aerouchet-smoke-results/preboot.status")" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f "$RUNNER_TEMP/aerouchet-smoke-results/ci-start-epoch.txt" ]; then
+            START="$(cat "$RUNNER_TEMP/aerouchet-smoke-results/ci-start-epoch.txt")"
+            NOW="$(date +%s)"
+            echo "Elapsed from preboot start: $((NOW - START)) seconds" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'PNG: main-screen.png and aircraft-tamm.png; compact preview: aircraft-tamm-preview.jpg' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload screenshot and diagnostics
+      - name: Upload simulator screenshots and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
