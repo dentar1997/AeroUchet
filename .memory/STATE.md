@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 10.10.2026 14:17 МСК · ChatGPT. Новый приоритет: ускорение скриншотов через GitHub Actions (около 7,5 мин). Минутный Run на iPad допустим. Код AeroUchet пока не менялся.
+**Обновлено:** 10.10.2026 14:22 МСК · ChatGPT. Объяснены строгие зависимости CI: app-код должен быть собран до установки, но boot Simulator можно запустить параллельно с компиляцией того же PR на одном macOS runner. Текущий smoke проверяет только главный экран; код не менялся.
 
 
 ## Последние записи журнала
+- [2026-10-10_1422_chatgpt-ci-build-boot-dependencies.md](log/2026-10-10_1422_chatgpt-ci-build-boot-dependencies.md)
 - [2026-10-10_1417_chatgpt-screenshot-speed-priority.md](log/2026-10-10_1417_chatgpt-screenshot-speed-priority.md)
 - [2026-10-10_1406_chatgpt-playgrounds-compile-plan.md](log/2026-10-10_1406_chatgpt-playgrounds-compile-plan.md)
-- [2026-10-10_1050_chatgpt-swift-build-timing-audit.md](log/2026-10-10_1050_chatgpt-swift-build-timing-audit.md)
 
 ## CI / iPad Simulator
 - **PR #195** ✅ слит в `main` (`9580a1546`); эталон UI-проверок — **iPad Pro 12,9″ (3rd generation в CI), альбомная ориентация, тёмная тема**, iOS 26.5. Run 37869623157 ✅; `simulator-smoke-diagnostics` artifact 11589569681 (`main-screen.png` 2732×2048, `raw-screen.png` 2048×2732, manifest, лог). Важный нюанс: `simctl` отдаёт портретный сырой буфер с повёрнутым интерфейсом; нормализованный PNG создан *после реального поворота Simulator*; исходник сохраняется. На физическом iPad проверки этого PR не нужны, приложение v185 неизменно. Следующая отдельная задача — UI-тесты навигации/таблиц.
