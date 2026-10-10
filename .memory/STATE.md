@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 10.10.2026 14:47 МСК · ChatGPT. PR #196 слит, auto-version выпустил **v186**: RA-73745 «Тамм» 8/150; GitHub Actions теперь параллельно компилирует и загружает симулятор на разных macOS-раннерах, скриншот получен за ~3:55 вместо ~7:34. CI ✅, ждёт проверки на iPad.
+**Обновлено:** 11.10.2026 02:25 МСК · ChatGPT. Уточнены сопоставимые времена CI до скриншота: 7:40 старая последовательная схема, 8:11 один нагруженный Mac, 4:03 два параллельных runner (~47,2% меньше). Пользователь доволен ускорением; v186 ждёт проверки на iPad. Код не менялся.
 
 
 ## Последние записи журнала
+- [2026-10-11_0225_chatgpt-ci-time-clarification.md](log/2026-10-11_0225_chatgpt-ci-time-clarification.md)
 - [2026-10-10_1447_chatgpt-tamm-parallel-ci-success.md](log/2026-10-10_1447_chatgpt-tamm-parallel-ci-success.md)
 - [2026-10-10_1427_chatgpt-tamm-preboot-start.md](log/2026-10-10_1427_chatgpt-tamm-preboot-start.md)
-- [2026-10-10_1422_chatgpt-ci-build-boot-dependencies.md](log/2026-10-10_1422_chatgpt-ci-build-boot-dependencies.md)
 
 ## CI / iPad Simulator
 - **PR #196** ✅ слит (`07115fd`), финальный CI run **38049283954**: Build iOS app ✅, Quality ✅, Privacy Guard ✅, smoke ✅ (`status.txt=PASS`). **Два независимых macOS-раннера параллельно:** `build` собирает и упаковывает только актуальный commit, `simulator-smoke` заранее загружает iPad Pro 12,9″ 3rd gen / landscape / dark, ожидает ZIP только того же `GITHUB_RUN_ID`, устанавливает, делает главный и `aircraft-tamm.png` + JPG preview. Таблица на скриншоте показывает RA-73745 «Тамм» и **8/150**, 2732×2048. Затраты с момента preboot до снимка ~3:55 (прежний процесс ~7:34). Первый эксперимент на *одном* runner оказался хуже (~8 минут), не оставили. Артефакт https://github.com/dentar1997/AeroUchet/actions/runs/38049283954/artifacts/11668334987 (7 дней). Тест таблицы запускается специальным simulator-only аргументом, **не** автоматическими нажатиями на вкладки. На iPad пользователя ещё не проверено.
