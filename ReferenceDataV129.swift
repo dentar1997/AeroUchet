@@ -207,7 +207,7 @@ final class AircraftReferenceStoreV129: ObservableObject {
         row("73740", "Джалиль", .a320, old: "VQ-BIW", msn: "4579", exact: "A320-214", configuration: "20/120"),
         row("73743", "Тимирязев", .a320, old: "VQ-BIU", msn: "4684", exact: "A320-214", configuration: "20/120"),
         row("73744", "Николаев", .a320, old: "VQ-BKU", msn: "4835", exact: "A320-214", configuration: "20/120"),
-        row("73745", "Тамм", .a320, old: "VP-BID", msn: "5421", exact: "A320-214", configuration: "20/120"),
+        row("73745", "Тамм", .a320, old: "VP-BID", msn: "5421", exact: "A320-214", configuration: "8/150"),
         row("73746", "Мечников", .a320S, old: "VP-BJA", msn: "5536", exact: "A320-214", configuration: "8/150"),
         row("73747", "Черенков", .a320S, old: "VP-BLH", msn: "5565", exact: "A320-214", configuration: "8/150"),
         row("73748", "Басов", .a320S, old: "VP-BUL", msn: "5572", exact: "A320-214", configuration: "8/150"),
@@ -1126,6 +1126,12 @@ private extension Data {
 
 struct AircraftReferenceSettingsV129View: View {
     @ObservedObject private var store = AircraftReferenceStoreV129.shared
+
+    // CI can start the real aircraft table with a search already filled in.
+    // Normal app navigation keeps the standard empty search field.
+    init(initialSearch: String = "") {
+        _search = State(initialValue: initialSearch)
+    }
 
     @State private var search = ""
     @State private var selectedTypes = Set(AircraftFamilyV129.allCases)

@@ -3,37 +3,53 @@
 # Works on macOS runners using an unpacked *test-only* .app copy.
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-  echo "Usage: $0 <AeroUchet-Simulator.zip> <results-dir>" >&2
+PREBOOT_MODE=false
+if [ "$#" -eq 2 ] && [ "$1" = "--preboot" ]; then
+  PREBOOT_MODE=true
+  ARCHIVE=""
+  RESULTS="$2"
+elif [ "$#" -eq 2 ]; then
+  ARCHIVE="$1"
+  RESULTS="$2"
+else
+  echo "Usage: $0 <AeroUchet-Simulator.zip> <results-dir> OR $0 --preboot <results-dir>" >&2
   exit 2
 fi
 
-ARCHIVE="$1"
-RESULTS="$2"
 mkdir -p "$RESULTS"
-exec > >(tee "$RESULTS/smoke.log") 2>&1
+if [ "$PREBOOT_MODE" = true ]; then
+  exec > >(tee "$RESULTS/preboot.log") 2>&1
+else
+  exec > >(tee "$RESULTS/smoke.log") 2>&1
+  echo "PRECHECK" > "$RESULTS/status.txt"
+  test -f "$ARCHIVE"
+fi
 
 DEVICE_ID=""
 cleanup() {
   local result="$?"
-  echo "Smoke script exit code: $result"
-  if [ -n "$DEVICE_ID" ]; then
+  echo "Smoke script exit code: $result; preboot=$PREBOOT_MODE"
+  if [ "$PREBOOT_MODE" = false ] && [ -n "$DEVICE_ID" ]; then
     xcrun simctl shutdown "$DEVICE_ID" || true
   fi
 }
 trap cleanup EXIT
 
-echo "AeroUchet simulator smoke: 12.9-inch landscape, system dark mode"
-echo "PRECHECK" > "$RESULTS/status.txt"
-test -f "$ARCHIVE"
+echo "AeroUchet simulator smoke: 12.9-inch landscape, dark; preboot=$PREBOOT_MODE"
 xcodebuild -version
-xcrun simctl list devices available -j > "$RESULTS/available-devices.json"
-xcrun simctl list devicetypes -j > "$RESULTS/available-device-types.json"
+if [ "$PREBOOT_MODE" = true ] || [ ! -s "$RESULTS/device-udid.txt" ]; then
+  xcrun simctl list devices available -j > "$RESULTS/available-devices.json"
+  xcrun simctl list devicetypes -j > "$RESULTS/available-device-types.json"
+fi
 
 # The user's 12.9-inch iPad Pro bought in 2019 is closest to the 3rd generation.
 # Prefer that exact device type, creating a simulator when the runner only has
 # newer devices pre-created. Do not silently substitute a 13-inch iPad.
-DEVICE_ID="$(python3 - "$RESULTS/available-devices.json" "$RESULTS/available-device-types.json" <<'PY'
+if [ "$PREBOOT_MODE" = false ] && [ -s "$RESULTS/device-udid.txt" ]; then
+  DEVICE_ID="$(cat "$RESULTS/device-udid.txt")"
+  echo "Reusing prewarmed Simulator: $DEVICE_ID"
+else
+  DEVICE_ID="$(python3 - "$RESULTS/available-devices.json" "$RESULTS/available-device-types.json" <<'PY'
 import json
 import re
 import subprocess
@@ -102,10 +118,24 @@ if all_existing:
 sys.exit("No compatible 12.9-inch iPad Pro Simulator; refusing to switch to 13-inch")
 PY
 )"
+fi
 echo "Selected simulator UUID: $DEVICE_ID"
 xcrun simctl list devices | grep -F "$DEVICE_ID" || true
 
-xcrun simctl boot "$DEVICE_ID"
+if [ "$PREBOOT_MODE" = true ]; then
+  # Start as early as possible. The build job compiles Swift while iPadOS boots.
+  xcrun simctl boot "$DEVICE_ID"
+  echo "$DEVICE_ID" > "$RESULTS/device-udid.txt"
+  xcrun simctl bootstatus "$DEVICE_ID" -b
+  echo "PREBOOTED" > "$RESULTS/preboot.status"
+  echo "iPad Simulator ready for the forthcoming compiled app"
+  exit 0
+fi
+# With a prewarmed device we wait on the SAME boot; do not restart Simulator.
+if [ ! -s "$RESULTS/device-udid.txt" ]; then
+  echo "Preboot unavailable; falling back to a normal boot"
+  xcrun simctl boot "$DEVICE_ID"
+fi
 xcrun simctl bootstatus "$DEVICE_ID" -b
 echo "BOOTED" > "$RESULTS/status.txt"
 
@@ -243,5 +273,38 @@ if ! xcrun simctl spawn "$DEVICE_ID" launchctl list | grep -F "$BUNDLE_ID"; then
   exit 1
 fi
 
+# The second launch uses the SAME table that users reach from "Ещё".
+# A simulator-only launch argument seeds a query so Tamm is visible without
+# an unreliable automated tap/keyboard sequence or artificial screenshot data.
+echo "Opening the real Aircraft Reference view filtered to Tamm"
+xcrun simctl terminate "$DEVICE_ID" "$BUNDLE_ID"
+xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID" --aerouchet-ci-aircraft-tamm
+sleep 6
+xcrun simctl io "$DEVICE_ID" screenshot "$RESULTS/aircraft-tamm-raw.png"
+if [ "$(cat "$RESULTS/raw-buffer-size.txt")" = "2048x2732" ]; then
+  sips --rotate 90 --out "$RESULTS/aircraft-tamm.png" "$RESULTS/aircraft-tamm-raw.png" >/dev/null
+else
+  cp "$RESULTS/aircraft-tamm-raw.png" "$RESULTS/aircraft-tamm.png"
+fi
+python3 - "$RESULTS/aircraft-tamm.png" <<'PY'
+import struct
+import sys
+with open(sys.argv[1], "rb") as stream:
+    data = stream.read(24)
+assert data[:8] == bytes([137, 80, 78, 71, 13, 10, 26, 10]), "Invalid aircraft PNG"
+width, height = struct.unpack(">II", data[16:24])
+print("Aircraft screenshot dimensions:", width, "x", height)
+assert (width, height) == (2732, 2048), "Aircraft screenshot is not 12.9-inch landscape"
+PY
+if ! xcrun simctl spawn "$DEVICE_ID" launchctl list | grep -F "$BUNDLE_ID"; then
+  echo "Aircraft screen launch disappeared" >&2
+  echo "AIRCRAFT_EXITED" > "$RESULTS/status.txt"
+  exit 1
+fi
+
+# Lightweight iPhone-preview sized enough for readable labels on mobile.
+sips -s format jpeg -s formatOptions 85 -Z 1800 \
+  --out "$RESULTS/aircraft-tamm-preview.jpg" "$RESULTS/aircraft-tamm.png" >/dev/null
+
 echo "PASS" > "$RESULTS/status.txt"
-echo "PASS: iPad 12.9-inch dark mode, GUI landscape rotation, normalized 2732x2048 screenshot (raw evidence preserved)"
+echo "PASS: iPad 12.9-inch, landscape, dark, main + actual aircraft Tamm screen; both app launches stayed running"
