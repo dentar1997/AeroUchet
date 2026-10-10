@@ -291,7 +291,7 @@ import struct
 import sys
 with open(sys.argv[1], "rb") as stream:
     data = stream.read(24)
-assert data[:8] == b"\\x89PNG\\r\\n\\x1a\\n", "Invalid aircraft PNG"
+assert data[:8] == bytes([137, 80, 78, 71, 13, 10, 26, 10]), "Invalid aircraft PNG"
 width, height = struct.unpack(">II", data[16:24])
 print("Aircraft screenshot dimensions:", width, "x", height)
 assert (width, height) == (2732, 2048), "Aircraft screenshot is not 12.9-inch landscape"
