@@ -1,7 +1,7 @@
 {
-  "experiment": "early-ci-retest-20261012-before-pr-ci-sequencing",
-  "request_epoch": 1791755599,
+  "experiment": "optimized-ci-preboot-marker-reuse-20261012",
+  "request_epoch": 1791755968,
   "attempt": 1,
-  "attempt_trigger_epoch": 1791755599,
-  "notes": "New real baseline/optimization cycle; Swift untouched; early boot before PR; verify final SHA and orientation"
+  "attempt_trigger_epoch": 1791755968,
+  "notes": "optimized script present before early trigger, no duplicate simctl list or bootstatus; dark/raw SHA checks unchanged"
 }
