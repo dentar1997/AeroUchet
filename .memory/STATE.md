@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 12.10.2026 00:21 МСК · ChatGPT. PR #199 слит (только CI), AeroUchet v187 неизменна. Метод Б теперь opt-in для веток prewarm/**: заранее включённый iPad, artifact по точному PR SHA/run ID, RAW pixel orientation validation и один screenshot. Финальный run 38175474723 / CI 38175477725 PASS, 5:13 до снимка от CI (скорость не лучше проверенной A 4:03). Обычный CI A сохранён. На iPad v187 ещё не проверено.
+**Обновлено:** 12.10 00:53 МСК · ChatGPT. Повторный тест метода Б запрошен, эксперимент начинается; v187 и штатный метод A не менялись.
 
 
 ## Последние записи журнала
+- [2026-10-12_0053_chatgpt-prewarm-retest-start.md](log/2026-10-12_0053_chatgpt-prewarm-retest-start.md)
 - [2026-10-12_0021_chatgpt-prewarm-v2-results.md](log/2026-10-12_0021_chatgpt-prewarm-v2-results.md)
 - [2026-10-11_2359_chatgpt-prewarm-v2-running.md](log/2026-10-11_2359_chatgpt-prewarm-v2-running.md)
-- [2026-10-11_2338_chatgpt-early-prewarm-next-optimization.md](log/2026-10-11_2338_chatgpt-early-prewarm-next-optimization.md)
 
 ## CI / iPad Simulator
 - **PR #199** ✅ слит в main (`b1e62e4`), CI-only, **v187 остаётся**. Опциональный ранний prewarm workflow для веток `prewarm/**` (запуск маркером `.github/prewarm/request.json` до Swift-правок), артефакт v4 загружается сразу по правильному final PR SHA/run ID; один целевой screenshot; обязательный PR CI блокирует слияние без независимого PASS и pixel orientation. Метод A (два Mac с PR) по умолчанию. После false PASS боком и GitHub TLS-сбоя третий run 38175474723 / CI 38175477725 PASS, RAW пиксели подтверждают действительный landscape/dark 12,9″. От CI start до снимка **5:13**, не выиграл у лучшего метода A 4:03 (другой прогон A 5:15); предстоит реальная долгая задача для проверки перекрытия с кодированием. Артефакт https://github.com/dentar1997/AeroUchet/actions/runs/38175474723/artifacts/11716066541; подробности log/2026-10-12_0021_chatgpt-prewarm-v2-results.md.
