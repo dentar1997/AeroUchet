@@ -157,20 +157,29 @@ jobs:
           EXPECTED_PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+          github_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if gh "$@"; then return 0; fi
+              echo "Transient GitHub network error; retry $attempt/5" >&2
+              sleep $((attempt * 2))
+            done
+            return 1
+          }
           for attempt in $(seq 1 150); do
             PREWARM_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$GITHUB_HEAD_REF&event=push&per_page=30" \
               --jq '[.workflow_runs[] | select(.name == "AeroUchet Early iPad Prewarm") | .id] | first // empty' 2>/dev/null || true)"
             if [ -n "$PREWARM_ID" ]; then
-              PREWARM_STATUS="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREWARM_ID" --jq .status)"
+              PREWARM_STATUS="$(github_retry api "repos/$GITHUB_REPOSITORY/actions/runs/$PREWARM_ID" --jq .status)"
               if [ "$PREWARM_STATUS" = completed ]; then
-                PREWARM_CONCLUSION="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREWARM_ID" --jq .conclusion)"
+                PREWARM_CONCLUSION="$(github_retry api "repos/$GITHUB_REPOSITORY/actions/runs/$PREWARM_ID" --jq .conclusion)"
                 if [ "$PREWARM_CONCLUSION" != success ]; then
                   echo "Independent iPad prewarm failed: $PREWARM_CONCLUSION"
                   exit 1
                 fi
                 DEST="$RUNNER_TEMP/early-screenshot-proof"
                 mkdir -p "$DEST"
-                gh run download "$PREWARM_ID" --repo "$GITHUB_REPOSITORY" \
+                github_retry run download "$PREWARM_ID" --repo "$GITHUB_REPOSITORY" \
                   --name early-ipad-timing-and-target-screenshot --dir "$DEST"
                 test "$(cat "$DEST/status.txt")" = PASS
                 test "$(cat "$DEST/verified-pr-head-sha.txt")" = "$EXPECTED_PR_HEAD"
