@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 11.10.2026 23:38 МСК · ChatGPT. Пользователь хочет продолжить оптимизацию раннего prewarm (метод Б), CI-код пока не меняем без «Программируй». Аудит: 8:11 до скрина было только при одном перегруженном Mac; 2 Mac стандарт 4:03–5:15, ранний prewarm 4:40 от PR. Резервы ~60 сек ожидания артефакта и 100 сек установки/двух фото. Найден остаток одноразового эксперимента в ios-ci.yml: hardcoded MESSAGE_T0_EPOCH и branch skip. v187 ждёт iPad.
+**Обновлено:** 11.10.2026 23:59 МСК · ChatGPT. По разрешению «Делай» тестируется метод Б v2: ранний iPad Simulator запущен до PR #199 (run 38174385383), сборка PR run 38174445307 завершена успешно; в экспериментальной ветке быстрый artifact, один целевой снимок, динамический T0; скриншот ещё проверяется. Код приложения и v187 не меняются. Старый CI A не тронут в main.
 
 
 ## Последние записи журнала
+- [2026-10-11_2359_chatgpt-prewarm-v2-running.md](log/2026-10-11_2359_chatgpt-prewarm-v2-running.md)
 - [2026-10-11_2338_chatgpt-early-prewarm-next-optimization.md](log/2026-10-11_2338_chatgpt-early-prewarm-next-optimization.md)
 - [2026-10-11_2028_chatgpt-columns-prewarm-results.md](log/2026-10-11_2028_chatgpt-columns-prewarm-results.md)
-- [2026-10-11_2010_chatgpt-early-prewarm-columns-start.md](log/2026-10-11_2010_chatgpt-early-prewarm-columns-start.md)
 
 ## CI / iPad Simulator
 - **PR #197** ✅ слит (`3fb47ed`), **v187** (auto-version `9114509`). Все шесть колонок базы ВС центрированы с заголовками; Quality/Privacy/build ✅, ранний prewarm run `38158606274` smoke PASS. Скриншот реальной таблицы `aircraft-tamm.png` (2732×2048, dark, landscape) просмотрен, визуальная геометрия соответствует запросу. Prewarm был запущен **до создания PR**; T+0 первая измеренная операция 17:10:22Z, runner/boot T+85s, PR T+137s, compile start T+185s, boot ready T+236s, compile end T+249s, artifact T+317s, screenshot ready T+423s. От PR CI до кадра ~4:33 вместо 4:03 ранее, **ускорение не подтвердилось**. Артефакт https://github.com/dentar1997/AeroUchet/actions/runs/38158606274/artifacts/11709137864. На iPad пользователя пока не проверено; текущая проверенная обычная схема CI двух параллельных Mac остаётся стандартом.
