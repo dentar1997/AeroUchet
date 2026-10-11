@@ -1,0 +1,138 @@
+name: AeroUchet Early Simulator Prewarm (experimental)
+
+# A one-shot signal from a branch is sent BEFORE editing the Swift files.
+# Avoids pre-warming the temporary runner of an outdated PR.
+on:
+  push:
+    branches:
+      - 'experiment/early-warm-*'
+    paths:
+      - '.ci/prewarm/start.txt'
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  early-simulator:
+    name: Warm iPadOS before code edits
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout prewarm signal revision
+        uses: actions/checkout@v6
+
+      - name: Boot iPadOS before the final PR exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULTS="$RUNNER_TEMP/aerouchet-early-results"
+          mkdir -p "$RESULTS"
+          first_tool=1791738698
+          mark() {
+            local epoch
+            epoch="$(date +%s)"
+            printf '%s|%s|%s|%s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$epoch" "$((epoch-first_tool))" >> "$RESULTS/early-timing.tsv"
+          }
+          echo 'step|utc|epoch|seconds_since_first_observed_tool' > "$RESULTS/early-timing.tsv"
+          mark runner_checkout_complete
+          mark simulator_preboot_start
+          bash Scripts/ci-simulator-smoke.sh --preboot "$RESULTS"
+          mark simulator_preboot_finished
+
+      - name: Wait for updated PR build from the same branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULTS="$RUNNER_TEMP/aerouchet-early-results"
+          DEST="$RUNNER_TEMP/aerouchet-new-build"
+          mkdir -p "$DEST"
+          first_tool=1791738698
+          mark() {
+            local epoch
+            epoch="$(date +%s)"
+            printf '%s|%s|%s|%s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$epoch" "$((epoch-first_tool))" >> "$RESULTS/early-timing.tsv"
+          }
+          mark ready_wait_for_new_pr
+          BRANCH="$GITHUB_REF_NAME"
+          found=0
+          for attempt in $(seq 1 90); do
+            PULLS="$(gh api -X GET "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100")"
+            TARGET="$(printf '%s' "$PULLS" | jq -c --arg branch "$BRANCH" '[.[] | select(.head.ref == $branch and .base.ref == "main")] | first // empty')"
+            if [ -n "$TARGET" ]; then
+              PR="$(printf '%s' "$TARGET" | jq -r '.number')"
+              SHA="$(printf '%s' "$TARGET" | jq -r '.head.sha')"
+              RUNS="$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/ios-ci.yml/runs?event=pull_request&per_page=50")"
+              RUN="$(printf '%s' "$RUNS" | jq -r --arg sha "$SHA" --arg branch "$BRANCH" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == $branch)] | first | .id // empty')"
+              if [ -n "$RUN" ]; then
+                JOBS="$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/runs/$RUN/jobs?per_page=100")"
+                RESULT="$(printf '%s' "$JOBS" | jq -r '[.jobs[] | select(.name == "Build iOS app")] | first | .conclusion // empty')"
+                if [ "$RESULT" = success ]; then
+                  # Check that PR head stayed unchanged while the build ran.
+                  CURRENT_SHA="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.head.sha')"
+                  if [ "$CURRENT_SHA" != "$SHA" ]; then
+                    echo "PR advanced, ignoring stale build $SHA"
+                  elif gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name AeroUchet-Simulator --dir "$DEST"; then
+                    echo "$SHA" > "$RESULTS/verified-head-sha.txt"
+                    echo "$RUN" > "$RESULTS/verified-run-id.txt"
+                    echo "$PR" > "$RESULTS/verified-pr.txt"
+                    mark current_build_downloaded
+                    found=1
+                    break
+                  fi
+                elif [[ "$RESULT" == "failure" || "$RESULT" == "cancelled" || "$RESULT" == "timed_out" ]]; then
+                  echo "Build failed for $SHA; waiting for a corrected PR commit"
+                fi
+              fi
+            fi
+            if [ $((attempt % 6)) -eq 0 ]; then
+              echo "Early simulator is ready; waiting for PR/build attempt $attempt"
+            fi
+            sleep 8
+          done
+          if [ "$found" -ne 1 ]; then
+            echo "No successful matching PR artifact in 12 minutes"
+            exit 1
+          fi
+
+      - name: Capture screenshots from newly built application
+        id: smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESULTS="$RUNNER_TEMP/aerouchet-early-results"
+          epoch="$(date +%s)"
+          echo "screenshot_install_start|$(date -u +%Y-%m-%dT%H:%M:%SZ)|$epoch|$((epoch-1791738698))" >> "$RESULTS/early-timing.tsv"
+          bash Scripts/ci-simulator-smoke.sh "$RUNNER_TEMP/aerouchet-new-build/AeroUchet-Simulator.zip" "$RESULTS"
+          epoch="$(date +%s)"
+          echo "screenshot_complete|$(date -u +%Y-%m-%dT%H:%M:%SZ)|$epoch|$((epoch-1791738698))" >> "$RESULTS/early-timing.tsv"
+          test "$(cat "$RESULTS/status.txt")" = PASS
+
+      - name: Report early prewarm status
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### Early prewarm experiment'
+            if [ -f "$RUNNER_TEMP/aerouchet-early-results/early-timing.tsv" ]; then
+              echo 'Timeline relative to first observed tool call (not exact message arrival):'
+              echo '~~~'
+              cat "$RUNNER_TEMP/aerouchet-early-results/early-timing.tsv"
+              echo '~~~'
+            fi
+            if [ -f "$RUNNER_TEMP/aerouchet-early-results/status.txt" ]; then
+              echo "Screenshot status: $(cat "$RUNNER_TEMP/aerouchet-early-results/status.txt")"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload evidence and timestamps
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: early-simulator-screenshots
+          path: ${{ runner.temp }}/aerouchet-early-results/
+          if-no-files-found: warn
+          retention-days: 7
