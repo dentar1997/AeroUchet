@@ -3,6 +3,12 @@
 # Works on macOS runners using an unpacked *test-only* .app copy.
 set -euo pipefail
 
+AIRCRAFT_ONLY=false
+if [ "${1:-}" = "--aircraft-only" ]; then
+  AIRCRAFT_ONLY=true
+  shift
+fi
+
 PREBOOT_MODE=false
 if [ "$#" -eq 2 ] && [ "$1" = "--preboot" ]; then
   PREBOOT_MODE=true
@@ -180,16 +186,22 @@ echo "Installing: $APP_PATH"
 xcrun simctl install "$DEVICE_ID" "$APP_PATH"
 echo "INSTALLED" > "$RESULTS/status.txt"
 
-xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
-echo "LAUNCHED" > "$RESULTS/status.txt"
-sleep 8
+if [ "$AIRCRAFT_ONLY" = true ]; then
+  xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID" --aerouchet-ci-aircraft-tamm
+  echo "TARGET_LAUNCHED" > "$RESULTS/status.txt"
+  sleep 2
+else
+  xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+  echo "LAUNCHED" > "$RESULTS/status.txt"
+  sleep 8
+fi
 
 # simctl has no supported rotate subcommand. Try the same Device > Rotate
 # menu that a developer uses in Simulator.app. On locked-down hosted runners,
 # macOS may deny AppleScript accessibility; that failure is logged explicitly.
 echo "Requesting landscape orientation from Simulator.app"
 open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID" || true
-sleep 5
+if [ "$AIRCRAFT_ONLY" = true ]; then sleep 2; else sleep 5; fi
 if osascript <<'APPLESCRIPT'
 tell application "Simulator" to activate
 tell application "System Events"
@@ -205,7 +217,7 @@ else
   echo "ROTATE_FAILED" > "$RESULTS/status.txt"
   exit 1
 fi
-sleep 4
+if [ "$AIRCRAFT_ONLY" = true ]; then sleep 2; else sleep 4; fi
 
 # simctl captures the native 2048x2732 backing buffer even when the device
 # AND the entire UI have rotated to landscape. Preserve that raw evidence,
@@ -214,6 +226,39 @@ sleep 4
 # interface text and the system status bar sideways after device rotation.
 xcrun simctl io "$DEVICE_ID" screenshot "$RESULTS/raw-screen.png"
 echo "RAW_SCREENSHOT" > "$RESULTS/status.txt"
+# Dimensions alone are not proof of orientation. A too-early Simulator GUI
+# rotation sometimes returns 2732x2048 after normalization but sideways UI.
+# Inspect the actual raw pixels (no OCR); a genuine landscape framebuffer
+# fills the upper edge, while incorrect portrait captures are letterboxed.
+if [ "$AIRCRAFT_ONLY" = true ]; then
+  ACTUALLY_ROTATED=false
+  for attempt in 1 2 3 4; do
+    if python3 Scripts/ci-verify-raw-orientation.py "$RESULTS/raw-screen.png"; then
+      ACTUALLY_ROTATED=true
+      break
+    fi
+    echo "Simulator has not physically rotated (attempt $attempt); retrying GUI"
+    if ! osascript <<'APPLESCRIPT'
+tell application "Simulator" to activate
+tell application "System Events"
+  tell application process "Simulator"
+    click menu item "Rotate Right" of menu 1 of menu bar item "Device" of menu bar 1
+  end tell
+end tell
+APPLESCRIPT
+    then
+      echo "Cannot rotate simulator on retry" >&2
+      exit 1
+    fi
+    sleep 3
+    xcrun simctl io "$DEVICE_ID" screenshot "$RESULTS/raw-screen.png"
+  done
+  if [ "$ACTUALLY_ROTATED" = false ]; then
+    echo "ROTATION_VISUAL_FAILED" > "$RESULTS/status.txt"
+    echo "Simulator raw frame still letterboxed; refusing false PASS" >&2
+    exit 1
+  fi
+fi
 python3 - "$RESULTS/raw-screen.png" "$RESULTS/raw-buffer-size.txt" <<'PY'
 import struct
 import sys
@@ -271,6 +316,18 @@ if ! xcrun simctl spawn "$DEVICE_ID" launchctl list | grep -F "$BUNDLE_ID"; then
   echo "Application service disappeared before profile verification" >&2
   echo "APP_EXITED" > "$RESULTS/status.txt"
   exit 1
+fi
+
+if [ "$AIRCRAFT_ONLY" = true ]; then
+  # Already launched the actual aircraft view as first app screen.
+  # The existing raw/landscape/profile checks above still apply unchanged.
+  cp "$RESULTS/raw-screen.png" "$RESULTS/aircraft-tamm-raw.png"
+  cp "$RESULTS/main-screen.png" "$RESULTS/aircraft-tamm.png"
+  sips -s format jpeg -s formatOptions 85 -Z 1800 \
+    --out "$RESULTS/aircraft-tamm-preview.jpg" "$RESULTS/aircraft-tamm.png" >/dev/null
+  echo "PASS" > "$RESULTS/status.txt"
+  echo "PASS: aircraft-only; iPad 12.9-inch landscape/dark; app alive and 2732x2048"
+  exit 0
 fi
 
 # The second launch uses the SAME table that users reach from "Ещё".

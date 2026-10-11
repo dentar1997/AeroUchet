@@ -22,13 +22,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Record build start relative to user request
-        env:
-          MESSAGE_T0_EPOCH: "1791738622"
+      - name: Record build start relative to this run
         run: |
+          set -euo pipefail
+          if [[ "${GITHUB_HEAD_REF:-}" == prewarm/* ]] && [ -f .github/prewarm/request.json ]; then
+            python3 - <<'PY' > "$RUNNER_TEMP/aerouchet-build-t0.txt"
+          import json
+          with open(".github/prewarm/request.json", encoding="utf-8") as f:
+              print(int(json.load(f)["request_epoch"]))
+          PY
+          else
+            date -u +%s > "$RUNNER_TEMP/aerouchet-build-t0.txt"
+          fi
           T="$(date -u +%s)"
-          echo "{\"phase\":\"build.runner_ready\",\"epoch\":$T,\"elapsed_since_first_agent_action_sec\":$((T-MESSAGE_T0_EPOCH))}" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
-          echo "Build runner ready: $T (T+$((T-MESSAGE_T0_EPOCH))s)"
+          T0="$(cat "$RUNNER_TEMP/aerouchet-build-t0.txt")"
+          printf '{"phase":"build.runner_ready","epoch":%s,"since_user_request_first_tool_sec":%s}\n' \
+            "$T" "$((T - T0))" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
 
       - name: Toolchain
         run: |
@@ -44,11 +53,12 @@ jobs:
           bash Scripts/run-core-time-tests.sh
 
       - name: Build for iOS Simulator
-        env:
-          MESSAGE_T0_EPOCH: "1791738622"
         run: |
           set -o pipefail
-          T="$(date -u +%s)"; echo "{\"phase\":\"build.compile_started\",\"epoch\":$T,\"elapsed_since_first_agent_action_sec\":$((T-MESSAGE_T0_EPOCH))}" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
+          T="$(date -u +%s)"
+          T0="$(cat "$RUNNER_TEMP/aerouchet-build-t0.txt")"
+          printf '{"phase":"build.compile_started","epoch":%s,"since_user_request_first_tool_sec":%s}\n' \
+            "$T" "$((T - T0))" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
           # Ошибки компилятора выводим аннотациями: их видно в PR без скачивания логов.
           if ! xcodebuild \
             -scheme "АэроУчёт" \
@@ -62,17 +72,10 @@ jobs:
             done
             exit 1
           fi
-          T="$(date -u +%s)"; echo "{\"phase\":\"build.compile_finished\",\"epoch\":$T,\"elapsed_since_first_agent_action_sec\":$((T-MESSAGE_T0_EPOCH))}" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
-
-      - name: Static analyze
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -scheme "АэроУчёт" \
-            -destination "generic/platform=iOS Simulator" \
-            -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
-            CODE_SIGNING_ALLOWED=NO \
-            analyze
+          T="$(date -u +%s)"
+          T0="$(cat "$RUNNER_TEMP/aerouchet-build-t0.txt")"
+          printf '{"phase":"build.compile_finished","epoch":%s,"since_user_request_first_tool_sec":%s}\n' \
+            "$T" "$((T - T0))" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
 
       - name: Package simulator app
         run: |
@@ -110,11 +113,12 @@ jobs:
           echo "Simulator app: $APP_PATH"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/AeroUchet-Simulator.zip"
 
-      - name: Record artifact ready
-        env:
-          MESSAGE_T0_EPOCH: "1791738622"
+      - name: Record package ready
         run: |
-          T="$(date -u +%s)"; echo "{\"phase\":\"build.package_ready\",\"epoch\":$T,\"elapsed_since_first_agent_action_sec\":$((T-MESSAGE_T0_EPOCH))}" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
+          T="$(date -u +%s)"
+          T0="$(cat "$RUNNER_TEMP/aerouchet-build-t0.txt")"
+          printf '{"phase":"build.package_ready","epoch":%s,"since_user_request_first_tool_sec":%s}\n' \
+            "$T" "$((T - T0))" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
 
       - name: Upload simulator app
         uses: actions/upload-artifact@v4
@@ -123,6 +127,16 @@ jobs:
           path: ${{ runner.temp }}/AeroUchet-Simulator.zip
           if-no-files-found: error
           retention-days: 7
+
+      - name: Static analyze
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -scheme "АэроУчёт" \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            analyze
 
       - name: Upload build timings
         if: always()
@@ -134,13 +148,62 @@ jobs:
           retention-days: 7
 
 
+      # An opt-in prewarm PR cannot go green without its OWN successful
+      # screenshot: no third macOS runner and no dependency cycle.
+      - name: Verify early iPad screenshot for final PR head
+        if: ${{ startsWith(github.head_ref, 'prewarm/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          github_retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if gh "$@"; then return 0; fi
+              echo "Transient GitHub network error; retry $attempt/5" >&2
+              sleep $((attempt * 2))
+            done
+            return 1
+          }
+          for attempt in $(seq 1 150); do
+            PREWARM_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$GITHUB_HEAD_REF&event=push&per_page=30" \
+              --jq '[.workflow_runs[] | select(.name == "AeroUchet Early iPad Prewarm") | .id] | first // empty' 2>/dev/null || true)"
+            if [ -n "$PREWARM_ID" ]; then
+              PREWARM_STATUS="$(github_retry api "repos/$GITHUB_REPOSITORY/actions/runs/$PREWARM_ID" --jq .status)"
+              if [ "$PREWARM_STATUS" = completed ]; then
+                PREWARM_CONCLUSION="$(github_retry api "repos/$GITHUB_REPOSITORY/actions/runs/$PREWARM_ID" --jq .conclusion)"
+                if [ "$PREWARM_CONCLUSION" != success ]; then
+                  echo "Independent iPad prewarm failed: $PREWARM_CONCLUSION"
+                  exit 1
+                fi
+                DEST="$RUNNER_TEMP/early-screenshot-proof"
+                mkdir -p "$DEST"
+                github_retry run download "$PREWARM_ID" --repo "$GITHUB_REPOSITORY" \
+                  --name early-ipad-timing-and-target-screenshot --dir "$DEST"
+                test "$(cat "$DEST/status.txt")" = PASS
+                test "$(cat "$DEST/verified-pr-head-sha.txt")" = "$EXPECTED_PR_HEAD"
+                test "$(cat "$DEST/verified-build-run-id.txt")" = "$GITHUB_RUN_ID"
+                test -s "$DEST/aircraft-tamm.png"
+                test -s "$DEST/aircraft-tamm-raw.png"
+                python3 Scripts/ci-verify-raw-orientation.py "$DEST/aircraft-tamm-raw.png"
+                echo "Verified PASS from prewarm run $PREWARM_ID for PR head $EXPECTED_PR_HEAD"
+                exit 0
+              fi
+            fi
+            sleep 4
+          done
+          echo "No verified prewarm screenshot for this PR head"
+          exit 1
+
+
   # Independent macOS runner: iPadOS boot starts at the same time as the
   # build on a separate runner, so neither competes for the other's CPU.
   # Only download an artifact from this *same* workflow run after it exists.
   simulator-smoke:
-    # This one PR uses the independent prewarm runner started BEFORE the UI edit.
-    # Other PRs keep the proven two-runner screenshot workflow.
-    if: ${{ github.event_name != 'pull_request' || github.head_ref != 'feature/aircraft-columns-prewarm-20261011' }}
+    # Early-prewarm branches have a dedicated independent runner.
+    # All other PRs preserve the proven two-runner smoke.
+    if: ${{ github.event_name != 'pull_request' || !startsWith(github.head_ref, 'prewarm/') }}
     name: iPad Simulator smoke (parallel build + boot)
     runs-on: macos-26
     timeout-minutes: 20

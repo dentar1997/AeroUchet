@@ -1,0 +1,7 @@
+{
+  "experiment": "early-simulator-target-only-v4-network-retries",
+  "request_epoch": 1791752173,
+  "attempt": 3,
+  "attempt_trigger_epoch": 1791753209,
+  "notes": "Network retry on PR SHA/artifact verification; robust iPad landscape pixels"
+}
