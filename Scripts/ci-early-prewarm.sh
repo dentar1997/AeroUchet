@@ -25,6 +25,18 @@ mark() {
     "$1" "$now" "$((now - REQUEST_T0))" | tee -a "$RESULTS/timeline.jsonl"
 }
 
+# A single transient GitHub API TLS timeout must not throw away the warm VM.
+# Never weaken final-SHA verification; retry the network request instead.
+github_retry() {
+  local attempt
+  for attempt in 1 2 3 4 5 6; do
+    if gh "$@"; then return 0; fi
+    echo "GitHub API/network error, retry $attempt/6" >&2
+    sleep $((attempt * 2))
+  done
+  return 1
+}
+
 mark prewarm.runner_ready
 echo "Run: $GITHUB_RUN_ID, branch: $GITHUB_REF_NAME, initial T0: $REQUEST_T0"
 
@@ -87,10 +99,10 @@ while [ "$(date -u +%s)" -lt "$DEADLINE" ]; do
     if [ -n "$ARTIFACT_ID" ]; then
       mark prewarm.app_artifact_visible
       mkdir -p "$RUNNER_TEMP/prewarm-current-app"
-      gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+      github_retry run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
         --name AeroUchet-Simulator --dir "$RUNNER_TEMP/prewarm-current-app"
       test -s "$RUNNER_TEMP/prewarm-current-app/AeroUchet-Simulator.zip"
-      LATEST_SHA="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&head=$GITHUB_REPOSITORY_OWNER:$GITHUB_REF_NAME&per_page=10" \
+      LATEST_SHA="$(github_retry api "repos/$GITHUB_REPOSITORY/pulls?state=open&head=$GITHUB_REPOSITORY_OWNER:$GITHUB_REF_NAME&per_page=10" \
         --jq '.[0].head.sha // empty')"
       if [ "$LATEST_SHA" != "$PR_SHA" ]; then
         echo "PR changed during download ($LATEST_SHA vs $PR_SHA): rejecting stale artifact"
@@ -124,7 +136,7 @@ test "$(cat "$RESULTS/status.txt")" = PASS
 mark prewarm.aircraft_screenshot_saved
 
 # Double-check after capture: the visual proof must belong to final PR HEAD.
-LATEST_SHA="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&head=$GITHUB_REPOSITORY_OWNER:$GITHUB_REF_NAME&per_page=10" \
+LATEST_SHA="$(github_retry api "repos/$GITHUB_REPOSITORY/pulls?state=open&head=$GITHUB_REPOSITORY_OWNER:$GITHUB_REF_NAME&per_page=10" \
   --jq '.[0].head.sha // empty')"
 if [ "$LATEST_SHA" != "$PR_SHA" ]; then
   echo "PR changed after screenshot; not an authentic proof for final SHA"
