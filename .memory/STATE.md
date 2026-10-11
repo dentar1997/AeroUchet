@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 11.10.2026 20:19 МСК · ChatGPT. PR #197 слит, auto-version выдал **v187**: все шесть колонок «Воздушные суда» центрированы с заголовками, снимок iPad 12,9″/dark/landscape CI ✅. Early prewarm до PR проверен, но выигрыш не подтверждён: T+7:03 от первого действия, ~4:33 от старта PR CI до кадра против 4:03 baseline. Ждёт проверки на iPad.
+**Обновлено:** 11.10.2026 20:28 МСК · ChatGPT. **v187**: шесть заголовков и значения таблицы ВС центрированы. Ранний prewarm до Swift/PR протестирован, но времени не сэкономил (4:39 от PR до скрина против 4:03); оставлена двухсерверная схема PR #196. PR #197 с UI слит, cleanup PR #198 слит, оба CI/Quality/Privacy PASS, ждёт проверки на iPad.
 
 
 ## Последние записи журнала
-- [2026-10-11_2019_chatgpt-pr197-early-prewarm-result.md](log/2026-10-11_2019_chatgpt-pr197-early-prewarm-result.md)
+- [2026-10-11_2028_chatgpt-columns-prewarm-results.md](log/2026-10-11_2028_chatgpt-columns-prewarm-results.md)
+- [2026-10-11_2010_chatgpt-early-prewarm-columns-start.md](log/2026-10-11_2010_chatgpt-early-prewarm-columns-start.md)
 - [2026-10-11_1621_chatgpt-prewarm-before-pr-plan.md](log/2026-10-11_1621_chatgpt-prewarm-before-pr-plan.md)
-- [2026-10-11_0225_chatgpt-ci-time-clarification.md](log/2026-10-11_0225_chatgpt-ci-time-clarification.md)
 
 ## CI / iPad Simulator
 - **PR #197** ✅ слит (`3fb47ed`), **v187** (auto-version `9114509`). Все шесть колонок базы ВС центрированы с заголовками; Quality/Privacy/build ✅, ранний prewarm run `38158606274` smoke PASS. Скриншот реальной таблицы `aircraft-tamm.png` (2732×2048, dark, landscape) просмотрен, визуальная геометрия соответствует запросу. Prewarm был запущен **до создания PR**; T+0 первая измеренная операция 17:10:22Z, runner/boot T+85s, PR T+137s, compile start T+185s, boot ready T+236s, compile end T+249s, artifact T+317s, screenshot ready T+423s. От PR CI до кадра ~4:33 вместо 4:03 ранее, **ускорение не подтвердилось**. Артефакт https://github.com/dentar1997/AeroUchet/actions/runs/38158606274/artifacts/11709137864. На iPad пользователя пока не проверено; текущая проверенная обычная схема CI двух параллельных Mac остаётся стандартом.
@@ -15,6 +15,7 @@
 - **PR #194** ✅ слит в `main` (`89f58b5`); `ios-ci.yml` запускает новый экспериментальный этап `simulator-smoke` после успешной сборки. Реальный запуск на **iPad Pro 13-inch (M5), iOS 26.5** ✅: установка, процесс и снимок главного экрана версии 185. Артефакт run 37866664164, id 11589265033. Это не проверка интерфейса или настоящего iPad; UI-автоматизация отложена (см. BACKLOG).
 
 ## Код
+- **v187** (PR #197, центровка таблицы «Воздушные суда»). Проверена сборкой и реальным CI-скриншотом; **ждёт проверки на iPad**. PR #198 затронул лишь CI и не поднял версию.
 - **`AppVersion` = 187** (PR #197: заголовки и значения всех 6 столбцов базы ВС по общим центрам, испытан ранний prewarm). CI + screenshot ✅, **ждёт проверки на iPad**.
 - **`AppVersion` = 186** (PR #196: исправлена компоновка RA-73745 «Тамм» на 8/150; ускорен GitHub Actions и добавлен снимок базы ВС). Auto-version ✅; CI PR ✅; **ждёт проверки на iPad**.
 - **`AppVersion` = 185** (PR #193: все 6 колонок базы ВС получили одинаковую ширину; центры столбцов равноудалены). CI ✅. **Ждёт проверки на iPad.**
