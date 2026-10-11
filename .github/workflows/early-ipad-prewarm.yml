@@ -1,0 +1,61 @@
+name: AeroUchet Early iPad Prewarm
+
+on:
+  push:
+    branches:
+      - 'prewarm/**'
+    paths:
+      - '.github/prewarm/request.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+# Separate from PR-CI cancellation: keep the booted iPadOS alive while
+# source commits are amended in the same feature branch.
+concurrency:
+  group: early-ipad-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  early-ipad:
+    name: Early iPad (pre-PR, only target screen)
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout request revision
+        uses: actions/checkout@v6
+
+      - name: Warm iPad and consume final PR artifact
+        id: early
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          bash Scripts/ci-early-prewarm.sh \
+            "$RUNNER_TEMP/early-ipad-results" \
+            ".github/prewarm/request.json"
+
+      - name: Upload timing, logs and aircraft screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: early-ipad-timing-and-target-screenshot
+          path: ${{ runner.temp }}/early-ipad-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Summarize early screenshot outcome
+        if: always()
+        run: |
+          echo '### Early iPad prewarm, artifact poll by final SHA' >> "$GITHUB_STEP_SUMMARY"
+          echo "Screenshot script: ${{ steps.early.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/early-ipad-results/status.txt" ]; then
+            echo "Capture status: $(cat "$RUNNER_TEMP/early-ipad-results/status.txt")" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ -f "$RUNNER_TEMP/early-ipad-results/timeline.jsonl" ]; then
+            echo 'TIMELINE JSONL:' >> "$GITHUB_STEP_SUMMARY"
+            cat "$RUNNER_TEMP/early-ipad-results/timeline.jsonl" >> "$GITHUB_STEP_SUMMARY"
+          fi
