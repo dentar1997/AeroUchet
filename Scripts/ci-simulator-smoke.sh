@@ -226,6 +226,39 @@ if [ "$AIRCRAFT_ONLY" = true ]; then sleep 2; else sleep 4; fi
 # interface text and the system status bar sideways after device rotation.
 xcrun simctl io "$DEVICE_ID" screenshot "$RESULTS/raw-screen.png"
 echo "RAW_SCREENSHOT" > "$RESULTS/status.txt"
+# Dimensions alone are not proof of orientation. A too-early Simulator GUI
+# rotation sometimes returns 2732x2048 after normalization but sideways UI.
+# Inspect the actual raw pixels (no OCR); a genuine landscape framebuffer
+# fills the upper edge, while incorrect portrait captures are letterboxed.
+if [ "$AIRCRAFT_ONLY" = true ]; then
+  ACTUALLY_ROTATED=false
+  for attempt in 1 2 3 4; do
+    if python3 Scripts/ci-verify-raw-orientation.py "$RESULTS/raw-screen.png"; then
+      ACTUALLY_ROTATED=true
+      break
+    fi
+    echo "Simulator has not physically rotated (attempt $attempt); retrying GUI"
+    if ! osascript <<'APPLESCRIPT'
+tell application "Simulator" to activate
+tell application "System Events"
+  tell application process "Simulator"
+    click menu item "Rotate Right" of menu 1 of menu bar item "Device" of menu bar 1
+  end tell
+end tell
+APPLESCRIPT
+    then
+      echo "Cannot rotate simulator on retry" >&2
+      exit 1
+    fi
+    sleep 3
+    xcrun simctl io "$DEVICE_ID" screenshot "$RESULTS/raw-screen.png"
+  done
+  if [ "$ACTUALLY_ROTATED" = false ]; then
+    echo "ROTATION_VISUAL_FAILED" > "$RESULTS/status.txt"
+    echo "Simulator raw frame still letterboxed; refusing false PASS" >&2
+    exit 1
+  fi
+fi
 python3 - "$RESULTS/raw-screen.png" "$RESULTS/raw-buffer-size.txt" <<'PY'
 import struct
 import sys
