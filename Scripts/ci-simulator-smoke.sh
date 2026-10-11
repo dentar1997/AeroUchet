@@ -126,7 +126,7 @@ PY
 )"
 fi
 echo "Selected simulator UUID: $DEVICE_ID"
-xcrun simctl list devices | grep -F "$DEVICE_ID" || true
+# The device UUID was already selected; avoid an expensive redundant simctl list.
 
 if [ "$PREBOOT_MODE" = true ]; then
   # Start as early as possible. The build job compiles Swift while iPadOS boots.
@@ -142,7 +142,20 @@ if [ ! -s "$RESULTS/device-udid.txt" ]; then
   echo "Preboot unavailable; falling back to a normal boot"
   xcrun simctl boot "$DEVICE_ID"
 fi
-xcrun simctl bootstatus "$DEVICE_ID" -b
+# The background preboot worker already runs bootstatus and writes PREBOOTED.
+# Avoid a second concurrent CoreSimulator query: on hosted macOS that call
+# has taken 18–53 seconds even when the device is already booted.
+if [ -s "$RESULTS/device-udid.txt" ] && [ ! -f "$RESULTS/preboot.status" ]; then
+  for attempt in $(seq 1 120); do
+    if [ -f "$RESULTS/preboot.status" ]; then break; fi
+    sleep 1
+  done
+fi
+if [ -f "$RESULTS/preboot.status" ] && grep -qx PREBOOTED "$RESULTS/preboot.status"; then
+  echo "Reusing verified PREBOOTED marker; no duplicate simctl bootstatus"
+else
+  xcrun simctl bootstatus "$DEVICE_ID" -b
+fi
 echo "BOOTED" > "$RESULTS/status.txt"
 
 # System appearance (independent from any in-app tint or custom blur).
