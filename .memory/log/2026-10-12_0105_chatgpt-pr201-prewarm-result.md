@@ -1,0 +1,8 @@
+# 12.10 01:05 · ChatGPT · Второй тест Б и исправление повторной проверки Simulator
+- PR #201 https://github.com/dentar1997/AeroUchet/pull/201 слит squash 6f4332e6aa4cde485186c48c349093edc0e0c880. Swift и версия 187 не менялись. Убрана повторная simctl list devices и пропускается второй bootstatus при наличии PREBOOTED от фоновой загрузки.
+- Вторая проверка: independent early run 38178598051, PR CI 38178614462, финальный SHA 19936a959b86e00f34a3fe650d1a99fa9627931d. Build/Core/Analyze/Quality/Privacy PASS, raw red=43.8, 12.9-inch landscape dark, status PASS. Artifact https://github.com/dentar1997/AeroUchet/actions/runs/38178598051/artifacts/11717336612
+- UTC: marker 21:59:28; prewarm runner 21:59:42; PR 21:59:44; .app upload 22:01:39; artifact visible 22:02:14, downloaded 22:02:18; preboot ready 22:02:18; capture 22:02:18; RAW screenshot 22:03:33; PASS 22:03:39.
+- Скорость #201: marker→RAW 4:05 (245с), PR→RAW 3:49 (229с), capture→RAW 1:16 (76с). #200: marker→RAW 4:11 (251с), PR→RAW 3:38 (218с), capture→RAW 1:50 (110с). Ускорение post-download на 34с, но GitHub build/artifact variability дала +11с общей длительности от PR.
+- Новый узкий участок: сразу после готового PREBOOTED команда simctl ui appearance dark по времени от 22:02:18 до 22:02:54 заняла около 35с (вероятно cold CoreSimulator service). Это не доказательство 35с постоянной задержки. Возможно заранее настраивать тёмную тему во время prewarm, но для короткой правки выигрыш не гарантирован.
+- Метод A по умолчанию; нужна контрольная обычная PR-сборка после изменения общего smoke-скрипта. Результат не означает устойчивое превосходство Б.
+- Статус: PR #200 и #201 ✅, оба независимых снимка и CI PASS, v187 на физическом iPad пользователя ещё не проверена.
