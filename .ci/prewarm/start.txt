@@ -1,0 +1,4 @@
+Experiment: prewarm iPad Pro 12.9-inch Simulator before Swift changes.
+Started: 2026-10-11T17:13:08Z.
+First observed ChatGPT tool timestamp: 2026-10-11T17:11:38Z. User message timestamp only known to minute 20:10 MSK.
+Purpose: aircraft table align header and row centers; screenshot and CI timing.
