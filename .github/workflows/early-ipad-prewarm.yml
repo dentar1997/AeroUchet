@@ -1,0 +1,127 @@
+name: AeroUchet Early iPad Prewarm Experiment
+
+on:
+  push:
+    branches:
+      - feature/aircraft-columns-prewarm-20261011
+    paths:
+      - '.github/workflows/early-ipad-prewarm.yml'
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  early-prewarm:
+    name: Early simulator boot and screenshot
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout and capture start of prewarm
+        uses: actions/checkout@v6
+
+      - name: Start iPadOS before the final Swift changes
+        env:
+          MESSAGE_T0_EPOCH: "1791738622"
+        run: |
+          set -euo pipefail
+          RESULTS="$RUNNER_TEMP/early-ipad"
+          mkdir -p "$RESULTS"
+          mark() {
+            local epoch
+            epoch="$(date -u +%s)"
+            printf '{"phase":"%s","epoch":%s,"elapsed_since_first_agent_action_sec":%s}\n' "$1" "$epoch" "$((epoch - MESSAGE_T0_EPOCH))" | tee -a "$RESULTS/timeline.jsonl"
+          }
+          mark prewarm.runner_ready
+          echo "$MESSAGE_T0_EPOCH" > "$RESULTS/message-t0-epoch.txt"
+          # Keep iPadOS alive on this runner while source code is edited.
+          RUNNER_TRACKING_ID="" nohup bash Scripts/ci-simulator-smoke.sh --preboot "$RESULTS" \
+            > "$RESULTS/preboot-bootstrap.log" 2>&1 < /dev/null &
+          echo "$!" > "$RESULTS/preboot.pid"
+          mark prewarm.simulator_boot_requested
+
+      - name: Wait for app built from FINAL PR head SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MESSAGE_T0_EPOCH: "1791738622"
+        run: |
+          set -euo pipefail
+          RESULTS="$RUNNER_TEMP/early-ipad"
+          BRANCH="$GITHUB_REF_NAME"
+          mark() {
+            local epoch
+            epoch="$(date -u +%s)"
+            printf '{"phase":"%s","epoch":%s,"elapsed_since_first_agent_action_sec":%s}\n' "$1" "$epoch" "$((epoch - MESSAGE_T0_EPOCH))" | tee -a "$RESULTS/timeline.jsonl"
+          }
+          mark prewarm.wait_for_final_pr
+          source_sha=""
+          source_run=""
+          for i in $(seq 1 105); do
+            if [ -f "$RESULTS/preboot.status" ] && ! [ -f "$RESULTS/boot-ready-marker" ]; then
+              touch "$RESULTS/boot-ready-marker"
+              mark prewarm.simulator_boot_finished
+            fi
+            # A draft/preliminary PR is not required. Wait for the real PR.
+            source_sha="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&head=$GITHUB_REPOSITORY_OWNER:$BRANCH&per_page=10" --jq '.[0].head.sha // empty' 2>/dev/null || true)"
+            if [ -n "$source_sha" ]; then
+              source_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$source_sha&event=pull_request&per_page=50" --jq '[.workflow_runs[] | select(.name == "AeroUchet CI" and .head_sha == "'"$source_sha"'" ) | .id] | first // empty' 2>/dev/null || true)"
+              if [ -n "$source_run" ]; then
+                build_result="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$source_run/jobs?per_page=100" --jq '[.jobs[] | select(.name == "Build iOS app") | .conclusion] | first // empty' 2>/dev/null || true)"
+                if [ "$build_result" = "success" ]; then
+                  mark prewarm.build_confirmed_success
+                  echo "$source_sha" > "$RESULTS/pr-head-sha.txt"
+                  echo "$source_run" > "$RESULTS/pr-ci-run-id.txt"
+                  mkdir -p "$RUNNER_TEMP/early-app"
+                  gh run download "$source_run" --repo "$GITHUB_REPOSITORY" --name AeroUchet-Simulator --dir "$RUNNER_TEMP/early-app"
+                  test -s "$RUNNER_TEMP/early-app/AeroUchet-Simulator.zip"
+                  latest_sha="$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&head=$GITHUB_REPOSITORY_OWNER:$BRANCH&per_page=10" --jq '.[0].head.sha // empty')"
+                  if [ "$source_sha" != "$latest_sha" ]; then echo 'PR changed during download; refusing stale screenshot'; exit 1; fi
+                  mark prewarm.artifact_downloaded
+                  exit 0
+                fi
+                if [[ "$build_result" =~ ^(failure|cancelled|timed_out)$ ]]; then
+                  echo "Build failed: $build_result; $source_run"
+                  exit 1
+                fi
+              fi
+            fi
+            sleep 8
+          done
+          echo 'Timed out awaiting final PR build'
+          exit 1
+
+      - name: Take screenshot on already booted iPad
+        id: screenshot
+        env:
+          MESSAGE_T0_EPOCH: "1791738622"
+        run: |
+          set -euo pipefail
+          RESULTS="$RUNNER_TEMP/early-ipad"
+          mark() {
+            local epoch
+            epoch="$(date -u +%s)"
+            printf '{"phase":"%s","epoch":%s,"elapsed_since_first_agent_action_sec":%s}\n' "$1" "$epoch" "$((epoch - MESSAGE_T0_EPOCH))" | tee -a "$RESULTS/timeline.jsonl"
+          }
+          mark prewarm.app_install_and_capture_started
+          bash Scripts/ci-simulator-smoke.sh "$RUNNER_TEMP/early-app/AeroUchet-Simulator.zip" "$RESULTS"
+          test "$(cat "$RESULTS/status.txt")" = PASS
+          mark prewarm.screenshot_ready
+
+      - name: Upload timestamps, logs and images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: early-ipad-timeline-and-screenshots
+          path: ${{ runner.temp }}/early-ipad/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Show timing summary
+        if: always()
+        run: |
+          echo '### Early iPad prewarm experiment' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/early-ipad/timeline.jsonl" ]; then
+            cat "$RUNNER_TEMP/early-ipad/timeline.jsonl" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo 'The source build is tied to the final PR SHA, not the prewarm commit.' >> "$GITHUB_STEP_SUMMARY"
