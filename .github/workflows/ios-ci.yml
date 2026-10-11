@@ -148,6 +148,46 @@ jobs:
           retention-days: 7
 
 
+      # An opt-in prewarm PR cannot go green without its OWN successful
+      # screenshot: no third macOS runner and no dependency cycle.
+      - name: Verify early iPad screenshot for final PR head
+        if: ${{ startsWith(github.head_ref, 'prewarm/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 150); do
+            PREWARM_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=$GITHUB_HEAD_REF&event=push&per_page=30" \
+              --jq '[.workflow_runs[] | select(.name == "AeroUchet Early iPad Prewarm") | .id] | first // empty' 2>/dev/null || true)"
+            if [ -n "$PREWARM_ID" ]; then
+              PREWARM_STATUS="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREWARM_ID" --jq .status)"
+              if [ "$PREWARM_STATUS" = completed ]; then
+                PREWARM_CONCLUSION="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PREWARM_ID" --jq .conclusion)"
+                if [ "$PREWARM_CONCLUSION" != success ]; then
+                  echo "Independent iPad prewarm failed: $PREWARM_CONCLUSION"
+                  exit 1
+                fi
+                DEST="$RUNNER_TEMP/early-screenshot-proof"
+                mkdir -p "$DEST"
+                gh run download "$PREWARM_ID" --repo "$GITHUB_REPOSITORY" \
+                  --name early-ipad-timing-and-target-screenshot --dir "$DEST"
+                test "$(cat "$DEST/status.txt")" = PASS
+                test "$(cat "$DEST/verified-pr-head-sha.txt")" = "$EXPECTED_PR_HEAD"
+                test "$(cat "$DEST/verified-build-run-id.txt")" = "$GITHUB_RUN_ID"
+                test -s "$DEST/aircraft-tamm.png"
+                test -s "$DEST/aircraft-tamm-raw.png"
+                python3 Scripts/ci-verify-raw-orientation.py "$DEST/aircraft-tamm-raw.png"
+                echo "Verified PASS from prewarm run $PREWARM_ID for PR head $EXPECTED_PR_HEAD"
+                exit 0
+              fi
+            fi
+            sleep 4
+          done
+          echo "No verified prewarm screenshot for this PR head"
+          exit 1
+
+
   # Independent macOS runner: iPadOS boot starts at the same time as the
   # build on a separate runner, so neither competes for the other's CPU.
   # Only download an artifact from this *same* workflow run after it exists.
