@@ -3,6 +3,12 @@
 # Works on macOS runners using an unpacked *test-only* .app copy.
 set -euo pipefail
 
+AIRCRAFT_ONLY=false
+if [ "${1:-}" = "--aircraft-only" ]; then
+  AIRCRAFT_ONLY=true
+  shift
+fi
+
 PREBOOT_MODE=false
 if [ "$#" -eq 2 ] && [ "$1" = "--preboot" ]; then
   PREBOOT_MODE=true
@@ -180,16 +186,22 @@ echo "Installing: $APP_PATH"
 xcrun simctl install "$DEVICE_ID" "$APP_PATH"
 echo "INSTALLED" > "$RESULTS/status.txt"
 
-xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
-echo "LAUNCHED" > "$RESULTS/status.txt"
-sleep 8
+if [ "$AIRCRAFT_ONLY" = true ]; then
+  xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID" --aerouchet-ci-aircraft-tamm
+  echo "TARGET_LAUNCHED" > "$RESULTS/status.txt"
+  sleep 2
+else
+  xcrun simctl launch "$DEVICE_ID" "$BUNDLE_ID"
+  echo "LAUNCHED" > "$RESULTS/status.txt"
+  sleep 8
+fi
 
 # simctl has no supported rotate subcommand. Try the same Device > Rotate
 # menu that a developer uses in Simulator.app. On locked-down hosted runners,
 # macOS may deny AppleScript accessibility; that failure is logged explicitly.
 echo "Requesting landscape orientation from Simulator.app"
 open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID" || true
-sleep 5
+if [ "$AIRCRAFT_ONLY" = true ]; then sleep 2; else sleep 5; fi
 if osascript <<'APPLESCRIPT'
 tell application "Simulator" to activate
 tell application "System Events"
@@ -205,7 +217,7 @@ else
   echo "ROTATE_FAILED" > "$RESULTS/status.txt"
   exit 1
 fi
-sleep 4
+if [ "$AIRCRAFT_ONLY" = true ]; then sleep 2; else sleep 4; fi
 
 # simctl captures the native 2048x2732 backing buffer even when the device
 # AND the entire UI have rotated to landscape. Preserve that raw evidence,
@@ -271,6 +283,18 @@ if ! xcrun simctl spawn "$DEVICE_ID" launchctl list | grep -F "$BUNDLE_ID"; then
   echo "Application service disappeared before profile verification" >&2
   echo "APP_EXITED" > "$RESULTS/status.txt"
   exit 1
+fi
+
+if [ "$AIRCRAFT_ONLY" = true ]; then
+  # Already launched the actual aircraft view as first app screen.
+  # The existing raw/landscape/profile checks above still apply unchanged.
+  cp "$RESULTS/raw-screen.png" "$RESULTS/aircraft-tamm-raw.png"
+  cp "$RESULTS/main-screen.png" "$RESULTS/aircraft-tamm.png"
+  sips -s format jpeg -s formatOptions 85 -Z 1800 \
+    --out "$RESULTS/aircraft-tamm-preview.jpg" "$RESULTS/aircraft-tamm.png" >/dev/null
+  echo "PASS" > "$RESULTS/status.txt"
+  echo "PASS: aircraft-only; iPad 12.9-inch landscape/dark; app alive and 2732x2048"
+  exit 0
 fi
 
 # The second launch uses the SAME table that users reach from "Ещё".
