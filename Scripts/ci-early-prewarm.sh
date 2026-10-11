@@ -38,10 +38,20 @@ mark prewarm.boot_requested
 # Start observing artifact upload immediately. No wait for build-job conclusion.
 # Poll up to 16 minutes; the whole workflow has a separate 20-minute timeout.
 BOOT_RECORDED=false
+GUI_OPEN_REQUESTED=false
 DEADLINE=$(( $(date -u +%s) + 960 ))
 PR_SHA=""
 RUN_ID=""
 while [ "$(date -u +%s)" -lt "$DEADLINE" ]; do
+  if [ "$GUI_OPEN_REQUESTED" = false ] && [ -s "$RESULTS/device-udid.txt" ]; then
+    # Launch the Simulator GUI while Swift is still compiling on ANOTHER Mac.
+    # Avoid cold GUI initialization during the time-critical screenshot stage.
+    RUNNER_TRACKING_ID="" nohup open -a Simulator --args \
+      -CurrentDeviceUDID "$(cat "$RESULTS/device-udid.txt")" \
+      > "$RESULTS/simulator-gui-preopen.log" 2>&1 < /dev/null &
+    GUI_OPEN_REQUESTED=true
+    mark prewarm.gui_preopen_requested
+  fi
   if [ "$BOOT_RECORDED" = false ] && [ -f "$RESULTS/preboot.status" ]; then
     if [ "$(cat "$RESULTS/preboot.status")" = PREBOOTED ]; then
       mark prewarm.boot_ready
@@ -104,6 +114,9 @@ done
 
 ARCHIVE="$RUNNER_TEMP/prewarm-current-app/AeroUchet-Simulator.zip"
 test -s "$ARCHIVE" || { echo "No matching PR artifact before deadline"; exit 1; }
+if [ "$BOOT_RECORDED" = false ] && [ -f "$RESULTS/preboot.status" ]; then
+  mark prewarm.boot_ready
+fi
 mark prewarm.capture_started
 # Screenshot ONLY the real aircraft-table view for this A/B timing experiment.
 bash Scripts/ci-simulator-smoke.sh --aircraft-only "$ARCHIVE" "$RESULTS"
