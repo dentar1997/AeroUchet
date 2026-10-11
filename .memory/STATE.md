@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 11.10.2026 02:25 МСК · ChatGPT. Уточнены сопоставимые времена CI до скриншота: 7:40 старая последовательная схема, 8:11 один нагруженный Mac, 4:03 два параллельных runner (~47,2% меньше). Пользователь доволен ускорением; v186 ждёт проверки на iPad. Код не менялся.
+**Обновлено:** 11.10.2026 16:21 МСК · ChatGPT. По GitHub Docs подтверждено: сервер можно запускать без PR (workflow_dispatch/push). Dummy PR с новыми коммитами отменит старый прогрев из-за cancel-in-progress. Предложен независимый ранний prewarm workflow на существующем Mac №2, ждёт отдельного разрешения «Программируй». v186 без изменений.
 
 
 ## Последние записи журнала
+- [2026-10-11_1621_chatgpt-prewarm-before-pr-plan.md](log/2026-10-11_1621_chatgpt-prewarm-before-pr-plan.md)
 - [2026-10-11_0225_chatgpt-ci-time-clarification.md](log/2026-10-11_0225_chatgpt-ci-time-clarification.md)
 - [2026-10-10_1447_chatgpt-tamm-parallel-ci-success.md](log/2026-10-10_1447_chatgpt-tamm-parallel-ci-success.md)
-- [2026-10-10_1427_chatgpt-tamm-preboot-start.md](log/2026-10-10_1427_chatgpt-tamm-preboot-start.md)
 
 ## CI / iPad Simulator
 - **PR #196** ✅ слит (`07115fd`), финальный CI run **38049283954**: Build iOS app ✅, Quality ✅, Privacy Guard ✅, smoke ✅ (`status.txt=PASS`). **Два независимых macOS-раннера параллельно:** `build` собирает и упаковывает только актуальный commit, `simulator-smoke` заранее загружает iPad Pro 12,9″ 3rd gen / landscape / dark, ожидает ZIP только того же `GITHUB_RUN_ID`, устанавливает, делает главный и `aircraft-tamm.png` + JPG preview. Таблица на скриншоте показывает RA-73745 «Тамм» и **8/150**, 2732×2048. Затраты с момента preboot до снимка ~3:55 (прежний процесс ~7:34). Первый эксперимент на *одном* runner оказался хуже (~8 минут), не оставили. Артефакт https://github.com/dentar1997/AeroUchet/actions/runs/38049283954/artifacts/11668334987 (7 дней). Тест таблицы запускается специальным simulator-only аргументом, **не** автоматическими нажатиями на вкладки. На iPad пользователя ещё не проверено.
