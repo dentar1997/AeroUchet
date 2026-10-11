@@ -22,6 +22,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Record build start relative to user request
+        env:
+          MESSAGE_T0_EPOCH: "1791738622"
+        run: |
+          T="$(date -u +%s)"
+          echo "{\"phase\":\"build.runner_ready\",\"epoch\":$T,\"elapsed_since_first_agent_action_sec\":$((T-MESSAGE_T0_EPOCH))}" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
+          echo "Build runner ready: $T (T+$((T-MESSAGE_T0_EPOCH))s)"
+
       - name: Toolchain
         run: |
           xcodebuild -version
@@ -36,8 +44,11 @@ jobs:
           bash Scripts/run-core-time-tests.sh
 
       - name: Build for iOS Simulator
+        env:
+          MESSAGE_T0_EPOCH: "1791738622"
         run: |
           set -o pipefail
+          T="$(date -u +%s)"; echo "{\"phase\":\"build.compile_started\",\"epoch\":$T,\"elapsed_since_first_agent_action_sec\":$((T-MESSAGE_T0_EPOCH))}" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
           # Ошибки компилятора выводим аннотациями: их видно в PR без скачивания логов.
           if ! xcodebuild \
             -scheme "АэроУчёт" \
@@ -51,6 +62,7 @@ jobs:
             done
             exit 1
           fi
+          T="$(date -u +%s)"; echo "{\"phase\":\"build.compile_finished\",\"epoch\":$T,\"elapsed_since_first_agent_action_sec\":$((T-MESSAGE_T0_EPOCH))}" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
 
       - name: Static analyze
         run: |
@@ -98,6 +110,12 @@ jobs:
           echo "Simulator app: $APP_PATH"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$RUNNER_TEMP/AeroUchet-Simulator.zip"
 
+      - name: Record artifact ready
+        env:
+          MESSAGE_T0_EPOCH: "1791738622"
+        run: |
+          T="$(date -u +%s)"; echo "{\"phase\":\"build.package_ready\",\"epoch\":$T,\"elapsed_since_first_agent_action_sec\":$((T-MESSAGE_T0_EPOCH))}" >> "$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
+
       - name: Upload simulator app
         uses: actions/upload-artifact@v4
         with:
@@ -106,10 +124,23 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload build timings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-timing-diagnostics
+          path: ${{ runner.temp }}/aerouchet-build-timeline.jsonl
+          if-no-files-found: warn
+          retention-days: 7
+
+
   # Independent macOS runner: iPadOS boot starts at the same time as the
   # build on a separate runner, so neither competes for the other's CPU.
   # Only download an artifact from this *same* workflow run after it exists.
   simulator-smoke:
+    # This one PR uses the independent prewarm runner started BEFORE the UI edit.
+    # Other PRs keep the proven two-runner screenshot workflow.
+    if: ${{ github.event_name != 'pull_request' || github.head_ref != 'feature/aircraft-columns-prewarm-20261011' }}
     name: iPad Simulator smoke (parallel build + boot)
     runs-on: macos-26
     timeout-minutes: 20
