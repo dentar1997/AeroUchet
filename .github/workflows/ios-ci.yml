@@ -49,9 +49,12 @@ jobs:
           fi
           echo "{\"phase\":\"build.compile_finished\",\"utc\":\"$(date -u +%FT%TZ)\"}" >> "$TIMELINE"
           # Итог по типам задач — аннотацией: её видно через API без скачивания логов.
+          # Только диагностика: никакой вывод здесь не должен ронять сборку.
+          set +e +o pipefail
           TIMING="$(awk '/Build Timing Summary/{f=1} f && /seconds/' "$RUNNER_TEMP/build.log" | head -8 | paste -sd ';' -)"
-          WALL="$(grep -Eo 'BUILD SUCCEEDED \*\* \[[0-9.]+ sec\]' "$RUNNER_TEMP/build.log" | tail -1)"
+          WALL="$(grep -Eo 'BUILD SUCCEEDED.*' "$RUNNER_TEMP/build.log" | tail -1)"
           echo "::notice title=Build timing (arm64)::${WALL} ${TIMING}"
+          exit 0
 
       - name: Package simulator app
         run: |
