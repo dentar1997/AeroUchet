@@ -68,6 +68,7 @@ KEEP_SESSIONS = 5
 JPEG_QUALITY = 80
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 USER_AGENT = "aerouchet-ci-ipad"
+OLD_IDLE_MINUTES = 25   # idle limit before 12.10 evening; used only to measure the benefit
 BOT_NAME = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -1529,6 +1530,8 @@ class WarmSession:
             "served": self.records,
             "end_reason": self.end_reason,
             "idle_minutes": self.args.idle_minutes,
+            "max_minutes": self.args.max_minutes,
+            "kept_warm_beyond_25_min": sum(1 for record in self.records if record.get("kept_warm_beyond_25_min")),
             "api_remaining": self.gh.remaining,
             "updated_utc": utc(),
         }
@@ -1698,6 +1701,13 @@ class WarmSession:
         }
         if run:
             record["ci_run_to_published_sec"] = round(time.time() - parse_utc(run["created_at"]), 1)
+        # For deciding how long a session should live: pause before this push and
+        # whether the old 25-minute idle limit would already have shut the iPad down.
+        record["seen_utc"] = utc(seen)
+        if self.last_activity is not None:
+            gap = (seen - self.last_activity) / 60
+            record["pause_before_min"] = round(gap, 1)
+            record["kept_warm_beyond_25_min"] = gap > OLD_IDLE_MINUTES
         self.records.append(record)
         self.timeline.mark("sha.published" if published else "sha.publish_failed", **record)
         return proof["status"] if proof.get("stage") != "build" else "COMPILE_ERROR"
@@ -1707,6 +1717,9 @@ class WarmSession:
         next_absorb = 0
         while True:
             now = time.time()
+            if now - self.started > self.args.max_minutes * 60:
+                self.end_reason = f"session time limit ({self.args.max_minutes:g} min)"
+                break
             if not announced and read_text(state_file(self.state, "prepare.status")) in ("READY", "FAILED"):
                 announced = True
                 self.timeline.mark("session.ready", prepare_status=read_text(state_file(self.state, "prepare.status")))
@@ -1742,7 +1755,9 @@ class WarmSession:
                 break
 
     def close(self):
-        self.timeline.mark("session.end", reason=self.end_reason, served=len(self.records))
+        kept = sum(1 for record in self.records if record.get("kept_warm_beyond_25_min"))
+        self.timeline.mark("session.end", reason=self.end_reason, served=len(self.records),
+                           kept_warm_beyond_25_min=kept, minutes=round((time.time() - self.started) / 60, 1))
         if self.prepare and self.prepare.poll() is None:
             self.prepare.terminate()
         summary = self.state_summary("ended")
@@ -1807,8 +1822,9 @@ def main(argv=None):
 
     p = sub.add_parser("session")
     p.add_argument("--root", required=True)
-    p.add_argument("--idle-minutes", type=float, default=25)
-    p.add_argument("--wait-first-minutes", type=float, default=45)
+    p.add_argument("--idle-minutes", type=float, default=120)
+    p.add_argument("--wait-first-minutes", type=float, default=120)
+    p.add_argument("--max-minutes", type=float, default=330, help="end gracefully before the job's 6 h limit")
     p.add_argument("--request-epoch", default="")
     p.add_argument("--no-local-build", action="store_true", help="always use the PR CI artifact")
     p.set_defaults(func=cmd_session)

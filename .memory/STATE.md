@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 12.10 13:08 МСК · Claude. PR #204 слит (`a516d8f`, только CI): **тёплый iPad на всю задачу** — сессия сама собирает каждый новый SHA PR из `prewarm/*` и снимает; от push до снимка **33–41 с** (было 3:38–5:33). Снимки в ветке `ci-shots`. Для UI-задач правило P14. AppVersion v187 без изменений.
+**Обновлено:** 12.10 23:43 МСК · Claude. Тёплый iPad живёт дольше: 2 ч без правок / 5,5 ч всего (было 25 мин) — обычно один прогрев на вечер; польза измеряется (BACKLOG). PR #204 (тёплый iPad, 33–41 с от push до снимка) слит раньше. AppVersion v187 без изменений.
 
 
 ## Последние записи журнала
+- [2026-10-12_2343_claude_warm-session-longer.md](log/2026-10-12_2343_claude_warm-session-longer.md)
 - [2026-10-12_1308_claude_warm-ipad-result.md](log/2026-10-12_1308_claude_warm-ipad-result.md)
 - [2026-10-12_1133_claude_warm-ipad-start.md](log/2026-10-12_1133_claude_warm-ipad-start.md)
-- [2026-10-12_0601_claude_minimal-wait-plan.md](log/2026-10-12_0601_claude_minimal-wait-plan.md)
 
 ## CI / iPad Simulator
 - **PR #204** ✅ слит `a516d8f`, CI-only, **v187 без изменений**. **Тёплый iPad на всю задачу** (U53, P14): сессия `early-ipad-prewarm.yml` запускается в начале UI-задачи, собирает main, затем сама инкрементально собирает и снимает каждый новый SHA PR из `prewarm/*`; снимки — ветка `ci-shots` (`Scripts/ci_ipad.py fetch-shot`) и артефакт `ipad-shot` PR CI. Замеры: push → снимок у Claude **33–41 с**, CI-запуск → снимок 23–32 с (5 SHA, все PASS); готовность сессии 3:56–6:13; без сессии build job снимает сам за ~10 мин; метод А (обычные PR) 6:31. Подробнее log/2026-10-12_1308_claude_warm-ipad-result.md.
