@@ -542,13 +542,18 @@ def prebuild_base(src_root, state, timeline):
     return tree.package(state_file(state, "prebuild-app"))
 
 
-def install_app(udid, app, bundle):
-    """Clean install: an in-place upgrade of the previous build has failed with
-    installd 'deltainstallcommands … try again later', so uninstall first."""
-    simctl("terminate", udid, bundle, check=False, timeout=60, quiet=True)
-    simctl("uninstall", udid, bundle, check=False, timeout=120, quiet=True)
+def install_app(udid, app, bundle, state):
+    """Clean install. An in-place upgrade of the previous build has failed with
+    installd 'deltainstallcommands … try again later', so a build installed earlier
+    in this state is removed first. A fresh device is NOT asked to terminate or
+    uninstall: right after boot those no-op calls took 60 s and 110 s (PR #204)."""
+    marker = state_file(state, "app-installed")
+    if os.path.exists(marker):
+        simctl("terminate", udid, bundle, check=False, timeout=60, quiet=True)
+        simctl("uninstall", udid, bundle, check=False, timeout=180, quiet=True)
     for attempt in range(1, 4):
         if simctl("install", udid, app, check=False, timeout=300).returncode == 0:
+            write_text(marker, bundle)
             return attempt
         log(f"simctl install failed (attempt {attempt}); uninstalling and retrying")
         time.sleep(2 * attempt)
@@ -752,7 +757,7 @@ def settle_device(state, udid, timeline, src_root=None):
     os.makedirs(out, exist_ok=True)
     if source:
         app, bundle = stage_app(source, os.path.join(out, "_app"))
-        install_app(udid, app, bundle)
+        install_app(udid, app, bundle, state)
         timeline.mark("settle.warm_app_installed", source=origin)
         shot = {"name": "warmup", "args": list(SHOT_REGISTRY["aircraft-tamm"]["args"]), "settle": 2}
         result = capture_one(udid, bundle, shot, out, timeline, export=False)
@@ -837,7 +842,7 @@ def capture(state, archive, out, shots, meta, install_early):
             timeline.mark("capture.unpacked")
             if install_early:
                 proof["stage"] = "install"
-                install_app(udid, app, bundle)
+                install_app(udid, app, bundle, state)
                 timeline.mark("capture.installed")
             proof["stage"] = "visual"
             prepared = wait_state(state, "prepare.status", {"READY", "FAILED"}, 600)
@@ -852,7 +857,7 @@ def capture(state, archive, out, shots, meta, install_early):
                 timeline.mark("capture.visual_repaired", prepare_status=prepared)
             if not install_early:
                 proof["stage"] = "install"
-                install_app(udid, app, bundle)
+                install_app(udid, app, bundle, state)
                 timeline.mark("capture.installed")
             appearance = current_appearance(udid)
             if "dark" not in appearance.lower():
