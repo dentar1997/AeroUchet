@@ -41,7 +41,7 @@ mark prewarm.runner_ready
 echo "Run: $GITHUB_RUN_ID, branch: $GITHUB_REF_NAME, initial T0: $REQUEST_T0"
 
 # Child process only performs iPadOS boot and exits; the device remains booted.
-RUNNER_TRACKING_ID="" nohup bash Scripts/ci-simulator-smoke.sh --preboot "$RESULTS" \
+AEROUCHET_EARLY_VISUAL_PREP=1 RUNNER_TRACKING_ID="" nohup bash Scripts/ci-simulator-smoke.sh --preboot "$RESULTS" \
   > "$RESULTS/preboot-bootstrap.log" 2>&1 < /dev/null &
 BOOT_PID="$!"
 echo "$BOOT_PID" > "$RESULTS/boot.pid"
@@ -51,6 +51,7 @@ mark prewarm.boot_requested
 # Poll up to 16 minutes; the whole workflow has a separate 20-minute timeout.
 BOOT_RECORDED=false
 GUI_OPEN_REQUESTED=false
+VISUAL_RECORDED=false
 DEADLINE=$(( $(date -u +%s) + 960 ))
 PR_SHA=""
 RUN_ID=""
@@ -74,6 +75,14 @@ while [ "$(date -u +%s)" -lt "$DEADLINE" ]; do
     echo "Preboot subprocess failed"
     cat "$RESULTS/preboot.log" || true
     exit 1
+  fi
+
+  if [ "$VISUAL_RECORDED" = false ]; then
+    VISUAL_STATUS="$(cat "$RESULTS/prewarm-visual.status" 2>/dev/null || true)"
+    if [ "$VISUAL_STATUS" = READY ] || [ "$VISUAL_STATUS" = FAILED ]; then
+      mark "prewarm.visual_$VISUAL_STATUS"
+      VISUAL_RECORDED=true
+    fi
   fi
 
   # There must be an OPEN PR from the same branch, not some old branch.
@@ -129,9 +138,15 @@ test -s "$ARCHIVE" || { echo "No matching PR artifact before deadline"; exit 1; 
 if [ "$BOOT_RECORDED" = false ] && [ -f "$RESULTS/preboot.status" ]; then
   mark prewarm.boot_ready
 fi
+if [ "$VISUAL_RECORDED" = false ]; then
+  VISUAL_STATUS="$(cat "$RESULTS/prewarm-visual.status" 2>/dev/null || true)"
+  if [ "$VISUAL_STATUS" = READY ] || [ "$VISUAL_STATUS" = FAILED ]; then
+    mark "prewarm.visual_$VISUAL_STATUS"
+  fi
+fi
 mark prewarm.capture_started
 # Screenshot ONLY the real aircraft-table view for this A/B timing experiment.
-bash Scripts/ci-simulator-smoke.sh --aircraft-only "$ARCHIVE" "$RESULTS"
+AEROUCHET_EARLY_VISUAL_PREP=1 bash Scripts/ci-simulator-smoke.sh --aircraft-only "$ARCHIVE" "$RESULTS"
 test "$(cat "$RESULTS/status.txt")" = PASS
 mark prewarm.aircraft_screenshot_saved
 
