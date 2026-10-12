@@ -34,6 +34,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          bash -n Scripts/ci-early-prewarm.sh Scripts/ci-simulator-smoke.sh
           bash Scripts/ci-early-prewarm.sh \
             "$RUNNER_TEMP/early-ipad-results" \
             ".github/prewarm/request.json"
