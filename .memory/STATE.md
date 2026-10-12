@@ -1,14 +1,15 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 12.10 11:33 МСК · Claude. Денис: «Делай» — Claude в работе: тёплый iPad на всю задачу, сборка arm64, снимки для Claude в служебную ветку (только CI). AppVersion v187 без изменений.
+**Обновлено:** 12.10 13:08 МСК · Claude. PR #204 слит (`a516d8f`, только CI): **тёплый iPad на всю задачу** — сессия сама собирает каждый новый SHA PR из `prewarm/*` и снимает; от push до снимка **33–41 с** (было 3:38–5:33). Снимки в ветке `ci-shots`. Для UI-задач правило P14. AppVersion v187 без изменений.
 
 
 ## Последние записи журнала
+- [2026-10-12_1308_claude_warm-ipad-result.md](log/2026-10-12_1308_claude_warm-ipad-result.md)
 - [2026-10-12_1133_claude_warm-ipad-start.md](log/2026-10-12_1133_claude_warm-ipad-start.md)
 - [2026-10-12_0601_claude_minimal-wait-plan.md](log/2026-10-12_0601_claude_minimal-wait-plan.md)
-- [2026-10-12_0542_chatgpt-visual-prewarm-pr203-result.md](log/2026-10-12_0542_chatgpt-visual-prewarm-pr203-result.md)
 
 ## CI / iPad Simulator
+- **PR #204** ✅ слит `a516d8f`, CI-only, **v187 без изменений**. **Тёплый iPad на всю задачу** (U53, P14): сессия `early-ipad-prewarm.yml` запускается в начале UI-задачи, собирает main, затем сама инкрементально собирает и снимает каждый новый SHA PR из `prewarm/*`; снимки — ветка `ci-shots` (`Scripts/ci_ipad.py fetch-shot`) и артефакт `ipad-shot` PR CI. Замеры: push → снимок у Claude **33–41 с**, CI-запуск → снимок 23–32 с (5 SHA, все PASS); готовность сессии 3:56–6:13; без сессии build job снимает сам за ~10 мин; метод А (обычные PR) 6:31. Подробнее log/2026-10-12_1308_claude_warm-ipad-result.md.
 - **PR #203** ✅ CI-only, merged `b10e57b` (v187 без изменений): ранняя тёмная тема и поворот в opt-in Б до получения .app, после установки RAW проверка и fallback; prewarm run 38196341128 + CI 38196353806 PASS, orientation attempts=0, 12.9-inch dark landscape. PR→RAW 5:33 в этом запуске (аномально долгий simctl screenshot ~1:43), преимущества скорости пока нет. Подробнее .memory/log/2026-10-12_0542_chatgpt-visual-prewarm-pr203-result.md.
 - **12.10 PR #200 и #201:** оба ✅ слиты, CI-only. Б повторный PR→RAW 3:38 и 3:49, после скачивания фото сократилось с 1:50 до 1:16. Связка PR SHA/run ID и RAW landscape подтверждена. **PR #202** (метод A, контроль после изменений) CI PASS, два снимка, PR→таблица ВС 7:02, PR закрыт без merge; для B один снимок, так что сравнение ограничено. Б opt-in, A штатный. Подробнее .memory/log/2026-10-12_0113_chatgpt-prewarm-a-b-final.md.
 - **PR #199** ✅ слит в main (`b1e62e4`), CI-only, **v187 остаётся**. Опциональный ранний prewarm workflow для веток `prewarm/**` (запуск маркером `.github/prewarm/request.json` до Swift-правок), артефакт v4 загружается сразу по правильному final PR SHA/run ID; один целевой screenshot; обязательный PR CI блокирует слияние без независимого PASS и pixel orientation. Метод A (два Mac с PR) по умолчанию. После false PASS боком и GitHub TLS-сбоя третий run 38175474723 / CI 38175477725 PASS, RAW пиксели подтверждают действительный landscape/dark 12,9″. От CI start до снимка **5:13**, не выиграл у лучшего метода A 4:03 (другой прогон A 5:15); предстоит реальная долгая задача для проверки перекрытия с кодированием. Артефакт https://github.com/dentar1997/AeroUchet/actions/runs/38175474723/artifacts/11716066541; подробности log/2026-10-12_0021_chatgpt-prewarm-v2-results.md.
