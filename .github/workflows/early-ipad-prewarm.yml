@@ -2,9 +2,10 @@ name: AeroUchet Warm iPad
 run-name: "Warm iPad · ${{ inputs.mode || 'serve' }} · ${{ github.ref_name }}"
 
 # Тёплый iPad на всю задачу (DECISIONS U53, .memory/WORKFLOW.md).
-# Запускать В НАЧАЛЕ работы над UI-задачей, а не при открытии PR:
-#   Claude:  gh workflow run early-ipad-prewarm.yml -f request_epoch=$(date +%s)
-#   ChatGPT: изменить .github/prewarm/request.json в ветке prewarm/<тема> и сделать push
+# Включается САМ, как только ветка prewarm/<тема> появилась в GitHub (или в неё
+# пришёл push). Поэтому в начале UI-задачи: создать ветку и сразу отправить её
+# в GitHub, ещё до правок Swift. Ручной запуск тоже работает:
+#   gh workflow run early-ipad-prewarm.yml -f request_epoch=$(date +%s)
 # Сессия загружает iPad Pro 12,9″ (тёмная тема, альбомная), собирает main и даёт
 # системе «осесть». Затем КАЖДЫЙ новый SHA открытых PR из веток prewarm/* она сама
 # собирает инкрементально (тёплый DerivedData) и снимает без повторной загрузки;
@@ -14,11 +15,12 @@ run-name: "Warm iPad · ${{ inputs.mode || 'serve' }} · ${{ github.ref_name }}"
 # (например, после изменения скриптов), mode=stop — остановить.
 
 on:
+  # Автозапуск: новая ветка prewarm/* или любой push в неё включает тёплый iPad.
+  # Если сессия уже работает, она поглощает этот запуск за ~15 с.
+  create:
   push:
     branches:
       - 'prewarm/**'
-    paths:
-      - '.github/prewarm/request.json'
   workflow_dispatch:
     inputs:
       mode:
@@ -56,7 +58,7 @@ concurrency:
 jobs:
   warm-ipad:
     name: Warm iPad session (prewarm/* PRs)
-    if: ${{ inputs.mode != 'stop' }}
+    if: ${{ inputs.mode != 'stop' && (github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'prewarm/'))) }}
     runs-on: macos-26
     timeout-minutes: 350   # предел GitHub — 360; сессия сама завершается на 330
     steps:

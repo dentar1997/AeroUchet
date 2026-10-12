@@ -1444,9 +1444,12 @@ def request_epoch(value):
     if value.isdigit():
         return int(value)
     if os.environ.get("GITHUB_EVENT_NAME") == "push":
+        # Only a fresh marker counts: since autostart, any push to prewarm/* starts
+        # a session and an old request.json must not distort the timings.
         data = read_json(os.path.join(".github", "prewarm", "request.json")) or {}
-        if isinstance(data.get("request_epoch"), int) and data["request_epoch"] > 0:
-            return data["request_epoch"]
+        value = data.get("request_epoch")
+        if isinstance(value, int) and 0 < time.time() - value < 30 * 60:
+            return value
     return int(time.time())
 
 
