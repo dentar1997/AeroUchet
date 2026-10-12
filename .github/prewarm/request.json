@@ -1,7 +1,7 @@
 {
-  "experiment": "optimized-ci-preboot-marker-reuse-20261012",
-  "request_epoch": 1791755968,
+  "experiment": "prewarm-visual-parallel-theme-rotation-20261012",
+  "request_epoch": 1791772491,
   "attempt": 1,
-  "attempt_trigger_epoch": 1791755968,
-  "notes": "optimized script present before early trigger, no duplicate simctl list or bootstatus; dark/raw SHA checks unchanged"
+  "attempt_trigger_epoch": 1791772491,
+  "notes": "B opt-in theme+GUI rotate during boot/Swift compilation; verify raw after install; A unchanged"
 }
