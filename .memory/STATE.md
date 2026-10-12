@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 12.10 01:13 МСК · ChatGPT. Повторные CI-тесты завершены: PR #200/#201 слиты (только CI), Б PR→RAW 3:38/3:49, #202 контроль A PR→второй снимок 7:02 и закрыт без слияния. Все CI PASS; B остаётся opt-in, A штатный, v187 без изменений, iPad пользователя ждёт проверки.
+**Обновлено:** 12.10 05:33 МСК · ChatGPT. Начата CI-only оптимизация метода Б: параллельно сборке готовить dark appearance и Simulator rotation, затем сохранять RAW-проверку и fallback. v187 без изменений.
 
 
 ## Последние записи журнала
+- [2026-10-12_05undefined33_chatgpt-visual-prewarm-start.md](log/2026-10-12_05undefined33_chatgpt-visual-prewarm-start.md)
 - [2026-10-12_0113_chatgpt-prewarm-a-b-final.md](log/2026-10-12_0113_chatgpt-prewarm-a-b-final.md)
 - [2026-10-12_0105_chatgpt-pr201-prewarm-result.md](log/2026-10-12_0105_chatgpt-pr201-prewarm-result.md)
-- [2026-10-12_0100_chatgpt-pr201-simctl-optimization-running.md](log/2026-10-12_0100_chatgpt-pr201-simctl-optimization-running.md)
 
 ## CI / iPad Simulator
 - **12.10 PR #200 и #201:** оба ✅ слиты, CI-only. Б повторный PR→RAW 3:38 и 3:49, после скачивания фото сократилось с 1:50 до 1:16. Связка PR SHA/run ID и RAW landscape подтверждена. **PR #202** (метод A, контроль после изменений) CI PASS, два снимка, PR→таблица ВС 7:02, PR закрыт без merge; для B один снимок, так что сравнение ограничено. Б opt-in, A штатный. Подробнее .memory/log/2026-10-12_0113_chatgpt-prewarm-a-b-final.md.
