@@ -1,4 +1,15 @@
-name: AeroUchet Early iPad Prewarm
+name: AeroUchet Warm iPad
+run-name: "Warm iPad · ${{ inputs.mode || 'serve' }} · ${{ github.ref_name }}"
+
+# Тёплый iPad на всю задачу (DECISIONS U53, .memory/WORKFLOW.md).
+# Запускать В НАЧАЛЕ работы над UI-задачей, а не при открытии PR:
+#   Claude:  gh workflow run early-ipad-prewarm.yml -f request_epoch=$(date +%s)
+#   ChatGPT: изменить .github/prewarm/request.json в ветке prewarm/<тема> и сделать push
+# Сессия загружает iPad Pro 12,9″ (тёмная тема, альбомная), даёт системе «осесть»
+# и снимает КАЖДЫЙ новый SHA открытых PR из веток prewarm/* без повторной загрузки.
+# Снимки: ветка ci-shots (видна через git) и артефакт ipad-shot в PR CI.
+# Повторный запрос во время сессии поглощается ею; mode=restart — перезапуск
+# (например, после изменения скриптов), mode=stop — остановить.
 
 on:
   push:
@@ -7,56 +18,71 @@ on:
     paths:
       - '.github/prewarm/request.json'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'serve — тёплый iPad; restart — перезапустить сессию; stop — остановить'
+        required: false
+        default: 'serve'
+        type: choice
+        options:
+          - serve
+          - restart
+          - stop
+      idle_minutes:
+        description: 'Сколько минут ждать новую правку после последнего снимка'
+        required: false
+        default: '25'
+      wait_first_minutes:
+        description: 'Сколько минут ждать первый PR'
+        required: false
+        default: '45'
+      request_epoch:
+        description: 'Unix-время запроса (для замеров), можно оставить пустым'
+        required: false
+        default: ''
 
 permissions:
-  contents: read
-  actions: read
+  contents: write       # публикация снимков в ветку ci-shots
+  actions: write        # поглощение повторных запросов (отмена дублей)
   pull-requests: read
 
-# Separate from PR-CI cancellation: keep the booted iPadOS alive while
-# source commits are amended in the same feature branch.
+# Одна сессия на репозиторий: новый запрос ждёт, а работающая сессия его поглощает.
 concurrency:
-  group: early-ipad-${{ github.ref }}
-  cancel-in-progress: true
+  group: warm-ipad
+  cancel-in-progress: false
 
 jobs:
-  early-ipad:
-    name: Early iPad (pre-PR, only target screen)
+  warm-ipad:
+    name: Warm iPad session (prewarm/* PRs)
+    if: ${{ inputs.mode != 'stop' }}
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 150
     steps:
-      - name: Checkout request revision
+      - name: Checkout
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
-      - name: Warm iPad and consume final PR artifact
-        id: early
+      - name: Warm the iPad and serve every new PR head
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          IDLE_MINUTES: ${{ inputs.idle_minutes || '25' }}
+          WAIT_FIRST_MINUTES: ${{ inputs.wait_first_minutes || '45' }}
+          REQUEST_EPOCH: ${{ inputs.request_epoch }}
         run: |
-          set -euo pipefail
-          bash -n Scripts/ci-early-prewarm.sh Scripts/ci-simulator-smoke.sh
-          bash Scripts/ci-early-prewarm.sh \
-            "$RUNNER_TEMP/early-ipad-results" \
-            ".github/prewarm/request.json"
+          python3 Scripts/ci_ipad.py session \
+            --root "$RUNNER_TEMP/warm-ipad" \
+            --idle-minutes "$IDLE_MINUTES" \
+            --wait-first-minutes "$WAIT_FIRST_MINUTES" \
+            --request-epoch "$REQUEST_EPOCH"
 
-      - name: Upload timing, logs and aircraft screenshot
+      - name: Upload session diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: early-ipad-timing-and-target-screenshot
-          path: ${{ runner.temp }}/early-ipad-results/
+          name: warm-ipad-session
+          path: |
+            ${{ runner.temp }}/warm-ipad/
+            !${{ runner.temp }}/warm-ipad/**/*.zip
           if-no-files-found: warn
           retention-days: 7
-
-      - name: Summarize early screenshot outcome
-        if: always()
-        run: |
-          echo '### Early iPad prewarm, artifact poll by final SHA' >> "$GITHUB_STEP_SUMMARY"
-          echo "Screenshot script: ${{ steps.early.outcome }}" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f "$RUNNER_TEMP/early-ipad-results/status.txt" ]; then
-            echo "Capture status: $(cat "$RUNNER_TEMP/early-ipad-results/status.txt")" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [ -f "$RUNNER_TEMP/early-ipad-results/timeline.jsonl" ]; then
-            echo 'TIMELINE JSONL:' >> "$GITHUB_STEP_SUMMARY"
-            cat "$RUNNER_TEMP/early-ipad-results/timeline.jsonl" >> "$GITHUB_STEP_SUMMARY"
-          fi
