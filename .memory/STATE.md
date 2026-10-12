@@ -4,7 +4,7 @@
 
 
 ## Последние записи журнала
-- [2026-10-12_05undefined33_chatgpt-visual-prewarm-start.md](log/2026-10-12_05undefined33_chatgpt-visual-prewarm-start.md)
+- [2026-10-12_0533_chatgpt-visual-prewarm-start.md](log/2026-10-12_0533_chatgpt-visual-prewarm-start.md)
 - [2026-10-12_0113_chatgpt-prewarm-a-b-final.md](log/2026-10-12_0113_chatgpt-prewarm-a-b-final.md)
 - [2026-10-12_0105_chatgpt-pr201-prewarm-result.md](log/2026-10-12_0105_chatgpt-pr201-prewarm-result.md)
 
