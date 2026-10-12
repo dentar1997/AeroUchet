@@ -148,8 +148,11 @@ jobs:
         run: |
           set +e
           OUT="$RUNNER_TEMP/ipad-shot"
+          # Снимок засчитывается, если он из ЭТОГО запуска CI или собран тёплой
+          # сессией из ТОГО ЖЕ коммита ($GITHUB_SHA — тестовый merge PR).
           python3 Scripts/ci_ipad.py verify-shot \
-            --sha "$PR_HEAD" --build-run-id "$GITHUB_RUN_ID" --dest "$OUT" --timeout 900
+            --sha "$PR_HEAD" --build-run-id "$GITHUB_RUN_ID" --built-commit "$GITHUB_SHA" \
+            --dest "$OUT" --timeout 900
           rc=$?
           if [ "$rc" -ne 3 ]; then exit "$rc"; fi
           echo "::warning::Тёплой сессии iPad нет — снимок делается здесь (холодный запуск, медленнее)"

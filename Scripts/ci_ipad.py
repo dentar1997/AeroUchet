@@ -184,12 +184,12 @@ class CommandError(RuntimeError):
     pass
 
 
-def sh(cmd, timeout=300, check=True, quiet=False, input_text=None, env=None):
+def sh(cmd, timeout=300, check=True, quiet=False, input_text=None, env=None, cwd=None):
     started = time.time()
     try:
         done = subprocess.run(
             cmd, capture_output=True, encoding="utf-8", errors="replace",
-            timeout=timeout, input=input_text, env=env,
+            timeout=timeout, input=input_text, env=env, cwd=cwd,
         )
     except subprocess.TimeoutExpired:
         log(f"$ {fmt(cmd)}  [TIMEOUT {timeout}s]")
@@ -435,15 +435,129 @@ def rotate_right():
     raise CommandError("Simulator Device > Rotate Right was not accepted")
 
 
-def unpack_app(archive, work):
-    """Unzip a CI .app copy and restrict ONLY this test copy to landscape."""
-    shutil.rmtree(work, ignore_errors=True)
-    os.makedirs(work)
-    sh(["unzip", "-q", archive, "-d", work], timeout=240)
-    apps = glob.glob(os.path.join(work, "**", "*.app"), recursive=True)
-    if not apps:
-        raise CommandError("no .app bundle inside the archive")
-    app = min(apps, key=lambda path: (path.count(os.sep), path))
+# --------------------------------------------------------------------------- local incremental build (warm session)
+
+APP_NAME = "АэроУчёт"
+XCODEBUILD_ARGS = [
+    "-scheme", APP_NAME,
+    "-destination", "generic/platform=iOS Simulator",
+    "CODE_SIGNING_ALLOWED=NO",
+    "ARCHS=arm64",
+]
+COMPILE_ERROR_RE = re.compile(r"\.swift:\d+:\d+: error: ")
+# Same wrapper the CI "Package simulator app" step writes when no .app is produced.
+FALLBACK_INFO = {
+    "CFBundleDevelopmentRegion": "ru",
+    "CFBundleDisplayName": APP_NAME,
+    "CFBundleExecutable": APP_NAME,
+    "CFBundleIdentifier": "local.aerouchet.simulator",
+    "CFBundleInfoDictionaryVersion": "6.0",
+    "CFBundleName": APP_NAME,
+    "CFBundlePackageType": "APPL",
+    "CFBundleShortVersionString": "1.0",
+    "CFBundleVersion": "1",
+    "LSRequiresIPhoneOS": True,
+    "MinimumOSVersion": "26.0",
+    "UIDeviceFamily": [1, 2],
+}
+
+
+def repo_remote():
+    return f"{SERVER_URL}/{REPO}.git"
+
+
+class SourceTree:
+    """One working copy and one DerivedData for the whole session. git rewrites
+    only the files that differ between commits, so xcodebuild recompiles only
+    what changed instead of the whole app on a fresh CI runner."""
+
+    def __init__(self, root):
+        self.dir = os.path.join(root, "src")
+        self.derived = os.path.join(root, "DerivedData")
+
+    def git(self, args, **kwargs):
+        return sh(["git", "-C", self.dir, *args], **kwargs)
+
+    def fetch(self, refspec):
+        if not os.path.isdir(os.path.join(self.dir, ".git")):
+            os.makedirs(self.dir, exist_ok=True)
+            sh(["git", "init", "-q", self.dir], quiet=True)
+        self.git(["fetch", "-q", "--depth", "1", repo_remote(), refspec], timeout=300, quiet=True)
+        return self.git(["rev-parse", "FETCH_HEAD"], quiet=True).stdout.strip()
+
+    def parents(self, commit):
+        text = self.git(["cat-file", "-p", commit], quiet=True).stdout
+        return [line.split()[1] for line in text.splitlines() if line.startswith("parent ")]
+
+    def checkout(self, commit):
+        self.git(["checkout", "-q", "--force", "--detach", commit], timeout=300, quiet=True)
+
+    def build(self, log_path, timeout=1500):
+        """(kind, seconds, lines): kind is ok, compile (Swift errors) or infra."""
+        started = time.time()
+        cmd = ["xcodebuild", *XCODEBUILD_ARGS, "-derivedDataPath", self.derived, "build"]
+        try:
+            with open(log_path, "w", encoding="utf-8") as stream:
+                code = subprocess.run(cmd, cwd=self.dir, stdout=stream, stderr=subprocess.STDOUT, timeout=timeout).returncode
+        except subprocess.TimeoutExpired:
+            code = 124
+        seconds = time.time() - started
+        lines = read_text(log_path).splitlines()
+        log(f"xcodebuild build in the session [{seconds:.1f}s, rc={code}]")
+        if code == 0:
+            return "ok", seconds, []
+        errors = sorted({line.strip() for line in lines if COMPILE_ERROR_RE.search(line)})[:40]
+        if errors:
+            return "compile", seconds, errors
+        return "infra", seconds, [line.strip() for line in lines if "error" in line.lower()][-10:] or [f"xcodebuild rc={code}"]
+
+    def package(self, work):
+        products = os.path.join(self.derived, "Build", "Products", "Debug-iphonesimulator")
+        apps = glob.glob(os.path.join(products, "**", "*.app"), recursive=True)
+        if apps:
+            return min(apps, key=lambda path: (path.count(os.sep), path))
+        executable = os.path.join(products, APP_NAME)
+        if not os.path.isfile(executable):
+            raise CommandError("the build produced neither an .app nor the executable")
+        app = os.path.join(work, APP_NAME + ".app")
+        shutil.rmtree(app, ignore_errors=True)
+        os.makedirs(app)
+        shutil.copy2(executable, os.path.join(app, APP_NAME))
+        with open(os.path.join(app, "Info.plist"), "wb") as stream:
+            plistlib.dump(FALLBACK_INFO, stream)
+        return app
+
+
+def prebuild_base(src_root, state, timeline):
+    """Build main once while the iPad settles: later PR builds are incremental."""
+    tree = SourceTree(src_root)
+    commit = tree.fetch("refs/heads/main")
+    tree.checkout(commit)
+    timeline.mark("settle.base_checked_out", commit=commit[:12])
+    kind, seconds, lines = tree.build(state_file(state, "prebuild.log"))
+    timeline.mark("settle.base_built", kind=kind, build_sec=round(seconds, 1))
+    if kind != "ok":
+        log("base prebuild failed: " + "; ".join(lines[:3]))
+        return None
+    return tree.package(state_file(state, "prebuild-app"))
+
+
+def install_app(udid, app, bundle):
+    """Clean install: an in-place upgrade of the previous build has failed with
+    installd 'deltainstallcommands … try again later', so uninstall first."""
+    simctl("terminate", udid, bundle, check=False, timeout=60, quiet=True)
+    simctl("uninstall", udid, bundle, check=False, timeout=120, quiet=True)
+    for attempt in range(1, 4):
+        if simctl("install", udid, app, check=False, timeout=300).returncode == 0:
+            return attempt
+        log(f"simctl install failed (attempt {attempt}); uninstalling and retrying")
+        time.sleep(2 * attempt)
+        simctl("uninstall", udid, bundle, check=False, timeout=120, quiet=True)
+    raise CommandError("simctl install failed three times")
+
+
+def patch_app(app):
+    """Restrict ONLY this test copy to landscape (shipped app and sources untouched)."""
     plist_path = os.path.join(app, "Info.plist")
     with open(plist_path, "rb") as stream:
         info = plistlib.load(stream)
@@ -456,9 +570,26 @@ def unpack_app(archive, work):
     return app, info["CFBundleIdentifier"]
 
 
-def install_app(udid, app, bundle):
-    simctl("terminate", udid, bundle, check=False, timeout=60, quiet=True)
-    simctl("install", udid, app, timeout=300)
+def unpack_app(archive, work):
+    """Unzip a CI .app archive into a scratch copy and patch it."""
+    shutil.rmtree(work, ignore_errors=True)
+    os.makedirs(work)
+    sh(["unzip", "-q", archive, "-d", work], timeout=240)
+    apps = glob.glob(os.path.join(work, "**", "*.app"), recursive=True)
+    if not apps:
+        raise CommandError("no .app bundle inside the archive")
+    return patch_app(min(apps, key=lambda path: (path.count(os.sep), path)))
+
+
+def stage_app(source, work):
+    """A .zip from CI or a .app folder from a local build → patched scratch copy."""
+    if os.path.isdir(source):
+        shutil.rmtree(work, ignore_errors=True)
+        os.makedirs(work)
+        copy = os.path.join(work, os.path.basename(source.rstrip(os.sep)))
+        shutil.copytree(source, copy, symlinks=True)
+        return patch_app(copy)
+    return unpack_app(source, work)
 
 
 def launch_app(udid, bundle, args):
@@ -563,7 +694,7 @@ def wait_state(state, name, accepted, timeout):
     return "TIMEOUT"
 
 
-def prepare_device(state, visual, settle, timeline):
+def prepare_device(state, visual, settle, timeline, src_root=None):
     os.makedirs(state, exist_ok=True)
     timeline.mark("prepare.start", visual=visual, settle=settle)
     udid = read_text(state_file(state, "device-udid.txt"))
@@ -588,30 +719,41 @@ def prepare_device(state, visual, settle, timeline):
             write_text(state_file(state, "rotation.status"), "REQUESTED")
             timeline.mark("prepare.rotate_requested", osascript_attempts=attempts)
     if settle:
-        settle_device(state, udid, timeline)
+        settle_device(state, udid, timeline, src_root)
     write_text(state_file(state, "prepare.status"), "READY")
     timeline.mark("prepare.ready")
     return udid
 
 
-def settle_device(state, udid, timeline):
+def settle_device(state, udid, timeline, src_root=None):
     """Warm session only: let the freshly booted iPadOS finish its first-boot work.
 
-    Installs a recent CI build once, launches the target screen, verifies the
-    landscape frame on real pixels (repairing the rotation if needed) and takes
-    an extra screenshot, so the first real PR capture meets a quiet system.
+    Builds main once (so PR builds are incremental), installs that build, launches
+    the target screen, verifies the landscape frame on real pixels (repairing the
+    rotation if needed) and takes an extra screenshot, so the first real PR
+    capture meets a quiet system. A recent CI artifact is the fallback app.
     """
-    ready_zip = state_file(state, "warm-app.zip")
-    none_marker = state_file(state, "warm-app.none")
-    deadline = time.time() + 240
-    while time.time() < deadline and not (os.path.exists(ready_zip) or os.path.exists(none_marker)):
-        time.sleep(1)
+    source, origin = None, None
+    if src_root:
+        try:
+            source = prebuild_base(src_root, state, timeline)
+            origin = "prebuilt main"
+        except Exception as error:
+            log(f"base prebuild failed: {error}")
+    if source is None:
+        ready_zip = state_file(state, "warm-app.zip")
+        none_marker = state_file(state, "warm-app.none")
+        deadline = time.time() + 240
+        while time.time() < deadline and not (os.path.exists(ready_zip) or os.path.exists(none_marker)):
+            time.sleep(1)
+        if os.path.exists(ready_zip):
+            source, origin = ready_zip, read_text(state_file(state, "warm-app.source"))
     out = state_file(state, "warmup")
     os.makedirs(out, exist_ok=True)
-    if os.path.exists(ready_zip):
-        app, bundle = unpack_app(ready_zip, os.path.join(out, "_app"))
+    if source:
+        app, bundle = stage_app(source, os.path.join(out, "_app"))
         install_app(udid, app, bundle)
-        timeline.mark("settle.warm_app_installed", source=read_text(state_file(state, "warm-app.source")))
+        timeline.mark("settle.warm_app_installed", source=origin)
         shot = {"name": "warmup", "args": list(SHOT_REGISTRY["aircraft-tamm"]["args"]), "settle": 2}
         result = capture_one(udid, bundle, shot, out, timeline, export=False)
         write_json(state_file(state, "orientation.json"), result)
@@ -673,6 +815,10 @@ def capture(state, archive, out, shots, meta, install_early):
         "artifact_id": meta.get("artifact_id"),
         "session_run_id": meta.get("session_run_id"),
         "ci_run_created": meta.get("ci_run_created"),
+        "source": meta.get("source"),
+        "built_commit": meta.get("built_commit"),
+        "built_ref": meta.get("built_ref"),
+        "build_sec": meta.get("build_sec"),
         "target": "iPad Pro 12.9-inch, landscape, dark",
         "shots": [],
     }
@@ -687,7 +833,7 @@ def capture(state, archive, out, shots, meta, install_early):
             udid = read_text(state_file(state, "device-udid.txt"))
             proof["device"] = read_json(state_file(state, "device.json"))
             proof["stage"] = "unpack"
-            app, bundle = unpack_app(archive, os.path.join(out, "_app"))
+            app, bundle = stage_app(archive, os.path.join(out, "_app"))
             timeline.mark("capture.unpacked")
             if install_early:
                 proof["stage"] = "install"
@@ -724,6 +870,7 @@ def capture(state, archive, out, shots, meta, install_early):
             ready = timeline.mark("capture.end", status=proof["status"])
             proof["capture_sec"] = round(ready - started, 1)
             proof["shot_ready_utc"] = utc(ready)
+            proof["shot_ready_epoch"] = round(ready, 1)
             if meta.get("ci_run_created"):
                 proof["ci_run_to_shot_sec"] = round(ready - parse_utc(meta["ci_run_created"]), 1)
             if meta.get("t0"):
@@ -731,6 +878,25 @@ def capture(state, archive, out, shots, meta, install_early):
             write_json(os.path.join(out, "proof.json"), proof)
             write_text(os.path.join(out, "status.txt"), proof["status"])
             shutil.rmtree(os.path.join(out, "_app"), ignore_errors=True)
+    return proof
+
+
+def failure_proof(out, meta, stage, error):
+    """FAIL proof for a SHA that never reached the iPad (e.g. Swift compile errors)."""
+    shutil.rmtree(out, ignore_errors=True)
+    os.makedirs(out)
+    now = time.time()
+    proof = {key: meta.get(key) for key in (
+        "mode", "pr_sha", "pr_number", "head_ref", "build_run_id", "session_run_id",
+        "ci_run_created", "source", "built_commit", "built_ref", "build_sec")}
+    proof.update({
+        "status": "FAIL", "stage": stage, "error": error[:6000], "shots": [],
+        "target": "iPad Pro 12.9-inch, landscape, dark",
+        "shot_ready_utc": utc(now), "shot_ready_epoch": round(now, 1),
+    })
+    write_json(os.path.join(out, "proof.json"), proof)
+    write_text(os.path.join(out, "status.txt"), "FAIL")
+    write_text(os.path.join(out, "capture.log"), error + "\n")
     return proof
 
 
@@ -1028,6 +1194,16 @@ def extract_shot(work, ref, sha, dest):
                 shutil.copyfileobj(source, target)
 
 
+def proof_matches(proof, sha, build_run_id, built_commit):
+    """A session build must be of the very commit PR CI tested; a CI-artifact
+    capture must come from this very PR CI run."""
+    if proof.get("pr_sha") != sha:
+        return False
+    if proof.get("source") == "session-build":
+        return bool(built_commit) and proof.get("built_commit") == built_commit
+    return str(proof.get("build_run_id")) == str(build_run_id)
+
+
 def check_extracted_shot(proof, dest):
     """Independent re-check of a published shot (used by the PR build job)."""
     if proof.get("status") != "PASS":
@@ -1055,9 +1231,9 @@ def check_extracted_shot(proof, dest):
         log(f"Proof does not confirm dark appearance: {proof.get('appearance')}")
         return 1
     log(
-        f"Verified iPad shot ({proof.get('mode')}): PR head {proof.get('pr_sha', '')[:12]}, "
-        f"build run {proof.get('build_run_id')}, shots {[s['name'] for s in proof['shots']]}, "
-        f"PR CI run → shot {proof.get('ci_run_to_shot_sec')} s"
+        f"Verified iPad shot ({proof.get('mode')}, {proof.get('source')}): PR head {proof.get('pr_sha', '')[:12]}, "
+        f"built commit {proof.get('built_commit')}, build run {proof.get('build_run_id')}, "
+        f"shots {[s['name'] for s in proof['shots']]}, PR CI run → shot {proof.get('ci_run_to_shot_sec')} s"
     )
     return 0
 
@@ -1078,7 +1254,7 @@ def cmd_prepare(args):
     write_text(state_file(state, "prepare.status"), "STARTING")
     timeline = Timeline(state_file(state, "timeline.jsonl"), args.t0)
     try:
-        prepare_device(state, args.visual, args.settle, timeline)
+        prepare_device(state, args.visual, args.settle, timeline, args.src_root)
         return 0
     except Exception as error:
         write_text(state_file(state, "prepare.error"), str(error))
@@ -1165,10 +1341,11 @@ def cmd_verify_shot(args):
                     shown = git_in(work, ["show", f"refs/shots/current:shots/{args.sha}/proof.json"], check=False, quiet=True)
                     if shown.returncode == 0:
                         proof = json.loads(shown.stdout)
-                        if proof.get("pr_sha") == args.sha and str(proof.get("build_run_id")) == str(args.build_run_id):
+                        if proof_matches(proof, args.sha, args.build_run_id, args.built_commit):
                             extract_shot(work, "refs/shots/current", args.sha, args.dest)
                             return check_extracted_shot(proof, args.dest)
-                        log(f"A shot for {args.sha[:12]} exists but belongs to build run {proof.get('build_run_id')}; waiting for run {args.build_run_id}")
+                        log(f"A shot for {args.sha[:12]} exists but for another build "
+                            f"({proof.get('source')}: commit {proof.get('built_commit')}, run {proof.get('build_run_id')}); waiting")
             if time.time() >= next_active_check:
                 active = [run for run in warm_runs(gh, cache=False) if run.get("status") in ACTIVE_RUN_STATES]
                 if active:
@@ -1209,7 +1386,7 @@ def cmd_fetch_shot(args):
                     wanted = json.loads(latest.stdout).get("sha") if latest.returncode == 0 else None
                 if wanted:
                     proof = json.loads(sh(["git", "-C", repo, "show", f"refs/shots/current:shots/{wanted}/proof.json"], quiet=True).stdout)
-                    if not args.build_run_id or str(proof.get("build_run_id")) == str(args.build_run_id):
+                    if not args.build_run_id or str(args.build_run_id) in (str(proof.get("build_run_id")), str(proof.get("ci_run_id"))):
                         extract_shot(repo, "refs/shots/current", wanted, args.dest)
                         print(json.dumps(proof, ensure_ascii=False, indent=2))
                         return 0 if proof.get("status") == "PASS" else 1
@@ -1235,7 +1412,7 @@ def cmd_summarize(args):
         print("### iPad screenshot: no proof.json")
         return 0
     lines = [
-        f"### iPad 12.9 landscape/dark: {proof.get('status')} ({proof.get('mode')})",
+        f"### iPad 12.9 landscape/dark: {proof.get('status')} ({proof.get('mode')}, {proof.get('source')})",
         f"- PR head `{(proof.get('pr_sha') or '')[:12]}`, build run {proof.get('build_run_id')}, appearance {proof.get('appearance')}",
     ]
     for shot in proof.get("shots", []):
@@ -1245,6 +1422,8 @@ def cmd_summarize(args):
         )
     if proof.get("ci_run_to_shot_sec") is not None:
         lines.append(f"- PR CI run created → shot ready: **{proof['ci_run_to_shot_sec']} s**")
+    if proof.get("build_sec") is not None:
+        lines.append(f"- session build: {proof['build_sec']} s ({proof.get('built_ref')} {(proof.get('built_commit') or '')[:12]})")
     lines.append(f"- capture stage: {proof.get('capture_sec')} s")
     if proof.get("error"):
         lines.append(f"- error at `{proof.get('stage')}`: {proof['error']}")
@@ -1297,6 +1476,14 @@ def shots_for_sha(gh, sha):
 
 
 class WarmSession:
+    """One warm iPad for the whole task.
+
+    For every new head SHA of an open prewarm/* PR: build the PR test-merge commit
+    incrementally right here (warm DerivedData, no CI queue, no artifact round trip),
+    install it on the already booted iPad and publish the verified shot to ci-shots.
+    If the local build cannot run, the PR CI artifact of that SHA is used instead.
+    """
+
     def __init__(self, args):
         self.args = args
         self.root = args.root
@@ -1307,14 +1494,13 @@ class WarmSession:
         self.run_id = os.environ.get("GITHUB_RUN_ID", "local")
         self.t0 = request_epoch(args.request_epoch)
         self.timeline = Timeline(os.path.join(self.root, "timeline.jsonl"), self.t0)
+        self.local = not args.no_local_build
+        self.tree = SourceTree(self.root)
         self.served = {}
         self.records = []
-        self.failed_runs = set()
-        self.build_checked = {}
-        self.consecutive_failures = 0
+        self.capture_failures = 0
         self.started = time.time()
         self.last_activity = None
-        self.last_pending = 0.0
         self.last_request = self.started
         self.end_reason = None
         self.prepare = None
@@ -1331,6 +1517,7 @@ class WarmSession:
             "session_run_id": self.run_id,
             "request_epoch": self.t0,
             "started_utc": utc(self.started),
+            "local_build": self.local,
             "prepare_status": read_text(state_file(self.state, "prepare.status")),
             "prepare_timeline": prepare_lines,
             "orientation": read_json(state_file(self.state, "orientation.json")),
@@ -1343,6 +1530,9 @@ class WarmSession:
         if summary["prepare_status"] == "FAILED":
             summary["prepare_error"] = read_text(state_file(self.state, "prepare.error"))
             summary["prepare_log_tail"] = read_text(os.path.join(self.root, "prepare.log"))[-4000:]
+        prebuild_log = read_text(state_file(self.state, "prebuild.log"))
+        if prebuild_log and not any(line.get("phase") == "settle.base_built" and line.get("kind") == "ok" for line in prepare_lines):
+            summary["prebuild_log_tail"] = prebuild_log[-3000:]
         return summary
 
     def publish_state(self, state):
@@ -1352,13 +1542,14 @@ class WarmSession:
             log(f"session state not published: {error}")
 
     def start(self):
-        self.timeline.mark("session.start", run_id=self.run_id, idle_minutes=self.args.idle_minutes,
-                           wait_first_minutes=self.args.wait_first_minutes)
+        self.timeline.mark("session.start", run_id=self.run_id, local_build=self.local,
+                           idle_minutes=self.args.idle_minutes, wait_first_minutes=self.args.wait_first_minutes)
+        command = [sys.executable, os.path.abspath(__file__), "prepare", "--state", self.state,
+                   "--visual", "--settle", "--t0", str(self.t0)]
+        if self.local:
+            command += ["--src-root", self.root]
         log_handle = open(os.path.join(self.root, "prepare.log"), "w", encoding="utf-8")
-        self.prepare = subprocess.Popen(
-            [sys.executable, os.path.abspath(__file__), "prepare", "--state", self.state, "--visual", "--settle", "--t0", str(self.t0)],
-            stdout=log_handle, stderr=subprocess.STDOUT,
-        )
+        self.prepare = subprocess.Popen(command, stdout=log_handle, stderr=subprocess.STDOUT)
         threading.Thread(target=fetch_warm_app, args=(self.token, self.state, self.timeline), daemon=True).start()
 
     def absorb_requests(self):
@@ -1394,85 +1585,117 @@ class WarmSession:
         return result
 
     def next_work(self):
-        """The newest unserved (PR head SHA, CI run) whose app artifact exists.
-
-        A PR whose build is still running counts as pending work, so the session
-        never times out while a build it is about to serve is compiling.
-        """
-        now = time.time()
         for pr in self.candidates():
-            sha = pr["head"]["sha"]
-            run = find_ci_run(self.gh, sha)
-            if not run:
-                try:
-                    if now - parse_utc(pr.get("updated_at", "")) < 180:
-                        self.last_pending = now
-                except ValueError:
-                    pass
-                continue
-            if f"{sha}:{run['id']}" in self.served:
-                continue
-            artifact = find_app_artifact(self.gh, run["id"])
-            if artifact:
-                return pr, sha, run, artifact
-            if now >= self.build_checked.get(run["id"], 0):
-                self.build_checked[run["id"]] = now + 8
-                if build_failed(self.gh, run["id"]):
-                    if run["id"] not in self.failed_runs:
-                        self.failed_runs.add(run["id"])
-                        self.timeline.mark("sha.build_failed", sha=sha[:12], pr=pr["number"], build_run_id=run["id"])
-                else:
-                    self.failed_runs.discard(run["id"])
-            if run["id"] not in self.failed_runs and run.get("status") != "completed":
-                self.last_pending = now
+            if pr["head"]["sha"] not in self.served:
+                return pr, pr["head"]["sha"]
         return None
 
-    def serve(self, pr, sha, run, artifact):
-        number = pr["number"]
-        created = run["created_at"]
+    def resolve_build_commit(self, number, sha):
+        """The PR test-merge commit PR CI checks out, once GitHub has made it for sha."""
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            try:
+                merge = self.tree.fetch(f"refs/pull/{number}/merge")
+                parents = self.tree.parents(merge)
+                if len(parents) == 2 and parents[1] == sha:
+                    return merge, "merge"
+            except CommandError as error:
+                log(f"merge ref not ready: {error}")
+            time.sleep(1.5)
+        return self.tree.fetch(sha), "head"
 
-        def since():
-            return round(time.time() - parse_utc(created), 1)
+    def build_locally(self, number, sha, work):
+        commit, ref = self.resolve_build_commit(number, sha)
+        self.tree.checkout(commit)
+        self.timeline.mark("sha.checked_out", sha=sha[:12], built_commit=commit[:12], ref=ref)
+        kind, seconds, lines = self.tree.build(os.path.join(work, "build.log"))
+        self.timeline.mark("sha.built", sha=sha[:12], kind=kind, build_sec=round(seconds, 1))
+        app = self.tree.package(os.path.join(work, "pkg")) if kind == "ok" else None
+        return {"kind": kind, "commit": commit, "ref": ref, "seconds": round(seconds, 1), "lines": lines, "app": app}
 
-        work = os.path.join(self.root, "shots", f"{sha[:12]}-{run['id']}")
-        self.timeline.mark("sha.artifact_visible", sha=sha[:12], pr=number, build_run_id=run["id"], since_ci_run_sec=since())
-        archive = download_app_artifact(self.gh, artifact["id"], os.path.join(work, "download"))
-        self.timeline.mark("sha.downloaded", sha=sha[:12], since_ci_run_sec=since())
+    def wait_ci_artifact(self, sha, timeout=900):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            run = find_ci_run(self.gh, sha)
+            if run:
+                artifact = find_app_artifact(self.gh, run["id"])
+                if artifact:
+                    return run, artifact
+                if build_failed(self.gh, run["id"]):
+                    return run, None
+            time.sleep(self.gh.poll_interval())
+        return None, None
+
+    def head_moved(self, number, sha):
         current = self.gh.get(f"/repos/{REPO}/pulls/{number}", cache=False) or {}
-        if (current.get("head") or {}).get("sha") != sha:
+        return (current.get("head") or {}).get("sha") != sha
+
+    def serve(self, pr, sha):
+        number = pr["number"]
+        seen = self.timeline.mark("sha.seen", sha=sha[:12], pr=number)
+        work = os.path.join(self.root, "shots", sha[:12])
+        out = os.path.join(work, "out")
+        os.makedirs(work, exist_ok=True)
+        meta = {
+            "mode": "warm", "pr_sha": sha, "pr_number": number, "head_ref": pr["head"]["ref"],
+            "session_run_id": self.run_id, "t0": self.t0,
+        }
+        prepared = wait_state(self.state, "prepare.status", {"READY", "FAILED"}, 1500)
+        if prepared != "READY":
+            log(f"prepare status {prepared}; capturing anyway")
+        source = None
+        if self.local:
+            try:
+                result = self.build_locally(number, sha, work)
+            except Exception as error:
+                result = {"kind": "infra", "commit": None, "ref": None, "seconds": None, "lines": [str(error)[:300]], "app": None}
+            meta.update(source="session-build", built_commit=result["commit"], built_ref=result["ref"], build_sec=result["seconds"])
+            if result["kind"] == "ok":
+                source = result["app"]
+            elif result["kind"] == "compile":
+                proof = failure_proof(out, meta, "build", "Swift compile errors (session build):\n" + "\n".join(result["lines"]))
+                return self.finish(out, sha, number, proof, seen)
+            else:
+                self.timeline.mark("sha.local_build_unavailable", sha=sha[:12], detail=result["lines"][:3])
+        if source is None:
+            run, artifact = self.wait_ci_artifact(sha)
+            if not artifact:
+                proof = failure_proof(out, meta, "ci-artifact", "No app for this SHA: the PR CI build failed or did not finish")
+                return self.finish(out, sha, number, proof, seen)
+            source = download_app_artifact(self.gh, artifact["id"], os.path.join(work, "download"))
+            meta.update(source="ci-artifact", build_run_id=run["id"], artifact_id=artifact["id"], ci_run_created=run["created_at"],
+                        built_commit=None, built_ref=None, build_sec=None)
+        if self.head_moved(number, sha):
             self.timeline.mark("sha.stale", sha=sha[:12], pr=number)
             return "STALE"
-        meta = {
-            "mode": "warm",
-            "pr_sha": sha,
-            "pr_number": number,
-            "head_ref": pr["head"]["ref"],
-            "build_run_id": run["id"],
-            "artifact_id": artifact["id"],
-            "session_run_id": self.run_id,
-            "ci_run_created": created,
-            "t0": self.t0,
-        }
-        out = os.path.join(work, "out")
-        proof = capture(self.state, archive, out, shots_for_sha(self.gh, sha), meta, install_early=False)
+        proof = capture(self.state, source, out, shots_for_sha(self.gh, sha), meta, install_early=False)
+        return self.finish(out, sha, number, proof, seen)
+
+    def finish(self, out, sha, number, proof, seen):
+        run = find_ci_run(self.gh, sha)
+        ready = proof.get("shot_ready_epoch") or time.time()
+        proof["seen_to_shot_sec"] = round(ready - seen, 1)
+        if run:
+            proof["ci_run_id"] = run["id"]
+            proof["ci_run_created"] = run["created_at"]
+            proof["ci_run_to_shot_sec"] = round(ready - parse_utc(run["created_at"]), 1)
+        write_json(os.path.join(out, "proof.json"), proof)
         try:
             published = publish_capture(self.token, out, sha, f"warm PR #{number}")
         except Exception as error:
             log(f"publish failed: {error}")
             published = False
         record = {
-            "sha": sha,
-            "pr": number,
-            "build_run_id": run["id"],
-            "status": proof["status"],
-            "ci_run_to_shot_sec": proof.get("ci_run_to_shot_sec"),
-            "ci_run_to_published_sec": since(),
-            "capture_sec": proof.get("capture_sec"),
-            "published": published,
+            "sha": sha, "pr": number, "status": proof["status"], "stage": proof.get("stage"),
+            "source": proof.get("source"), "build_sec": proof.get("build_sec"),
+            "capture_sec": proof.get("capture_sec"), "seen_to_shot_sec": proof.get("seen_to_shot_sec"),
+            "ci_run_to_shot_sec": proof.get("ci_run_to_shot_sec"), "published": published,
         }
+        if run:
+            record["ci_run_to_published_sec"] = round(time.time() - parse_utc(run["created_at"]), 1)
         self.records.append(record)
         self.timeline.mark("sha.published" if published else "sha.publish_failed", **record)
-        return proof["status"]
+        return proof["status"] if proof.get("stage") != "build" else "COMPILE_ERROR"
 
     def loop(self):
         announced = False
@@ -1487,33 +1710,33 @@ class WarmSession:
                 next_absorb = now + 15
                 if not self.absorb_requests():
                     break
-            if self.last_activity is None:
-                waited = now - max(self.started, self.last_request, self.last_pending)
-                if waited > self.args.wait_first_minutes * 60:
-                    self.end_reason = "no prewarm PR arrived"
-                    break
-            elif now - max(self.last_activity, self.last_pending) > self.args.idle_minutes * 60:
-                self.end_reason = "idle"
-                break
-            work = self.next_work()
+            work = self.next_work()  # waiting work always wins over an idle exit
             if work is None:
+                if self.last_activity is None:
+                    if now - max(self.started, self.last_request) > self.args.wait_first_minutes * 60:
+                        self.end_reason = "no prewarm PR arrived"
+                        break
+                elif now - self.last_activity > self.args.idle_minutes * 60:
+                    self.end_reason = "idle"
+                    break
                 time.sleep(self.gh.poll_interval())
                 continue
-            pr, sha, run, artifact = work
-            self.served[f"{sha}:{run['id']}"] = "IN_PROGRESS"
+            pr, sha = work
+            self.served[sha] = "IN_PROGRESS"
             try:
-                status = self.serve(pr, sha, run, artifact)
+                status = self.serve(pr, sha)
             except Exception as error:
                 status = "ERROR"
                 self.timeline.mark("sha.error", sha=sha[:12], error=str(error)[:300])
-            self.served[f"{sha}:{run['id']}"] = status
+            self.served[sha] = status
             self.last_activity = time.time()
-            self.consecutive_failures = self.consecutive_failures + 1 if status in ("FAIL", "ERROR") else 0
-            if self.consecutive_failures >= 2:
+            # A Swift compile error is the task's own problem: keep serving fixes.
+            self.capture_failures = self.capture_failures + 1 if status in ("FAIL", "ERROR") else 0
+            if self.capture_failures >= 2:
                 self.end_reason = "two consecutive capture failures (PR CI will fall back)"
                 break
 
-    def finish(self):
+    def close(self):
         self.timeline.mark("session.end", reason=self.end_reason, served=len(self.records))
         if self.prepare and self.prepare.poll() is None:
             self.prepare.terminate()
@@ -1522,11 +1745,11 @@ class WarmSession:
         self.publish_state("ended")
         step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
         if step_summary:
-            lines = [f"### Warm iPad session: {self.end_reason}", f"- prepare: {summary['prepare_status']}"]
+            lines = [f"### Warm iPad session: {self.end_reason}", f"- prepare: {summary['prepare_status']}, local build: {self.local}"]
             for record in self.records:
                 lines.append(
-                    f"- PR #{record['pr']} `{record['sha'][:12]}`: {record['status']}, PR CI run → shot "
-                    f"{record['ci_run_to_shot_sec']} s, published {record['ci_run_to_published_sec']} s"
+                    f"- PR #{record['pr']} `{record['sha'][:12]}`: {record['status']} ({record['source']}), build "
+                    f"{record['build_sec']} s, capture {record['capture_sec']} s, PR CI run → shot {record['ci_run_to_shot_sec']} s"
                 )
             with open(step_summary, "a", encoding="utf-8") as stream:
                 stream.write("\n".join(lines) + "\n")
@@ -1538,7 +1761,7 @@ def cmd_session(args):
     try:
         session.loop()
     finally:
-        session.finish()
+        session.close()
     return 0
 
 
@@ -1553,6 +1776,7 @@ def main(argv=None):
     p.add_argument("--visual", action="store_true", help="dark appearance + Simulator GUI + Rotate Right")
     p.add_argument("--settle", action="store_true", help="warm-up install/launch/screenshot (warm session)")
     p.add_argument("--t0", type=float, default=None)
+    p.add_argument("--src-root", default=None, help="warm session: prebuild main here for incremental PR builds")
     p.set_defaults(func=cmd_prepare)
 
     p = sub.add_parser("capture")
@@ -1581,6 +1805,7 @@ def main(argv=None):
     p.add_argument("--idle-minutes", type=float, default=25)
     p.add_argument("--wait-first-minutes", type=float, default=45)
     p.add_argument("--request-epoch", default="")
+    p.add_argument("--no-local-build", action="store_true", help="always use the PR CI artifact")
     p.set_defaults(func=cmd_session)
 
     p = sub.add_parser("publish")
@@ -1592,6 +1817,7 @@ def main(argv=None):
     p = sub.add_parser("verify-shot")
     p.add_argument("--sha", required=True)
     p.add_argument("--build-run-id", required=True)
+    p.add_argument("--built-commit", default=None, help="GITHUB_SHA of the PR CI run (test-merge commit)")
     p.add_argument("--dest", required=True)
     p.add_argument("--timeout", type=int, default=900)
     p.add_argument("--grace", type=int, default=15)
