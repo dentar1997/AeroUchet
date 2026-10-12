@@ -135,6 +135,49 @@ if [ "$PREBOOT_MODE" = true ]; then
   xcrun simctl bootstatus "$DEVICE_ID" -b
   echo "PREBOOTED" > "$RESULTS/preboot.status"
   echo "iPad Simulator ready for the forthcoming compiled app"
+
+  # B-only: overlap appearance + GUI rotation with the independent Swift build.
+  # READY is only a hint: the installed app's RAW pixels are still authoritative.
+  if [ "${AEROUCHET_EARLY_VISUAL_PREP:-0}" = 1 ]; then
+    echo "PREPARING" > "$RESULTS/prewarm-visual.status"
+    VISUAL_OK=true
+    if xcrun simctl ui "$DEVICE_ID" appearance dark; then
+      EARLY_APPEARANCE="$(xcrun simctl ui "$DEVICE_ID" appearance || true)"
+      if printf '%s' "$EARLY_APPEARANCE" | grep -qi dark; then
+        echo "Dark appearance prewarmed"
+      else
+        VISUAL_OK=false
+        echo "Prewarm appearance check failed: $EARLY_APPEARANCE"
+      fi
+    else
+      VISUAL_OK=false
+      echo "Prewarm appearance setup failed"
+    fi
+    if ! open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID"; then
+      VISUAL_OK=false
+      echo "Early Simulator GUI open failed"
+    fi
+    if osascript <<'APPLESCRIPT'
+tell application "Simulator" to activate
+tell application "System Events"
+  tell application process "Simulator"
+    click menu item "Rotate Right" of menu 1 of menu bar item "Device" of menu bar 1
+  end tell
+end tell
+APPLESCRIPT
+    then
+      echo "Prewarm GUI Rotate Right requested (must still verify installed-app pixels)"
+    else
+      VISUAL_OK=false
+      echo "Prewarm GUI rotation unavailable; capture stage will retry"
+    fi
+    if [ "$VISUAL_OK" = true ]; then
+      echo READY > "$RESULTS/prewarm-visual.status"
+    else
+      echo FAILED > "$RESULTS/prewarm-visual.status"
+    fi
+    echo "Early visual preparation result: $(cat "$RESULTS/prewarm-visual.status")"
+  fi
   exit 0
 fi
 # With a prewarmed device we wait on the SAME boot; do not restart Simulator.
@@ -158,8 +201,24 @@ else
 fi
 echo "BOOTED" > "$RESULTS/status.txt"
 
-# System appearance (independent from any in-app tint or custom blur).
-xcrun simctl ui "$DEVICE_ID" appearance dark
+# For method B wait for the independent preparation worker before any GUI work.
+# The guard remains bounded; if prep failed, the capture stage repairs it.
+if [ "${AEROUCHET_EARLY_VISUAL_PREP:-0}" = 1 ] && [ -s "$RESULTS/device-udid.txt" ]; then
+  for attempt in $(seq 1 120); do
+    case "$(cat "$RESULTS/prewarm-visual.status" 2>/dev/null || true)" in
+      READY|FAILED) break ;;
+    esac
+    sleep 1
+  done
+fi
+
+# Verify actual dark appearance AFTER app installation, regardless of prep marker.
+# Only skip the expensive SET command when early prep was confirmed READY.
+if [ "${AEROUCHET_EARLY_VISUAL_PREP:-0}" = 1 ] && [ "$(cat "$RESULTS/prewarm-visual.status" 2>/dev/null || true)" = READY ]; then
+  echo "Dark mode prewarmed; verifying current system appearance"
+else
+  xcrun simctl ui "$DEVICE_ID" appearance dark
+fi
 APPEARANCE="$(xcrun simctl ui "$DEVICE_ID" appearance)"
 echo "Simulator appearance: $APPEARANCE"
 if ! printf '%s' "$APPEARANCE" | grep -qi dark; then
@@ -209,6 +268,45 @@ else
   sleep 8
 fi
 
+# Opt-in B: early worker already tried GUI orientation while Swift compiled.
+# The post-install RAW frame (not an AppleScript exit code or PNG dimensions)
+# decides whether another rotation is necessary. A always uses its old path.
+if [ "$AIRCRAFT_ONLY" = true ] && [ "${AEROUCHET_EARLY_VISUAL_PREP:-0}" = 1 ]; then
+  echo "Checking early orientation on the INSTALLED app (RAW pixels)"
+  xcrun simctl io "$DEVICE_ID" screenshot "$RESULTS/raw-screen.png"
+  echo "RAW_SCREENSHOT" > "$RESULTS/status.txt"
+  ACTUALLY_ROTATED=false
+  for attempt in 1 2 3 4 5; do
+    if python3 Scripts/ci-verify-raw-orientation.py "$RESULTS/raw-screen.png"; then
+      ACTUALLY_ROTATED=true
+      echo "Early landscape reused after install (rotation attempts: $((attempt - 1)))"
+      break
+    fi
+    if [ "$attempt" -eq 5 ]; then break; fi
+    echo "Early rotation lost after app launch; repair attempt $attempt"
+    open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID" || true
+    if ! osascript <<'APPLESCRIPT'
+tell application "Simulator" to activate
+tell application "System Events"
+  tell application process "Simulator"
+    click menu item "Rotate Right" of menu 1 of menu bar item "Device" of menu bar 1
+  end tell
+end tell
+APPLESCRIPT
+    then
+      echo "Cannot repair Simulator rotation" >&2
+      echo "ROTATE_FAILED" > "$RESULTS/status.txt"
+      exit 1
+    fi
+    sleep 3
+    xcrun simctl io "$DEVICE_ID" screenshot "$RESULTS/raw-screen.png"
+  done
+  if [ "$ACTUALLY_ROTATED" = false ]; then
+    echo "ROTATION_VISUAL_FAILED" > "$RESULTS/status.txt"
+    echo "No valid landscape framebuffer after GUI retries" >&2
+    exit 1
+  fi
+else
 # simctl has no supported rotate subcommand. Try the same Device > Rotate
 # menu that a developer uses in Simulator.app. On locked-down hosted runners,
 # macOS may deny AppleScript accessibility; that failure is logged explicitly.
@@ -272,6 +370,8 @@ APPLESCRIPT
     exit 1
   fi
 fi
+fi
+
 python3 - "$RESULTS/raw-screen.png" "$RESULTS/raw-buffer-size.txt" <<'PY'
 import struct
 import sys
