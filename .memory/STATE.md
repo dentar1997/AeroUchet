@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 12.10 06:01 МСК · Claude. Разбор: во всех тестах Б iPad не успевал загрузиться до прихода .app (маркер за секунды до PR) — Б в задуманном режиме не проверялся. Предложен план «тёплый iPad на всю задачу + arm64 + снимки для Claude», ждёт решения Дениса. AppVersion v187 без изменений.
+**Обновлено:** 12.10 11:33 МСК · Claude. Денис: «Делай» — Claude в работе: тёплый iPad на всю задачу, сборка arm64, снимки для Claude в служебную ветку (только CI). AppVersion v187 без изменений.
 
 
 ## Последние записи журнала
+- [2026-10-12_1133_claude_warm-ipad-start.md](log/2026-10-12_1133_claude_warm-ipad-start.md)
 - [2026-10-12_0601_claude_minimal-wait-plan.md](log/2026-10-12_0601_claude_minimal-wait-plan.md)
 - [2026-10-12_0542_chatgpt-visual-prewarm-pr203-result.md](log/2026-10-12_0542_chatgpt-visual-prewarm-pr203-result.md)
-- [2026-10-12_0533_chatgpt-visual-prewarm-start.md](log/2026-10-12_0533_chatgpt-visual-prewarm-start.md)
 
 ## CI / iPad Simulator
 - **PR #203** ✅ CI-only, merged `b10e57b` (v187 без изменений): ранняя тёмная тема и поворот в opt-in Б до получения .app, после установки RAW проверка и fallback; prewarm run 38196341128 + CI 38196353806 PASS, orientation attempts=0, 12.9-inch dark landscape. PR→RAW 5:33 в этом запуске (аномально долгий simctl screenshot ~1:43), преимущества скорости пока нет. Подробнее .memory/log/2026-10-12_0542_chatgpt-visual-prewarm-pr203-result.md.
