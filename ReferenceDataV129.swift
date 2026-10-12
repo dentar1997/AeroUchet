@@ -1314,7 +1314,7 @@ struct AircraftReferenceSettingsV129View: View {
         let total = store.aircraft.count
         return values.count == total
             ? "Воздушные суда · \(total)"
-            : "Воздушные суда · \(values.count) из \(total)"
+            : "Воздушные суда (замер CI) · \(values.count) из \(total)"
     }
 
     private func rangeField(_ title: String, text: Binding<String>) -> some View {
