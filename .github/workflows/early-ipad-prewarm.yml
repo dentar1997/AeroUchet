@@ -33,11 +33,11 @@ on:
       idle_minutes:
         description: 'Сколько минут ждать новую правку после последнего снимка'
         required: false
-        default: '25'
+        default: '120'
       wait_first_minutes:
         description: 'Сколько минут ждать первый PR'
         required: false
-        default: '45'
+        default: '120'
       request_epoch:
         description: 'Unix-время запроса (для замеров), можно оставить пустым'
         required: false
@@ -58,7 +58,7 @@ jobs:
     name: Warm iPad session (prewarm/* PRs)
     if: ${{ inputs.mode != 'stop' }}
     runs-on: macos-26
-    timeout-minutes: 150
+    timeout-minutes: 350   # предел GitHub — 360; сессия сама завершается на 330
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -68,8 +68,8 @@ jobs:
       - name: Warm the iPad and serve every new PR head
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          IDLE_MINUTES: ${{ inputs.idle_minutes || '25' }}
-          WAIT_FIRST_MINUTES: ${{ inputs.wait_first_minutes || '45' }}
+          IDLE_MINUTES: ${{ inputs.idle_minutes || '120' }}
+          WAIT_FIRST_MINUTES: ${{ inputs.wait_first_minutes || '120' }}
           REQUEST_EPOCH: ${{ inputs.request_epoch }}
         run: |
           python3 Scripts/ci_ipad.py session \
