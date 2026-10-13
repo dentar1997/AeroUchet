@@ -8,10 +8,14 @@
 4. Снимок: ветка `ci-shots` → `shots/<SHA>/`, артефакт `ipad-shot` в PR CI.
    Claude: `python3 Scripts/ci_ipad.py fetch-shot --sha <SHA> --dest <папка>`.
 
-Какие экраны снимать — необязательный `shots.json` в этой папке (по умолчанию `aircraft-tamm`):
+Какие экраны снимать — `shots.json` в этой папке **в ветке задачи** (без него — `aircraft-tamm`; перед слиянием убрать):
 
 ```json
-{"shots": [{"name": "aircraft-tamm"}, {"name": "main-screen", "settle": 4}]}
+{"shots": [{"name": "calendar"}, {"name": "home"}]}
 ```
 
-Аргументы запуска — только вида `--aerouchet-ci-…`, их понимает приложение в Simulator.
+Готовые экраны: `home`, `calendar`, `assignments`, `accounting`, `more` (с вымышленными рейсами текущего месяца),
+`aircraft-tamm` (таблица ВС), `main-screen` (без данных). Свой экран: `{"name": "x", "args": ["--aerouchet-ci-tab=calendar"]}` —
+аргументы только вида `--aerouchet-ci-…`, их понимает приложение в Simulator (`CIScreens.swift`).
+
+У каждого снимка есть `<экран>-layout.txt`: строки текста, ровность столбцов (OK/OFF) и подсказки о неровных рядах (HINT).
