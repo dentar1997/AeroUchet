@@ -39,7 +39,9 @@ def ditto(src, dst):
 
 
 def runtime_build():
-    data = json.loads(ci_ipad.sh(["xcrun", "simctl", "list", "runtimes", "-j"], quiet=True, timeout=240).stdout)
+    # Plain subprocess: ci_ipad.sh() logs to stdout, and this output becomes the cache key.
+    data = json.loads(subprocess.run(["xcrun", "simctl", "list", "runtimes", "-j"],
+                                     capture_output=True, text=True, timeout=240).stdout)
     builds = [r.get("buildversion", "") for r in data.get("runtimes", [])
               if r.get("isAvailable") and "iOS" in r.get("name", "")
               and r.get("version", "0").split(".")[0].isdigit() and int(r.get("version", "0").split(".")[0]) >= 26]
