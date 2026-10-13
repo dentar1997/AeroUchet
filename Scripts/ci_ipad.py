@@ -632,6 +632,25 @@ def normalize_raw(raw, png):
         raise CommandError("PROFILE_MISMATCH: expected a 2732x2048 landscape PNG")
 
 
+def layout_check(png, out, name):
+    """Scripts/ui_layout.py: text rows and column alignment in points (needs Pillow)."""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui_layout.py")
+    report = os.path.join(out, f"{name}-layout.txt")
+    data = os.path.join(out, f"{name}-layout.json")
+    done = sh([sys.executable, script, png, "--json", data], check=False, quiet=True, timeout=120)
+    write_text(report, (done.stdout or done.stderr or "").strip() + "\n")
+    layout = read_json(data)
+    if not layout:
+        return {"skipped": (done.stdout or done.stderr or "").strip()[:200]}
+    checks = layout.get("column_checks") or []
+    return {
+        "rows": len(layout.get("bands", [])),
+        "column_checks": len(checks),
+        "off": [c for c in checks if not c.get("ok")],
+        "worst_pt": max((abs(c["worst_pt"]) for c in checks), default=None),
+    }
+
+
 def capture_one(udid, bundle, shot, out, timeline, export=True):
     name = shot["name"]
     launch_app(udid, bundle, shot["args"])
@@ -669,6 +688,7 @@ def capture_one(udid, bundle, shot, out, timeline, export=True):
         jpg = os.path.join(out, f"{name}.jpg")
         sh(["sips", "-s", "format", "jpeg", "-s", "formatOptions", str(JPEG_QUALITY), png, "--out", jpg], quiet=True, timeout=120)
         result["image"] = f"{name}.jpg"
+        result["layout"] = layout_check(png, out, name)
     if not app_alive(udid, bundle):
         raise CommandError(f"{name}: the application exited before verification")
     timeline.mark(f"{name}.done")
@@ -1140,7 +1160,7 @@ def publish_capture(token, out, sha, label):
         os.makedirs(target)
         for name in sorted(os.listdir(out)):
             path = os.path.join(out, name)
-            if os.path.isfile(path) and (name in ("proof.json", "timeline.jsonl") or name.endswith(".jpg") or name.endswith("-raw-top.png")):
+            if os.path.isfile(path) and (name in ("proof.json", "timeline.jsonl") or name.endswith((".jpg", "-raw-top.png", "-layout.txt"))):
                 shutil.copyfile(path, os.path.join(target, name))
         log_path = os.path.join(out, "capture.log")
         if os.path.exists(log_path):
@@ -1429,9 +1449,11 @@ def cmd_summarize(args):
         f"- PR head `{(proof.get('pr_sha') or '')[:12]}`, build run {proof.get('build_run_id')}, appearance {proof.get('appearance')}",
     ]
     for shot in proof.get("shots", []):
+        layout = shot.get("layout") or {}
+        columns = f", columns worst Δ {layout.get('worst_pt')} pt" if layout.get("column_checks") else ""
         lines.append(
             f"- `{shot['name']}`: red {shot['raw_red_level']}, rotation repairs {shot['rotation_repairs']}, "
-            f"screenshot {shot['screenshot_sec']} s"
+            f"screenshot {shot['screenshot_sec']} s{columns}"
         )
     if proof.get("ci_run_to_shot_sec") is not None:
         lines.append(f"- PR CI run created → shot ready: **{proof['ci_run_to_shot_sec']} s**")

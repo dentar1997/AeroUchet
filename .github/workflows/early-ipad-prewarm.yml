@@ -67,6 +67,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Pillow for the layout check (optional)
+        run: |
+          python3 -m pip install --quiet pillow 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow || echo 'no Pillow, layout check skipped'
+
       - name: Warm the iPad and serve every new PR head
         env:
           GITHUB_TOKEN: ${{ github.token }}
