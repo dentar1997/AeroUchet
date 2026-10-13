@@ -11,7 +11,7 @@
 4. Снимок: ветка `ci-shots` → `shots/<SHA>/` (`*.jpg`, `proof.json`, `*-layout.txt`) и артефакт `ipad-shot` в PR CI.
    Claude: `python3 Scripts/ci_ipad.py fetch-shot --sha <SHA> --dest <папка>`.
 
-Какие экраны снимать — `shots.json` в этой папке **в ветке задачи** (без него — `home` + `aircraft-tamm`; перед слиянием убрать):
+Какие экраны снимать — `shots.json` в этой папке **в ветке задачи** (без него — только `home`; каждый экран добавляет ~10 с; перед слиянием убрать):
 
 ```json
 {"shots": [{"name": "calendar"}, {"name": "home"}]}
