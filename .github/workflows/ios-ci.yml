@@ -16,7 +16,7 @@ jobs:
   build:
     name: Build iOS app
     runs-on: macos-26
-    timeout-minutes: 35
+    timeout-minutes: 40
     permissions:
       contents: write   # запасной снимок iPad публикуется в ветку ci-shots
       actions: read
@@ -135,11 +135,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      # Ветки prewarm/*: снимок делает тёплый iPad (early-ipad-prewarm.yml).
-      # PR не зеленеет без проверенного снимка СВОЕГО SHA и СВОЕГО build run.
-      # Если тёплой сессии нет — снимок делается здесь же (холодный запуск, медленнее).
+      # Любой PR: снимок делает тёплый iPad (early-ipad-prewarm.yml, включается сам
+      # от любой ветки). PR не зеленеет без проверенного снимка СВОЕГО SHA и СВОЕЙ
+      # сборки. Если тёплой сессии нет — снимок делается здесь (холодно, ~10 мин).
       - name: iPad screenshot for this PR head (warm session or fallback)
-        if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'prewarm/') }}
+        if: ${{ github.event_name == 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -152,7 +152,7 @@ jobs:
           # сессией из ТОГО ЖЕ коммита ($GITHUB_SHA — тестовый merge PR).
           python3 Scripts/ci_ipad.py verify-shot \
             --sha "$PR_HEAD" --build-run-id "$GITHUB_RUN_ID" --built-commit "$GITHUB_SHA" \
-            --dest "$OUT" --timeout 900
+            --dest "$OUT" --timeout 1200
           rc=$?
           if [ "$rc" -ne 3 ]; then exit "$rc"; fi
           echo "::warning::Тёплой сессии iPad нет — снимок делается здесь (холодный запуск, медленнее)"
@@ -161,7 +161,7 @@ jobs:
           python3 Scripts/ci_ipad.py prepare --state "$STATE" --visual
           python3 Scripts/ci_ipad.py capture --state "$STATE" \
             --zip "$RUNNER_TEMP/AeroUchet-Simulator.zip" --out "$OUT" \
-            --shots-file .github/prewarm/shots.json --shots aircraft-tamm \
+            --shots-file .github/prewarm/shots.json \
             --mode fallback --pr-sha "$PR_HEAD" --pr-number "$PR_NUMBER" \
             --head-ref "$HEAD_REF" --build-run-id "$GITHUB_RUN_ID"
           rc=$?
@@ -169,12 +169,12 @@ jobs:
           exit "$rc"
 
       - name: Summarize iPad screenshot
-        if: ${{ always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'prewarm/') }}
+        if: ${{ always() && github.event_name == 'pull_request' }}
         run: |
           python3 Scripts/ci_ipad.py summarize --out "$RUNNER_TEMP/ipad-shot" >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Upload iPad screenshot
-        if: ${{ always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'prewarm/') }}
+        if: ${{ always() && github.event_name == 'pull_request' }}
         uses: actions/upload-artifact@v4
         with:
           name: ipad-shot
@@ -182,10 +182,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # Метод А (все остальные PR): независимый macOS-раннер загружает iPad
-  # одновременно со сборкой на другом раннере и снимает .app ровно этого запуска.
+  # Метод А — только для ручного запуска CI (без PR тёплый iPad не работает):
+  # независимый macOS-раннер загружает iPad параллельно со сборкой.
+  # Для PR с 13.10 его заменяет тёплый iPad (DECISIONS U55).
   simulator-smoke:
-    if: ${{ github.event_name != 'pull_request' || !startsWith(github.head_ref, 'prewarm/') }}
+    if: ${{ github.event_name != 'pull_request' }}
     name: iPad Simulator smoke (parallel build + boot)
     runs-on: macos-26
     timeout-minutes: 25

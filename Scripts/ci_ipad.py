@@ -9,7 +9,7 @@ Subcommands
                  landscape on real pixels and warms the screenshot path.
   capture        install a CI-built .app and take verified landscape screenshots.
   wait-artifact  wait for this run's AeroUchet-Simulator artifact and download it.
-  session        warm iPad session: serves every new head SHA of open prewarm/* PRs.
+  session        warm iPad session: serves every new head SHA of open PRs into main.
   publish        put a capture on the ci-shots branch (readable through plain git).
   verify-shot    PR build job: wait for this SHA's warm shot on ci-shots, re-check it.
   fetch-shot     assistants: wait for a shot on ci-shots and copy it locally (git only).
@@ -54,7 +54,6 @@ CI_WORKFLOW_NAME = "AeroUchet CI"
 BUILD_JOB_NAME = "Build iOS app"
 APP_ARTIFACT = "AeroUchet-Simulator"
 SHOTS_BRANCH = "ci-shots"
-WARM_BRANCH_PREFIX = "prewarm/"
 ACTIVE_RUN_STATES = ("queued", "in_progress", "waiting", "requested", "pending")
 WAITING_RUN_STATES = ("queued", "waiting", "requested", "pending")
 DEVICE_NAME = "AeroUchet iPad Pro 12.9 CI"
@@ -83,7 +82,7 @@ SHOT_REGISTRY = {
     "accounting": {"args": [DEMO, "--aerouchet-ci-tab=accounting"], "settle": 4},
     "more": {"args": [DEMO, "--aerouchet-ci-tab=more"], "settle": 3},
 }
-DEFAULT_WARM_SHOTS = "aircraft-tamm"
+DEFAULT_WARM_SHOTS = "home"   # «Главная»; другие экраны — .github/prewarm/shots.json задачи
 SHOT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 SHOT_ARG_RE = re.compile(r"^--aerouchet-ci-[a-z0-9-]{1,40}(?:=[a-z0-9-]{1,40})?$")
 MAX_SHOTS = 8
@@ -551,12 +550,33 @@ def prebuild_base(src_root, state, timeline):
     return tree.package(state_file(state, "prebuild-app"))
 
 
+_CLEANUP = {"process": None}
+
+
+def start_cleanup(udid, bundle, state):
+    """Warm session: close and remove the app right after a capture, in the
+    background. Between pushes nobody waits, while doing it at the next install
+    cost ~27 s on the critical path (terminate 19 s + uninstall 8 s, 13.10)."""
+    marker = state_file(state, "app-installed")
+    script = (f"xcrun simctl terminate {shlex.quote(udid)} {shlex.quote(bundle)} >/dev/null 2>&1; "
+              f"xcrun simctl uninstall {shlex.quote(udid)} {shlex.quote(bundle)} && rm -f {shlex.quote(marker)}")
+    _CLEANUP["process"] = subprocess.Popen(["sh", "-c", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def install_app(udid, app, bundle, state):
     """Clean install. An in-place upgrade of the previous build has failed with
     installd 'deltainstallcommands … try again later', so a build installed earlier
-    in this state is removed first. A fresh device is NOT asked to terminate or
-    uninstall: right after boot those no-op calls took 60 s and 110 s (PR #204)."""
+    in this state is removed first (normally already done in the background by
+    start_cleanup). A fresh device is NOT asked to terminate or uninstall: right
+    after boot those no-op calls took 60 s and 110 s (PR #204)."""
     marker = state_file(state, "app-installed")
+    pending = _CLEANUP.get("process")
+    if pending is not None:
+        try:
+            pending.wait(timeout=240)
+        except subprocess.TimeoutExpired:
+            pending.kill()
+        _CLEANUP["process"] = None
     if os.path.exists(marker):
         simctl("terminate", udid, bundle, check=False, timeout=60, quiet=True)
         simctl("uninstall", udid, bundle, check=False, timeout=180, quiet=True)
@@ -834,7 +854,7 @@ def build_shots(names=None, spec=None):
     return shots
 
 
-def capture(state, archive, out, shots, meta, install_early):
+def capture(state, archive, out, shots, meta, install_early, cleanup_after=False):
     """Install the app built for meta['pr_sha'] and take every verified shot."""
     os.makedirs(out, exist_ok=True)
     timeline = Timeline(os.path.join(out, "timeline.jsonl"), meta.get("t0"))
@@ -912,6 +932,9 @@ def capture(state, archive, out, shots, meta, install_early):
             write_json(os.path.join(out, "proof.json"), proof)
             write_text(os.path.join(out, "status.txt"), proof["status"])
             shutil.rmtree(os.path.join(out, "_app"), ignore_errors=True)
+            installed = read_text(state_file(state, "app-installed"))
+            if cleanup_after and installed:
+                start_cleanup(read_text(state_file(state, "device-udid.txt")), installed, state)
     return proof
 
 
@@ -1474,7 +1497,7 @@ def request_epoch(value):
     if value.isdigit():
         return int(value)
     if os.environ.get("GITHUB_EVENT_NAME") == "push":
-        # Only a fresh marker counts: since autostart, any push to prewarm/* starts
+        # Only a fresh marker counts: since autostart, any branch push starts
         # a session and an old request.json must not distort the timings.
         data = read_json(os.path.join(".github", "prewarm", "request.json")) or {}
         value = data.get("request_epoch")
@@ -1517,7 +1540,7 @@ def shots_for_sha(gh, sha):
 class WarmSession:
     """One warm iPad for the whole task.
 
-    For every new head SHA of an open prewarm/* PR: build the PR test-merge commit
+    For every new head SHA of an open PR into main: build the PR test-merge commit
     incrementally right here (warm DerivedData, no CI queue, no artifact round trip),
     install it on the already booted iPad and publish the verified shot to ci-shots.
     If the local build cannot run, the PR CI artifact of that SHA is used instead.
@@ -1639,8 +1662,7 @@ class WarmSession:
         result = []
         for pr in pulls:
             head = pr.get("head") or {}
-            if not head.get("ref", "").startswith(WARM_BRANCH_PREFIX):
-                continue
+            # Any PR into main from this repository (since 13.10, U55), not only prewarm/*.
             if (pr.get("base") or {}).get("ref") != "main" or (head.get("repo") or {}).get("full_name") != REPO:
                 continue
             result.append(pr)
@@ -1732,7 +1754,7 @@ class WarmSession:
         if self.head_moved(number, sha):
             self.timeline.mark("sha.stale", sha=sha[:12], pr=number)
             return "STALE"
-        proof = capture(self.state, source, out, shots_for_sha(self.gh, sha), meta, install_early=False)
+        proof = capture(self.state, source, out, shots_for_sha(self.gh, sha), meta, install_early=False, cleanup_after=True)
         return self.finish(out, sha, number, proof, seen)
 
     def finish(self, out, sha, number, proof, seen):
