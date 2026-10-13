@@ -2045,6 +2045,3 @@ func formattedRegistration(_ rawValue: String) -> String {
 
     return raw
 }
-
-// замер инкрементальной сборки (будет откачен)
-// замер 1791881550 (будет откачен)
