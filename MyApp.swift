@@ -2,6 +2,11 @@ import SwiftUI
 
 @main
 struct MyApp: App {
+    init() {
+        // Только CI в Simulator (CIScreens.swift); на iPad ничего не делает.
+        CIScreens.seedDemoDataIfRequested()
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {

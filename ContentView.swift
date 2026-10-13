@@ -9,13 +9,17 @@ struct ContentView: View {
     @StateObject private var planStore = AssignmentPlanStore()
     @State private var storageNotices: [String] = []
     @State private var saveFailures: [String] = []
+    // Открытая вкладка. На iPad всегда начинается с «Главной»; CI в Simulator
+    // может открыть другую для снимка (CIScreens.swift).
+    @State private var selectedTab = CIScreens.initialTab
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             HomeView(store: store)
                 .tabItem {
                     Label("Главная", systemImage: "house.fill")
                 }
+                .tag(0)
 
             CalendarView(
                 store: store,
@@ -25,6 +29,7 @@ struct ContentView: View {
             .tabItem {
                 Label("Календарь", systemImage: "calendar")
             }
+            .tag(1)
 
             AssignmentsView(
                 store: store,
@@ -33,6 +38,7 @@ struct ContentView: View {
             .tabItem {
                 Label("Назначения", systemImage: "square.grid.2x2")
             }
+            .tag(2)
 
             AccountingView(
                 store: store,
@@ -42,6 +48,7 @@ struct ContentView: View {
             .tabItem {
                 Label("Учёт", systemImage: "list.clipboard")
             }
+            .tag(3)
 
             SimplePage(
                 title: "Зарплата",
@@ -50,6 +57,7 @@ struct ContentView: View {
             .tabItem {
                 Label("Зарплата", systemImage: "rublesign.circle")
             }
+            .tag(4)
 
             SettingsRootV116View(
                 store: store,
@@ -60,6 +68,7 @@ struct ContentView: View {
             .tabItem {
                 Label("Ещё", systemImage: "ellipsis.circle")
             }
+            .tag(5)
 
         }
         .environmentObject(store)

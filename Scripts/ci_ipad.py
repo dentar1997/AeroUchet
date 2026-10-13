@@ -73,13 +73,20 @@ BOT_NAME = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 
 # Screens the app can open directly with a simulator-only launch argument.
+DEMO = "--aerouchet-ci-demo"   # simulator-only fictional flights (CIScreens.swift)
 SHOT_REGISTRY = {
     "main-screen": {"args": [], "settle": 5},
     "aircraft-tamm": {"args": ["--aerouchet-ci-aircraft-tamm"], "settle": 2},
+    "home": {"args": [DEMO], "settle": 4},
+    "calendar": {"args": [DEMO, "--aerouchet-ci-tab=calendar"], "settle": 4},
+    "assignments": {"args": [DEMO, "--aerouchet-ci-tab=assignments"], "settle": 4},
+    "accounting": {"args": [DEMO, "--aerouchet-ci-tab=accounting"], "settle": 4},
+    "more": {"args": [DEMO, "--aerouchet-ci-tab=more"], "settle": 3},
 }
 DEFAULT_WARM_SHOTS = "aircraft-tamm"
 SHOT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
-SHOT_ARG_RE = re.compile(r"^--aerouchet-ci-[a-z0-9-]{1,60}$")
+SHOT_ARG_RE = re.compile(r"^--aerouchet-ci-[a-z0-9-]{1,40}(?:=[a-z0-9-]{1,40})?$")
+MAX_SHOTS = 8
 
 ROTATE_RIGHT = """tell application "Simulator" to activate
 tell application "System Events"
@@ -782,8 +789,8 @@ def build_shots(names=None, spec=None):
     shots = []
     if spec is not None:
         items = spec.get("shots") if isinstance(spec, dict) else spec
-        if not isinstance(items, list) or not 1 <= len(items) <= 4:
-            raise ValueError("shots spec must list 1-4 shots")
+        if not isinstance(items, list) or not 1 <= len(items) <= MAX_SHOTS:
+            raise ValueError(f"shots spec must list 1-{MAX_SHOTS} shots")
         for item in items:
             name = str(item.get("name", ""))
             if not SHOT_NAME_RE.match(name):
@@ -1513,6 +1520,7 @@ class WarmSession:
         self.last_request = self.started
         self.end_reason = None
         self.prepare = None
+        self.announced = False
 
     def state_summary(self, state):
         prepare_lines = []
@@ -1652,6 +1660,7 @@ class WarmSession:
             "session_run_id": self.run_id, "t0": self.t0,
         }
         prepared = wait_state(self.state, "prepare.status", {"READY", "FAILED"}, 1500)
+        self.announce_ready()
         if prepared != "READY":
             log(f"prepare status {prepared}; capturing anyway")
         source = None
@@ -1715,18 +1724,24 @@ class WarmSession:
         self.timeline.mark("sha.published" if published else "sha.publish_failed", **record)
         return proof["status"] if proof.get("stage") != "build" else "COMPILE_ERROR"
 
+    def announce_ready(self):
+        if self.announced:
+            return
+        status = read_text(state_file(self.state, "prepare.status"))
+        if status in ("READY", "FAILED"):
+            self.announced = True
+            self.timeline.mark("session.ready", prepare_status=status)
+            self.publish_state("ready")
+
     def loop(self):
-        announced = False
         next_absorb = 0
+        self.publish_state("warming")
         while True:
             now = time.time()
             if now - self.started > self.args.max_minutes * 60:
                 self.end_reason = f"session time limit ({self.args.max_minutes:g} min)"
                 break
-            if not announced and read_text(state_file(self.state, "prepare.status")) in ("READY", "FAILED"):
-                announced = True
-                self.timeline.mark("session.ready", prepare_status=read_text(state_file(self.state, "prepare.status")))
-                self.publish_state("ready")
+            self.announce_ready()
             if now >= next_absorb:
                 next_absorb = now + 15
                 if not self.absorb_requests():
