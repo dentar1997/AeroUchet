@@ -1,0 +1,102 @@
+name: AeroUchet Sim Cache Experiment
+
+# Временный эксперимент (13.10): ускоряет ли кэш уже настроенного iPad прогрев.
+# seed готовит и сохраняет iPad; cached и fresh параллельно делают одно и то же
+# (iPad → тёмная тема → поворот → установка → снимок), cached — из кэша.
+
+on:
+  push:
+    branches:
+      - 'ci/sim-cache-**'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  seed:
+    runs-on: macos-26
+    timeout-minutes: 40
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Prepare iPad (fresh) and settle with the app
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          S="$RUNNER_TEMP/state"; O="$RUNNER_TEMP/out"
+          python3 Scripts/ci_ipad.py prepare --state "$S" --visual
+          python3 -c "import sys; sys.path.insert(0,'Scripts'); import ci_ipad, os; ci_ipad.fetch_warm_app(os.environ['GITHUB_TOKEN'], '$S', ci_ipad.Timeline('$S/timeline.jsonl'))"
+          python3 Scripts/ci_ipad.py capture --state "$S" --zip "$S/warm-app.zip" --out "$O" --shots aircraft-tamm --mode seed
+      - id: key
+        run: echo "key=$(python3 Scripts/sim_cache.py key)" >> "$GITHUB_OUTPUT"
+      - name: Stage device for the cache
+        run: python3 Scripts/sim_cache.py stage --state "$RUNNER_TEMP/state" --dest "$HOME/simcache"
+      - name: Save cache
+        uses: actions/cache/save@v4
+        with:
+          path: ~/simcache
+          key: ${{ steps.key.outputs.key }}-${{ github.run_id }}
+
+  measure:
+    needs: seed
+    runs-on: macos-26
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [cached, fresh]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Restore cached iPad
+        if: matrix.variant == 'cached'
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/simcache
+          key: ${{ needs.seed.outputs.key }}-${{ github.run_id }}
+      - name: Put the cached iPad back
+        if: matrix.variant == 'cached'
+        run: |
+          echo "{\"phase\":\"cache.restored\",\"epoch\":$(date +%s)}" >> "$RUNNER_TEMP/steps.jsonl"
+          python3 Scripts/sim_cache.py restore --src "$HOME/simcache" --state "$RUNNER_TEMP/state"
+          echo "{\"phase\":\"cache.placed\",\"epoch\":$(date +%s)}" >> "$RUNNER_TEMP/steps.jsonl"
+      - name: Same work for both variants
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          S="$RUNNER_TEMP/state"; O="$RUNNER_TEMP/out"
+          echo "{\"phase\":\"prepare.begin\",\"epoch\":$(date +%s)}" >> "$RUNNER_TEMP/steps.jsonl"
+          python3 Scripts/ci_ipad.py prepare --state "$S" --visual
+          python3 -c "import sys; sys.path.insert(0,'Scripts'); import ci_ipad, os; ci_ipad.fetch_warm_app(os.environ['GITHUB_TOKEN'], '$S', ci_ipad.Timeline('$S/timeline.jsonl'))"
+          echo "{\"phase\":\"capture.begin\",\"epoch\":$(date +%s)}" >> "$RUNNER_TEMP/steps.jsonl"
+          python3 Scripts/ci_ipad.py capture --state "$S" --zip "$S/warm-app.zip" --out "$O" --shots aircraft-tamm --mode ${{ matrix.variant }}
+          echo "{\"phase\":\"capture.end\",\"epoch\":$(date +%s)}" >> "$RUNNER_TEMP/steps.jsonl"
+      - name: Publish timings to ci-shots
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VARIANT: ${{ matrix.variant }}
+          JOB_START: ${{ github.run_id }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, shutil, sys
+          sys.path.insert(0, "Scripts")
+          import ci_ipad
+          T = os.environ["RUNNER_TEMP"]; v = os.environ["VARIANT"]
+          parts = []
+          for name in ("steps.jsonl", "state/timeline.jsonl", "out/timeline.jsonl", "out/proof.json", "state/device.json"):
+              path = os.path.join(T, name)
+              if os.path.exists(path):
+                  parts.append(f"## {name}\n" + open(path, encoding="utf-8").read())
+          report = "\n".join(parts)
+          def mutate(work):
+              os.makedirs(os.path.join(work, "reports"), exist_ok=True)
+              open(os.path.join(work, "reports", f"simcache-{os.environ['GITHUB_RUN_ID']}-{v}.txt"), "w", encoding="utf-8").write(report)
+          ci_ipad.update_shots_branch(os.environ["GITHUB_TOKEN"], f"report: sim cache {v}", mutate)
+          PYEOF
