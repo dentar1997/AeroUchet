@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 13.10 12:15 МСК · Claude. **v188** (PR #210): CI-снимки любых вкладок с вымышленными рейсами + автопроверка ровности. Ждёт проверки на iPad (старт на «Главной», вкладки как раньше). PR #209 (деление файлов, эффекта почти нет) — ждёт решения. На снимках найдены 3 неровности интерфейса — ждут решения (log/2026-10-13_1215_claude_ci-screens-layout-result.md).
+**Обновлено:** 13.10 13:42 МСК · Claude. Денис: неровности вида — потом (на iPad нормально); PR #209 закрыт без слияния. Обсуждаем, почему CI ~8 мин: сборка+тесты 1,5–2 мин, остальное — ожидание прогрева iPad. v188 ждёт проверки на iPad.
 
 
 ## Последние записи журнала
+- [2026-10-13_1342_claude_decisions-ci-time.md](log/2026-10-13_1342_claude_decisions-ci-time.md)
 - [2026-10-13_1215_claude_ci-screens-layout-result.md](log/2026-10-13_1215_claude_ci-screens-layout-result.md)
 - [2026-10-13_1215_claude_split-files-result.md](log/2026-10-13_1215_claude_split-files-result.md)
-- [2026-10-13_1124_claude_programmiruy-optimizations-start.md](log/2026-10-13_1124_claude_programmiruy-optimizations-start.md)
 
 ## CI / iPad Simulator
 - **PR #204** ✅ слит `a516d8f`, CI-only, **v187 без изменений**. **Тёплый iPad на всю задачу** (U53, P14): сессия `early-ipad-prewarm.yml` запускается в начале UI-задачи, собирает main, затем сама инкрементально собирает и снимает каждый новый SHA PR из `prewarm/*`; снимки — ветка `ci-shots` (`Scripts/ci_ipad.py fetch-shot`) и артефакт `ipad-shot` PR CI. Замеры: push → снимок у Claude **33–41 с**, CI-запуск → снимок 23–32 с (5 SHA, все PASS); готовность сессии 3:56–6:13; без сессии build job снимает сам за ~10 мин; метод А (обычные PR) 6:31. Подробнее log/2026-10-12_1308_claude_warm-ipad-result.md.
