@@ -1,0 +1,111 @@
+{
+  "shots": [
+    {
+      "sha": "509e15596471e5d0d8add40651bdc490416fa36a",
+      "label": "warm PR #212",
+      "status": "PASS",
+      "mode": "warm",
+      "pr_number": 212,
+      "build_run_id": null,
+      "ci_run_to_shot_sec": 49.2,
+      "published_utc": "2026-10-13T13:16:12Z",
+      "images": [
+        "home.jpg"
+      ]
+    },
+    {
+      "sha": "f66c8f818ec0a356002399162f463d2c74316c18",
+      "label": "warm PR #212",
+      "status": "PASS",
+      "mode": "warm",
+      "pr_number": 212,
+      "build_run_id": null,
+      "ci_run_to_shot_sec": 50.2,
+      "published_utc": "2026-10-13T13:14:46Z",
+      "images": [
+        "home.jpg"
+      ]
+    },
+    {
+      "sha": "5bd6ba57b4f7be7122ba16361a13ee99b412b904",
+      "label": "warm PR #211",
+      "status": "PASS",
+      "mode": "warm",
+      "pr_number": 211,
+      "build_run_id": null,
+      "ci_run_to_shot_sec": 728.5,
+      "published_utc": "2026-10-13T13:13:57Z",
+      "images": [
+        "home.jpg"
+      ]
+    },
+    {
+      "sha": "cc7e90c885815d89b4efdcb4250107be4db3f541",
+      "label": "warm PR #212",
+      "status": "PASS",
+      "mode": "warm",
+      "pr_number": 212,
+      "build_run_id": null,
+      "ci_run_to_shot_sec": 595.6,
+      "published_utc": "2026-10-13T13:12:49Z",
+      "images": [
+        "home.jpg"
+      ]
+    },
+    {
+      "sha": "bf8057322fd8f33430614d4f23c785f093dee9dd",
+      "label": "warm PR #212",
+      "status": "PASS",
+      "mode": "warm",
+      "pr_number": 212,
+      "build_run_id": null,
+      "ci_run_to_shot_sec": 41.6,
+      "published_utc": "2026-10-13T13:00:26Z",
+      "images": [
+        "home.jpg",
+        "aircraft-tamm.jpg"
+      ]
+    },
+    {
+      "sha": "b94517f656ea2729023aa9e35ec677ea0186ffa4",
+      "label": "warm PR #212",
+      "status": "PASS",
+      "mode": "warm",
+      "pr_number": 212,
+      "build_run_id": null,
+      "ci_run_to_shot_sec": 75.1,
+      "published_utc": "2026-10-13T12:58:49Z",
+      "images": [
+        "home.jpg",
+        "aircraft-tamm.jpg"
+      ]
+    }
+  ],
+  "sessions": [
+    {
+      "run_id": "38401864907",
+      "state": "ended",
+      "updated_utc": "2026-10-13T15:16:19Z"
+    },
+    {
+      "run_id": "38399943903",
+      "state": "ended",
+      "updated_utc": "2026-10-13T13:02:33Z"
+    },
+    {
+      "run_id": "38372896160",
+      "state": "ended",
+      "updated_utc": "2026-10-13T10:48:05Z"
+    },
+    {
+      "run_id": "38370423218",
+      "state": "ended",
+      "updated_utc": "2026-10-13T08:57:07Z"
+    },
+    {
+      "run_id": "38308428434",
+      "state": "ended",
+      "updated_utc": "2026-10-12T21:13:06Z"
+    }
+  ]
+}

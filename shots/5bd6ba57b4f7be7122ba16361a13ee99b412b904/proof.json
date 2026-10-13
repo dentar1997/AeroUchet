@@ -1,0 +1,49 @@
+{
+  "status": "PASS",
+  "stage": "done",
+  "mode": "warm",
+  "pr_sha": "5bd6ba57b4f7be7122ba16361a13ee99b412b904",
+  "pr_number": 211,
+  "head_ref": "ci/warm-any-branch-20261013",
+  "build_run_id": null,
+  "artifact_id": null,
+  "session_run_id": "38401864907",
+  "ci_run_created": "2026-10-13T13:01:46Z",
+  "source": "session-build",
+  "built_commit": "fbcf0d11ced7095617c25b20c5787a43e0f7eb01",
+  "built_ref": "merge",
+  "build_sec": 23.7,
+  "target": "iPad Pro 12.9-inch, landscape, dark",
+  "shots": [
+    {
+      "name": "home",
+      "args": [
+        "--aerouchet-ci-demo"
+      ],
+      "settle_sec": 4,
+      "raw_red_level": 38.9,
+      "rotation_repairs": 4,
+      "screenshot_sec": 0.6,
+      "image": "home.jpg",
+      "layout": {
+        "rows": 14,
+        "column_checks": 1,
+        "off": [],
+        "worst_pt": 1.0
+      }
+    }
+  ],
+  "device": {
+    "name": "iPad Pro (12.9-inch) (3rd generation)",
+    "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+    "how": "created"
+  },
+  "appearance": "dark",
+  "capture_sec": 36.5,
+  "shot_ready_utc": "2026-10-13T13:13:54Z",
+  "shot_ready_epoch": 1791897234.5,
+  "t0_to_shot_sec": 599.5,
+  "seen_to_shot_sec": 61.8,
+  "ci_run_id": 38401741553,
+  "ci_run_to_shot_sec": 728.5
+}

@@ -1,0 +1,75 @@
+## steps.jsonl
+{"phase":"cache.restored","epoch":1791890053}
+{"phase":"cache.placed","epoch":1791890088}
+{"phase":"prepare.begin","epoch":1791890089}
+{"phase":"capture.begin","epoch":1791890157}
+{"phase":"capture.end","epoch":1791890296}
+
+## state/timeline.jsonl
+{"phase": "prepare.start", "utc": "2026-10-13T11:14:49Z", "epoch": 1791890089.3, "visual": true, "settle": false}
+{"phase": "prepare.booted", "utc": "2026-10-13T11:15:43Z", "epoch": 1791890143.9}
+{"phase": "prepare.dark", "utc": "2026-10-13T11:15:45Z", "epoch": 1791890145.3, "appearance": "dark"}
+{"phase": "prepare.gui_open", "utc": "2026-10-13T11:15:47Z", "epoch": 1791890147.0}
+{"phase": "prepare.rotate_requested", "utc": "2026-10-13T11:15:51Z", "epoch": 1791890151.2, "osascript_attempts": 1}
+{"phase": "prepare.ready", "utc": "2026-10-13T11:15:51Z", "epoch": 1791890151.3}
+{"phase": "session.warm_app_ready", "utc": "2026-10-13T11:15:57Z", "epoch": 1791890157.0, "build_run_id": 38374334159}
+
+## out/timeline.jsonl
+{"phase": "capture.start", "utc": "2026-10-13T11:15:58Z", "epoch": 1791890158.3, "mode": "cached", "sha": ""}
+{"phase": "capture.unpacked", "utc": "2026-10-13T11:15:58Z", "epoch": 1791890158.7}
+{"phase": "capture.installed", "utc": "2026-10-13T11:16:58Z", "epoch": 1791890218.5}
+{"phase": "aircraft-tamm.launched", "utc": "2026-10-13T11:18:06Z", "epoch": 1791890287.0}
+{"phase": "aircraft-tamm.raw_ready", "utc": "2026-10-13T11:18:14Z", "epoch": 1791890294.5, "screenshot_sec": 4.8, "red_level": 43.8}
+{"phase": "aircraft-tamm.done", "utc": "2026-10-13T11:18:16Z", "epoch": 1791890296.5}
+{"phase": "capture.end", "utc": "2026-10-13T11:18:16Z", "epoch": 1791890296.5, "status": "PASS"}
+
+## out/proof.json
+{
+  "status": "PASS",
+  "stage": "done",
+  "mode": "cached",
+  "pr_sha": null,
+  "pr_number": null,
+  "head_ref": null,
+  "build_run_id": null,
+  "artifact_id": null,
+  "session_run_id": null,
+  "ci_run_created": null,
+  "source": null,
+  "built_commit": null,
+  "built_ref": null,
+  "build_sec": null,
+  "target": "iPad Pro 12.9-inch, landscape, dark",
+  "shots": [
+    {
+      "name": "aircraft-tamm",
+      "args": [
+        "--aerouchet-ci-aircraft-tamm"
+      ],
+      "settle_sec": 2,
+      "raw_red_level": 43.8,
+      "rotation_repairs": 0,
+      "screenshot_sec": 4.8,
+      "image": "aircraft-tamm.jpg",
+      "layout": {
+        "skipped": "Pillow not installed: layout check skipped"
+      }
+    }
+  ],
+  "device": {
+    "name": "iPad Pro (12.9-inch) (3rd generation)",
+    "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+    "how": "restored from cache"
+  },
+  "appearance": "dark",
+  "capture_sec": 138.2,
+  "shot_ready_utc": "2026-10-13T11:18:16Z",
+  "shot_ready_epoch": 1791890296.5
+}
+
+## state/device.json
+{
+  "name": "iPad Pro (12.9-inch) (3rd generation)",
+  "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+  "how": "restored from cache"
+}

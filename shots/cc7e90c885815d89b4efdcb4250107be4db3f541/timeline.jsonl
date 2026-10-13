@@ -1,0 +1,7 @@
+{"phase": "capture.start", "utc": "2026-10-13T13:12:01Z", "epoch": 1791897121.8, "since_t0_sec": 486.8, "mode": "warm", "sha": "cc7e90c88581"}
+{"phase": "capture.unpacked", "utc": "2026-10-13T13:12:01Z", "epoch": 1791897121.8, "since_t0_sec": 486.8}
+{"phase": "capture.installed", "utc": "2026-10-13T13:12:26Z", "epoch": 1791897146.2, "since_t0_sec": 511.2}
+{"phase": "home.launched", "utc": "2026-10-13T13:12:32Z", "epoch": 1791897152.5, "since_t0_sec": 517.5}
+{"phase": "home.raw_ready", "utc": "2026-10-13T13:12:39Z", "epoch": 1791897159.9, "since_t0_sec": 524.9, "screenshot_sec": 2.8, "red_level": 38.9}
+{"phase": "home.done", "utc": "2026-10-13T13:12:42Z", "epoch": 1791897162.6, "since_t0_sec": 527.6}
+{"phase": "capture.end", "utc": "2026-10-13T13:12:42Z", "epoch": 1791897162.6, "since_t0_sec": 527.6, "status": "PASS"}

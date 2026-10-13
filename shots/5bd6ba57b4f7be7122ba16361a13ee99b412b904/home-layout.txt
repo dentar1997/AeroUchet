@@ -1,0 +1,20 @@
+Screen 1366×1024 pt, 14 text rows
+  y=    9.5 h=13.0  2 blobs, centres x: 97, 1290.5
+  y=   63.0 h=21.0  6 blobs, centres x: 353, 498, 664.8, 798, 916, 1033.2
+  y=  129.5 h=41.0  1 blobs, centres x: 133.8
+  y=  209.5 h=14.0  1 blobs, centres x: 68
+  y=  257.5 h=27.0  1 blobs, centres x: 122.2
+  y=  318.5 h=19.5  1 blobs, centres x: 95.2
+  y=  391.5 h=45.5  6 blobs, centres x: 60.2, 285.8, 506.2, 732, 957.2, 1175.5
+  y=  440.5 h=50.5  6 blobs, centres x: 100.2, 318.2, 526.8, 790, 981.2, 1202.8
+  y=  499.5 h=39.0  6 blobs, centres x: 95.5, 307.2, 528.2, 754.2, 977.5, 1200.5
+  y=  601.0 h=25.0  1 blobs, centres x: 153
+  y=  682.0 h=51.0  2 blobs, centres x: 62.2, 233.5
+  y=  808.0 h=51.0  2 blobs, centres x: 62.2, 231.8
+  y=  934.0 h=51.0  2 blobs, centres x: 62.2, 232.2
+  y= 1004.5 h=15.0  1 blobs, centres x: 1353.8
+Column alignment of table-like row pairs (c=centre, l=left, r=right edge):
+  OK  rows y=440.5/499.5: l+0.5, l-1, l+1, l-1, l+0.5, l+0.5 pt
+Uneven rows — hints, check by eye (same-size elements whose bottoms differ > 5 pt):
+  HINT row y=391.5: 6 elements, bottoms differ by 16.5 pt (x=[60.2, 285.8, 506.2, 732.0, 957.2, 1175.5], bottom=[422.0, 436.5, 436.5, 436.0, 420.0, 424.0])
+  HINT row y=499.5: 6 elements, bottoms differ by 17 pt (x=[95.5, 307.2, 528.2, 754.2, 977.5, 1200.5], bottom=[536.0, 521.5, 521.5, 521.0, 534.0, 538.0])

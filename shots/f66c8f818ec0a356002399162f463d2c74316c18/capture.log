@@ -1,0 +1,17 @@
+[13:14:23] TIMELINE {"phase": "capture.start", "utc": "2026-10-13T13:14:23Z", "epoch": 1791897263.5, "since_t0_sec": 628.5, "mode": "warm", "sha": "f66c8f818ec0"}
+[13:14:23] TIMELINE {"phase": "capture.unpacked", "utc": "2026-10-13T13:14:23Z", "epoch": 1791897263.6, "since_t0_sec": 628.6}
+[13:14:25] $ xcrun simctl install A517EEF8-1B68-46A6-8834-541825C72A4C '/Users/runner/work/_temp/warm-ipad/shots/f66c8f818ec0/out/_app/АэроУчёт.app'  [1.9s, rc=0]
+[13:14:25] TIMELINE {"phase": "capture.installed", "utc": "2026-10-13T13:14:25Z", "epoch": 1791897265.4, "since_t0_sec": 630.4}
+[13:14:26] $ xcrun simctl ui A517EEF8-1B68-46A6-8834-541825C72A4C appearance  [0.7s, rc=0]
+[13:14:26]   dark
+[13:14:33] $ xcrun simctl launch --terminate-running-process A517EEF8-1B68-46A6-8834-541825C72A4C local.aerouchet.simulator --aerouchet-ci-demo  [7.0s, rc=0]
+[13:14:33]   local.aerouchet.simulator: 14909
+[13:14:33] TIMELINE {"phase": "home.launched", "utc": "2026-10-13T13:14:33Z", "epoch": 1791897273.1, "since_t0_sec": 638.1}
+[13:14:39] $ xcrun simctl io A517EEF8-1B68-46A6-8834-541825C72A4C screenshot /Users/runner/work/_temp/warm-ipad/shots/f66c8f818ec0/out/home-raw.png  [2.7s, rc=0]
+[13:14:40] TIMELINE {"phase": "home.raw_ready", "utc": "2026-10-13T13:14:40Z", "epoch": 1791897280.4, "since_t0_sec": 645.4, "screenshot_sec": 2.7, "red_level": 38.9}
+[13:14:40] $ sips --rotate 90 --out /Users/runner/work/_temp/warm-ipad/shots/f66c8f818ec0/out/home.png /Users/runner/work/_temp/warm-ipad/shots/f66c8f818ec0/out/home-raw.png  [0.4s, rc=0]
+[13:14:41] $ sips -s format jpeg -s formatOptions 80 /Users/runner/work/_temp/warm-ipad/shots/f66c8f818ec0/out/home.png --out /Users/runner/work/_temp/warm-ipad/shots/f66c8f818ec0/out/home.jpg  [0.4s, rc=0]
+[13:14:41] $ /opt/homebrew/opt/python@3.14/bin/python3.14 /Users/runner/work/AeroUchet/AeroUchet/Scripts/ui_layout.py /Users/runner/work/_temp/warm-ipad/shots/f66c8f818ec0/out/home.png --json /Users/runner/work/_temp/warm-ipad/shots/f66c8f818ec0/out/home-layout.json  [0.6s, rc=0]
+[13:14:43] $ xcrun simctl spawn A517EEF8-1B68-46A6-8834-541825C72A4C launchctl list  [1.4s, rc=0]
+[13:14:43] TIMELINE {"phase": "home.done", "utc": "2026-10-13T13:14:43Z", "epoch": 1791897283.2, "since_t0_sec": 648.2}
+[13:14:43] TIMELINE {"phase": "capture.end", "utc": "2026-10-13T13:14:43Z", "epoch": 1791897283.2, "since_t0_sec": 648.2, "status": "PASS"}

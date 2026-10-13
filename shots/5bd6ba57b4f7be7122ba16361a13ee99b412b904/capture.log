@@ -1,0 +1,37 @@
+[13:13:17] TIMELINE {"phase": "capture.start", "utc": "2026-10-13T13:13:17Z", "epoch": 1791897198.0, "since_t0_sec": 563.0, "mode": "warm", "sha": "5bd6ba57b4f7"}
+[13:13:18] TIMELINE {"phase": "capture.unpacked", "utc": "2026-10-13T13:13:18Z", "epoch": 1791897198.0, "since_t0_sec": 563.0}
+[13:13:22] $ xcrun simctl install A517EEF8-1B68-46A6-8834-541825C72A4C '/Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/_app/АэроУчёт.app'  [4.4s, rc=0]
+[13:13:22] TIMELINE {"phase": "capture.installed", "utc": "2026-10-13T13:13:22Z", "epoch": 1791897202.4, "since_t0_sec": 567.4}
+[13:13:23] $ xcrun simctl ui A517EEF8-1B68-46A6-8834-541825C72A4C appearance  [0.8s, rc=0]
+[13:13:23]   dark
+[13:13:27] $ xcrun simctl launch --terminate-running-process A517EEF8-1B68-46A6-8834-541825C72A4C local.aerouchet.simulator --aerouchet-ci-demo  [4.1s, rc=0]
+[13:13:27]   local.aerouchet.simulator: 12269
+[13:13:27] TIMELINE {"phase": "home.launched", "utc": "2026-10-13T13:13:27Z", "epoch": 1791897207.4, "since_t0_sec": 572.4}
+[13:13:32] $ xcrun simctl io A517EEF8-1B68-46A6-8834-541825C72A4C screenshot /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home-raw.png  [0.8s, rc=0]
+[13:13:32] TIMELINE {"phase": "home.raw_ready", "utc": "2026-10-13T13:13:32Z", "epoch": 1791897212.5, "since_t0_sec": 577.5, "screenshot_sec": 0.8, "red_level": 3.0}
+[13:13:32] home: portrait letterbox (red 3.0); Rotate Right repair 1
+[13:13:34] $ osascript -  [2.3s, rc=0]
+[13:13:34]   menu item Rotate Right of menu Device of menu bar item Device of menu bar 1 of application process Simulator
+[13:13:38] $ xcrun simctl io A517EEF8-1B68-46A6-8834-541825C72A4C screenshot /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home-raw.png  [0.6s, rc=0]
+[13:13:38] TIMELINE {"phase": "home.raw_retry", "utc": "2026-10-13T13:13:38Z", "epoch": 1791897218.7, "since_t0_sec": 583.7, "attempt": 1, "screenshot_sec": 0.6, "red_level": 3.0}
+[13:13:38] home: portrait letterbox (red 3.0); Rotate Right repair 2
+[13:13:38] $ osascript -  [0.2s, rc=0]
+[13:13:38]   menu item Rotate Right of menu Device of menu bar item Device of menu bar 1 of application process Simulator
+[13:13:43] $ xcrun simctl io A517EEF8-1B68-46A6-8834-541825C72A4C screenshot /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home-raw.png  [1.0s, rc=0]
+[13:13:43] TIMELINE {"phase": "home.raw_retry", "utc": "2026-10-13T13:13:43Z", "epoch": 1791897223.3, "since_t0_sec": 588.3, "attempt": 2, "screenshot_sec": 1.0, "red_level": 3.0}
+[13:13:43] home: portrait letterbox (red 3.0); Rotate Right repair 3
+[13:13:43] $ osascript -  [0.4s, rc=0]
+[13:13:43]   menu item Rotate Right of menu Device of menu bar item Device of menu bar 1 of application process Simulator
+[13:13:48] $ xcrun simctl io A517EEF8-1B68-46A6-8834-541825C72A4C screenshot /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home-raw.png  [1.5s, rc=0]
+[13:13:48] TIMELINE {"phase": "home.raw_retry", "utc": "2026-10-13T13:13:48Z", "epoch": 1791897228.7, "since_t0_sec": 593.7, "attempt": 3, "screenshot_sec": 1.5, "red_level": 0.0}
+[13:13:48] home: portrait letterbox (red 0.0); Rotate Right repair 4
+[13:13:49] $ osascript -  [0.3s, rc=0]
+[13:13:49]   menu item Rotate Right of menu Device of menu bar item Device of menu bar 1 of application process Simulator
+[13:13:52] $ xcrun simctl io A517EEF8-1B68-46A6-8834-541825C72A4C screenshot /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home-raw.png  [0.6s, rc=0]
+[13:13:52] TIMELINE {"phase": "home.raw_retry", "utc": "2026-10-13T13:13:52Z", "epoch": 1791897232.9, "since_t0_sec": 597.9, "attempt": 4, "screenshot_sec": 0.6, "red_level": 38.9}
+[13:13:53] $ sips --rotate 90 --out /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home.png /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home-raw.png  [0.3s, rc=0]
+[13:13:53] $ sips -s format jpeg -s formatOptions 80 /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home.png --out /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home.jpg  [0.1s, rc=0]
+[13:13:53] $ /opt/homebrew/opt/python@3.14/bin/python3.14 /Users/runner/work/AeroUchet/AeroUchet/Scripts/ui_layout.py /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home.png --json /Users/runner/work/_temp/warm-ipad/shots/5bd6ba57b4f7/out/home-layout.json  [0.3s, rc=0]
+[13:13:54] $ xcrun simctl spawn A517EEF8-1B68-46A6-8834-541825C72A4C launchctl list  [0.9s, rc=0]
+[13:13:54] TIMELINE {"phase": "home.done", "utc": "2026-10-13T13:13:54Z", "epoch": 1791897234.5, "since_t0_sec": 599.5}
+[13:13:54] TIMELINE {"phase": "capture.end", "utc": "2026-10-13T13:13:54Z", "epoch": 1791897234.5, "since_t0_sec": 599.5, "status": "PASS"}

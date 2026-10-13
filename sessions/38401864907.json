@@ -1,0 +1,194 @@
+{
+  "state": "ended",
+  "session_run_id": "38401864907",
+  "request_epoch": 1791896635,
+  "started_utc": "2026-10-13T13:03:55Z",
+  "local_build": true,
+  "prepare_status": "READY",
+  "prepare_timeline": [
+    {
+      "phase": "prepare.start",
+      "utc": "2026-10-13T13:03:55Z",
+      "epoch": 1791896635.5,
+      "since_t0_sec": 0.5,
+      "visual": true,
+      "settle": true
+    },
+    {
+      "phase": "prepare.device_selected",
+      "utc": "2026-10-13T13:04:07Z",
+      "epoch": 1791896647.0,
+      "since_t0_sec": 12.0,
+      "device": "iPad Pro (12.9-inch) (3rd generation)",
+      "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+      "how": "created"
+    },
+    {
+      "phase": "prepare.booted",
+      "utc": "2026-10-13T13:06:36Z",
+      "epoch": 1791896796.1,
+      "since_t0_sec": 161.1
+    },
+    {
+      "phase": "prepare.dark",
+      "utc": "2026-10-13T13:07:27Z",
+      "epoch": 1791896847.3,
+      "since_t0_sec": 212.3,
+      "appearance": "dark"
+    },
+    {
+      "phase": "prepare.gui_open",
+      "utc": "2026-10-13T13:07:31Z",
+      "epoch": 1791896851.3,
+      "since_t0_sec": 216.3
+    },
+    {
+      "phase": "prepare.rotate_requested",
+      "utc": "2026-10-13T13:07:42Z",
+      "epoch": 1791896862.4,
+      "since_t0_sec": 227.4,
+      "osascript_attempts": 1
+    },
+    {
+      "phase": "settle.base_checked_out",
+      "utc": "2026-10-13T13:07:54Z",
+      "epoch": 1791896874.4,
+      "since_t0_sec": 239.4,
+      "commit": "b8a0758baee3"
+    },
+    {
+      "phase": "settle.base_built",
+      "utc": "2026-10-13T13:09:15Z",
+      "epoch": 1791896955.2,
+      "since_t0_sec": 320.2,
+      "kind": "ok",
+      "build_sec": 80.8
+    },
+    {
+      "phase": "settle.warm_app_installed",
+      "utc": "2026-10-13T13:09:56Z",
+      "epoch": 1791896997.0,
+      "since_t0_sec": 362.0,
+      "source": "prebuilt main"
+    },
+    {
+      "phase": "warmup.launched",
+      "utc": "2026-10-13T13:11:04Z",
+      "epoch": 1791897064.9,
+      "since_t0_sec": 429.9
+    },
+    {
+      "phase": "warmup.raw_ready",
+      "utc": "2026-10-13T13:11:22Z",
+      "epoch": 1791897082.9,
+      "since_t0_sec": 447.9,
+      "screenshot_sec": 15.5,
+      "red_level": 43.8
+    },
+    {
+      "phase": "warmup.done",
+      "utc": "2026-10-13T13:11:24Z",
+      "epoch": 1791897084.7,
+      "since_t0_sec": 449.7
+    },
+    {
+      "phase": "settle.second_screenshot",
+      "utc": "2026-10-13T13:11:29Z",
+      "epoch": 1791897089.1,
+      "since_t0_sec": 454.1,
+      "screenshot_sec": 4.4
+    },
+    {
+      "phase": "settle.done",
+      "utc": "2026-10-13T13:11:30Z",
+      "epoch": 1791897090.9,
+      "since_t0_sec": 455.9
+    },
+    {
+      "phase": "prepare.ready",
+      "utc": "2026-10-13T13:11:30Z",
+      "epoch": 1791897090.9,
+      "since_t0_sec": 455.9
+    }
+  ],
+  "orientation": {
+    "name": "warmup",
+    "args": [
+      "--aerouchet-ci-aircraft-tamm"
+    ],
+    "settle_sec": 2,
+    "raw_red_level": 43.8,
+    "rotation_repairs": 0,
+    "screenshot_sec": 15.5
+  },
+  "served": [
+    {
+      "sha": "cc7e90c885815d89b4efdcb4250107be4db3f541",
+      "pr": 212,
+      "status": "PASS",
+      "stage": "done",
+      "source": "session-build",
+      "build_sec": 21.7,
+      "capture_sec": 40.8,
+      "seen_to_shot_sec": 523.9,
+      "ci_run_to_shot_sec": 595.6,
+      "published": true,
+      "ci_run_to_published_sec": 604.2,
+      "seen_utc": "2026-10-13T13:03:58Z"
+    },
+    {
+      "sha": "5bd6ba57b4f7be7122ba16361a13ee99b412b904",
+      "pr": 211,
+      "status": "PASS",
+      "stage": "done",
+      "source": "session-build",
+      "build_sec": 23.7,
+      "capture_sec": 36.5,
+      "seen_to_shot_sec": 61.8,
+      "ci_run_to_shot_sec": 728.5,
+      "published": true,
+      "ci_run_to_published_sec": 733.4,
+      "seen_utc": "2026-10-13T13:12:52Z",
+      "pause_before_min": 0.0,
+      "kept_warm_beyond_25_min": false
+    },
+    {
+      "sha": "f66c8f818ec0a356002399162f463d2c74316c18",
+      "pr": 212,
+      "status": "PASS",
+      "stage": "done",
+      "source": "session-build",
+      "build_sec": 19.1,
+      "capture_sec": 19.7,
+      "seen_to_shot_sec": 40.8,
+      "ci_run_to_shot_sec": 50.2,
+      "published": true,
+      "ci_run_to_published_sec": 54.9,
+      "seen_utc": "2026-10-13T13:14:02Z",
+      "pause_before_min": 0.0,
+      "kept_warm_beyond_25_min": false
+    },
+    {
+      "sha": "509e15596471e5d0d8add40651bdc490416fa36a",
+      "pr": 212,
+      "status": "PASS",
+      "stage": "done",
+      "source": "session-build",
+      "build_sec": 30.0,
+      "capture_sec": 17.7,
+      "seen_to_shot_sec": 52.5,
+      "ci_run_to_shot_sec": 49.2,
+      "published": true,
+      "ci_run_to_published_sec": 56.3,
+      "seen_utc": "2026-10-13T13:15:14Z",
+      "pause_before_min": 0.4,
+      "kept_warm_beyond_25_min": false
+    }
+  ],
+  "end_reason": "idle",
+  "idle_minutes": 120.0,
+  "max_minutes": 330,
+  "kept_warm_beyond_25_min": 0,
+  "api_remaining": 5000,
+  "updated_utc": "2026-10-13T15:16:18Z"
+}

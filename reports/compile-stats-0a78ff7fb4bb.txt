@@ -1,0 +1,47 @@
+Swift frontend jobs: 5; sum of per-file wall time: 20.9 s (arm64, -disable-batch-mode, -Onone)
+
+Per file (total frontend wall time):
+    6.69 s  32.0%  AssignmentPlan.swift                       perform-sema 6.7, Type checking and Semantic analysis 6.7, typecheck-stmt 2.9, typecheck-expr 2.3
+    6.36 s  30.4%  Absences.swift                             perform-sema 6.4, Type checking and Semantic analysis 6.4, typecheck-stmt 4.1, SILGen 3.9
+    5.66 s  27.1%  PlanAssignmentRowV119.swift                perform-sema 5.7, Type checking and Semantic analysis 5.7, typecheck-stmt 3.9, typecheck-expr 2.8
+    2.20 s  10.5%  stats-1791880224413345-swift-frontend-________________-all-arm64_apple_ios26.0_simulator-swiftmodule-Onone-404691521.json perform-sema 2.2, Type checking and Semantic analysis 2.2, typecheck-decl 2.2, typecheck-expr 0.9
+    0.00 s   0.0%  stats-1791880218666809-swift-frontend-________________-all-arm64_apple_ios26.0_simulator--Onone-2524666913.json 
+
+Phase totals across files:
+     20.9 s  perform-sema
+     20.9 s  Type checking and Semantic analysis
+     10.8 s  typecheck-stmt
+      8.6 s  typecheck-expr
+      7.6 s  SILGen
+      6.8 s  SILGen-function
+      6.7 s  typecheck-decl
+      6.0 s  IRGen
+      2.3 s  precheck-target
+      1.7 s  SIL optimization
+      1.1 s  build-rewrite-system
+      0.9 s  import-clang-decl
+      0.6 s  parse-and-resolve-imports
+      0.5 s  Import resolution
+      0.1 s  Serialization, swiftmodule
+      0.1 s  typecheck-for-each
+      0.1 s  typecheck-expr-pattern
+      0.1 s  load-all-members
+      0.0 s  definite-init
+      0.0 s  Serialization, swiftsourceinfo
+      0.0 s  load-stdlib
+      0.0 s  Serialization, swiftdoc
+      0.0 s  get-conformance-access-path
+      0.0 s  module-populate-cache
+      0.0 s  associated-type-inference
+
+xcodebuild timing summary:
+  SwiftCompile (3 tasks) | 61.995 seconds
+  SwiftEmitModule (1 task) | 3.442 seconds
+  SwiftDriver (1 task) | 2.413 seconds
+  Ld (1 task) | 0.789 seconds
+  Copy (4 tasks) | 0.042 seconds
+  RegisterExecutionPolicyException (1 task) | 0.025 seconds
+  SwiftDriver Compilation Requirements (1 task) | 0.007 seconds
+  WriteAuxiliaryFile (6 tasks) | 0.002 seconds
+  SwiftDriver Compilation (1 task) | 0.001 seconds
+  ** BUILD SUCCEEDED **

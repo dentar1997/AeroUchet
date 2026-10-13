@@ -1,0 +1,29 @@
+[12:59:50] TIMELINE {"phase": "capture.start", "utc": "2026-10-13T12:59:50Z", "epoch": 1791896390.4, "since_t0_sec": 711.4, "mode": "warm", "sha": "bf8057322fd8"}
+[12:59:50] TIMELINE {"phase": "capture.unpacked", "utc": "2026-10-13T12:59:50Z", "epoch": 1791896390.4, "since_t0_sec": 711.4}
+[12:59:52] $ xcrun simctl terminate 1B09EAA8-A9E9-437A-A7AB-9B26BB88950F local.aerouchet.simulator  [1.9s, rc=0]
+[12:59:54] $ xcrun simctl uninstall 1B09EAA8-A9E9-437A-A7AB-9B26BB88950F local.aerouchet.simulator  [2.5s, rc=0]
+[12:59:59] $ xcrun simctl install 1B09EAA8-A9E9-437A-A7AB-9B26BB88950F '/Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/_app/АэроУчёт.app'  [4.3s, rc=0]
+[12:59:59] TIMELINE {"phase": "capture.installed", "utc": "2026-10-13T12:59:59Z", "epoch": 1791896399.3, "since_t0_sec": 720.3}
+[13:00:00] $ xcrun simctl ui 1B09EAA8-A9E9-437A-A7AB-9B26BB88950F appearance  [0.7s, rc=0]
+[13:00:00]   dark
+[13:00:03] $ xcrun simctl launch --terminate-running-process 1B09EAA8-A9E9-437A-A7AB-9B26BB88950F local.aerouchet.simulator --aerouchet-ci-demo  [3.1s, rc=0]
+[13:00:03]   local.aerouchet.simulator: 19953
+[13:00:03] TIMELINE {"phase": "home.launched", "utc": "2026-10-13T13:00:03Z", "epoch": 1791896403.2, "since_t0_sec": 724.2}
+[13:00:10] $ xcrun simctl io 1B09EAA8-A9E9-437A-A7AB-9B26BB88950F screenshot /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/home-raw.png  [2.7s, rc=0]
+[13:00:10] TIMELINE {"phase": "home.raw_ready", "utc": "2026-10-13T13:00:10Z", "epoch": 1791896410.6, "since_t0_sec": 731.6, "screenshot_sec": 2.7, "red_level": 38.9}
+[13:00:11] $ sips --rotate 90 --out /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/home.png /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/home-raw.png  [0.7s, rc=0]
+[13:00:11] $ sips -s format jpeg -s formatOptions 80 /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/home.png --out /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/home.jpg  [0.2s, rc=0]
+[13:00:12] $ /opt/homebrew/opt/python@3.14/bin/python3.14 /Users/runner/work/AeroUchet/AeroUchet/Scripts/ui_layout.py /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/home.png --json /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/home-layout.json  [0.8s, rc=0]
+[13:00:13] $ xcrun simctl spawn 1B09EAA8-A9E9-437A-A7AB-9B26BB88950F launchctl list  [1.4s, rc=0]
+[13:00:13] TIMELINE {"phase": "home.done", "utc": "2026-10-13T13:00:13Z", "epoch": 1791896413.7, "since_t0_sec": 734.7}
+[13:00:15] $ xcrun simctl launch --terminate-running-process 1B09EAA8-A9E9-437A-A7AB-9B26BB88950F local.aerouchet.simulator --aerouchet-ci-aircraft-tamm  [2.2s, rc=0]
+[13:00:15]   local.aerouchet.simulator: 20071
+[13:00:16] TIMELINE {"phase": "aircraft-tamm.launched", "utc": "2026-10-13T13:00:15Z", "epoch": 1791896416.0, "since_t0_sec": 737.0}
+[13:00:19] $ xcrun simctl io 1B09EAA8-A9E9-437A-A7AB-9B26BB88950F screenshot /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/aircraft-tamm-raw.png  [1.4s, rc=0]
+[13:00:20] TIMELINE {"phase": "aircraft-tamm.raw_ready", "utc": "2026-10-13T13:00:20Z", "epoch": 1791896420.2, "since_t0_sec": 741.2, "screenshot_sec": 1.4, "red_level": 43.8}
+[13:00:20] $ sips --rotate 90 --out /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/aircraft-tamm.png /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/aircraft-tamm-raw.png  [0.6s, rc=0]
+[13:00:21] $ sips -s format jpeg -s formatOptions 80 /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/aircraft-tamm.png --out /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/aircraft-tamm.jpg  [0.2s, rc=0]
+[13:00:21] $ /opt/homebrew/opt/python@3.14/bin/python3.14 /Users/runner/work/AeroUchet/AeroUchet/Scripts/ui_layout.py /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/aircraft-tamm.png --json /Users/runner/work/_temp/warm-ipad/shots/bf8057322fd8/out/aircraft-tamm-layout.json  [0.5s, rc=0]
+[13:00:22] $ xcrun simctl spawn 1B09EAA8-A9E9-437A-A7AB-9B26BB88950F launchctl list  [1.0s, rc=0]
+[13:00:22] TIMELINE {"phase": "aircraft-tamm.done", "utc": "2026-10-13T13:00:22Z", "epoch": 1791896422.5, "since_t0_sec": 743.5}
+[13:00:22] TIMELINE {"phase": "capture.end", "utc": "2026-10-13T13:00:22Z", "epoch": 1791896422.6, "since_t0_sec": 743.6, "status": "PASS"}

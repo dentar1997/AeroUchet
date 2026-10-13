@@ -1,0 +1,91 @@
+Type-check time of function bodies: 12.5 s total (arm64, one pass)
+
+Per file:
+     2.51 s   20.1%  AppViews.swift
+     1.86 s   15.0%  ReferenceDataV129.swift
+     1.40 s   11.2%  AssignmentsView.swift
+     0.96 s    7.7%  FlightNorms.swift
+     0.68 s    5.4%  AssignmentImportV119.swift
+     0.64 s    5.1%  ScheduleCalendar.swift
+     0.62 s    5.0%  AssignmentPlan.swift
+     0.45 s    3.6%  CalendarView.swift
+     0.38 s    3.0%  AssignmentEventAppearance.swift
+     0.33 s    2.6%  PlanAssignmentRowV119.swift
+     0.33 s    2.6%  SettingsView.swift
+     0.31 s    2.5%  AeroCore.swift
+     0.29 s    2.3%  PortalFlightHistory.swift
+     0.28 s    2.2%  PerspectivePlanV119.swift
+     0.22 s    1.8%  AssignmentsSettings.swift
+     0.19 s    1.5%  InlineFlightDateTimeCell.swift
+     0.18 s    1.4%  Absences.swift
+     0.18 s    1.4%  PerspectiveDutyBridgeV129.swift
+     0.15 s    1.2%  AccountingView.swift
+     0.13 s    1.0%  WorkPlanMediaImporter.swift
+     0.09 s    0.7%  AeroInputControls.swift
+     0.07 s    0.5%  ProductionCalendar.swift
+     0.05 s    0.4%  ContentView.swift
+     0.05 s    0.4%  ProductionCalendarUpdater.swift
+     0.04 s    0.3%  StorageSafety.swift
+     0.02 s    0.2%  AirportDatabase.swift
+     0.02 s    0.2%  MyApp.swift
+     0.02 s    0.1%  AeroTimeMath.swift
+     0.01 s    0.1%  AeroDateParsing.swift
+     0.00 s    0.0%  SourceMaintenance.swift
+     0.00 s    0.0%  AppVersion.swift
+
+Slowest 40 functions:
+       739 ms  AssignmentsView.swift:356  getter АэроУчёт.(file).ImportedPlanAssignmentsView.body.getter@/Users/runner/work/AeroUche
+       637 ms  AppViews.swift:308  getter АэроУчёт.(file).FlightsView.body.getter@/Users/runner/work/AeroUchet/AeroUchet/AppV
+       367 ms  ReferenceDataV129.swift:1983  instance method АэроУчёт.(file).FlightScheduleDatabaseV130View.tablePane(isWide:route:rows
+       264 ms  FlightNorms.swift:1057  getter АэроУчёт.(file).FlightNormsView.body.getter@/Users/runner/work/AeroUchet/AeroUchet/
+       251 ms  SettingsView.swift:400  getter АэроУчёт.(file).ProductionCalendarSettingsView.body.getter@/Users/runner/work/AeroU
+       209 ms  AssignmentsView.swift:126  getter АэроУчёт.(file).CurrentPlanAssignmentsView.body.getter@/Users/runner/work/AeroUchet
+       180 ms  AppViews.swift:1146  getter АэроУчёт.(file).DutyDetailView.body.getter@/Users/runner/work/AeroUchet/AeroUchet/A
+       169 ms  AssignmentsView.swift:866  getter АэроУчёт.(file).AccordWorkPlanView.body.getter@/Users/runner/work/AeroUchet/AeroUch
+       168 ms  ReferenceDataV129.swift:2309  getter АэроУчёт.(file).FlightScheduleSettingsV129View.body.getter@/Users/runner/work/AeroU
+       142 ms  FlightNorms.swift:1335  getter АэроУчёт.(file).FlightNormVersionDetailView.body.getter@/Users/runner/work/AeroUche
+       141 ms  ReferenceDataV129.swift:802  static method АэроУчёт.(file).FlightScheduleXLSParserV129.parse@/Users/runner/work/AeroUch
+       128 ms  CalendarView.swift:1895  getter АэроУчёт.(file).CalendarDayDetail.body.getter@/Users/runner/work/AeroUchet/AeroUche
+       126 ms  PortalFlightHistory.swift:28  static method АэроУчёт.(file).PortalFlightHistory.parse@/Users/runner/work/AeroUchet/AeroU
+       125 ms  AssignmentsSettings.swift:12  getter АэроУчёт.(file).SettingsRootV116View.body.getter@/Users/runner/work/AeroUchet/AeroU
+       125 ms  AssignmentImportV119.swift:682  getter АэроУчёт.(file).AssignmentConflictResolverView.body.getter@/Users/runner/work/AeroU
+       119 ms  AssignmentEventAppearance.swift:695  getter АэроУчёт.(file).EventAppearanceEditorView.compositeEditor.getter@/Users/runner/work
+       114 ms  PlanAssignmentRowV119.swift:406  getter АэроУчёт.(file).PlanAssignmentRowV119.groundDetail.getter@/Users/runner/work/AeroUc
+       113 ms  ScheduleCalendar.swift:483  getter АэроУчёт.(file).DrumColumn.body.getter@/Users/runner/work/AeroUchet/AeroUchet/Sched
+       113 ms  ReferenceDataV129.swift:2187  instance method АэроУчёт.(file).FlightScheduleDatabaseV130View.scheduleRow(_:expanded:)@/U
+       108 ms  InlineFlightDateTimeCell.swift:44  getter АэроУчёт.(file).InlineFlightDateTimeCell.body.getter@/Users/runner/work/AeroUchet/A
+       104 ms  ReferenceDataV129.swift:1188  getter АэроУчёт.(file).AircraftReferenceSettingsV129View.body.getter@/Users/runner/work/Ae
+        92 ms  AssignmentsView.swift:674  instance method АэроУчёт.(file).PerspectivePlanMonthCardsView.monthCard@/Users/runner/work
+        91 ms  AssignmentImportV119.swift:171  static method АэроУчёт.(file).PerspectivePlanImportEnricher.enrichRoute(item:rawContent:)@
+        89 ms  AppViews.swift:1865  instance method АэроУчёт.(file).DutyDetailView.dutyCard@/Users/runner/work/AeroUchet/AeroU
+        83 ms  AssignmentImportV119.swift:618  static method АэроУчёт.(file).AssignmentImportICSBridge.summary(for:)@/Users/runner/work/A
+        82 ms  CalendarView.swift:381  getter АэроУчёт.(file).CalendarView.body.getter@/Users/runner/work/AeroUchet/AeroUchet/Cal
+        80 ms  AppViews.swift:1210  instance method АэроУчёт.(file).DutyDetailView.assignmentHeader@/Users/runner/work/AeroUch
+        72 ms  AppViews.swift:1841  instance method АэроУчёт.(file).DutyDetailView.writeDutyTime(_:index:point:)@/Users/runner
+        72 ms  ReferenceDataV129.swift:1372  instance method АэроУчёт.(file).AircraftReferenceSettingsV129View.aircraftRow(_:widths:)@/
+        70 ms  ScheduleCalendar.swift:1000  instance method АэроУчёт.(file).ScheduleLightBlur.BlurView.refresh()@/Users/runner/work/Ae
+        67 ms  ReferenceDataV129.swift:1770  instance method АэроУчёт.(file).FlightScheduleDatabaseV130View.computeHighlight(rows:)@/Us
+        66 ms  AssignmentImportV119.swift:550  static method АэроУчёт.(file).AssignmentImportDraft.normalizedFlights@/Users/runner/work/A
+        64 ms  AssignmentsSettings.swift:152  getter АэроУчёт.(file).PilotPlanSettingsView.body.getter@/Users/runner/work/AeroUchet/Aero
+        62 ms  AppViews.swift:253  getter АэроУчёт.(file).FlightsView.visibleDuties.getter@/Users/runner/work/AeroUchet/AeroU
+        58 ms  ScheduleCalendar.swift:1185  getter АэроУчёт.(file).GlassAppearanceSettingsView.sampleCalendar.getter@/Users/runner/wor
+        54 ms  Absences.swift:693  getter АэроУчёт.(file).AddAbsenceView.body.getter@/Users/runner/work/AeroUchet/AeroUchet/A
+        53 ms  ReferenceDataV129.swift:384  instance method АэроУчёт.(file).FlightScheduleStoreV129.importXLS(data:sourceName:)@/Users
+        51 ms  ScheduleCalendar.swift:39  getter АэроУчёт.(file).ScheduleMonthsCalendarView.body.getter@/Users/runner/work/AeroUchet
+        50 ms  ScheduleCalendar.swift:242  instance method АэроУчёт.(file).ScheduleMonthsCalendarView.monthSection@/Users/runner/work
+        50 ms  PortalFlightHistory.swift:282  static method АэроУчёт.(file).BIFFWorkbook.workbookStream(_:notWorkbook:)@/Users/runner/wo
+
+Slow-expression warnings (13):
+  AssignmentsView.swift:356  getter for property 'body' took 739ms to type-check (limit: 150ms)
+  AppViews.swift:308  getter for property 'body' took 636ms to type-check (limit: 150ms)
+  ReferenceDataV129.swift:1983  instance method 'tablePane(isWide:route:rows:filteredCount:)' took 367ms to type-check (limit: 150ms)
+  AirportDatabase.swift:39  expression took 268ms to type-check (limit: 100ms)
+  FlightNorms.swift:1057  getter for property 'body' took 263ms to type-check (limit: 150ms)
+  SettingsView.swift:400  getter for property 'body' took 251ms to type-check (limit: 150ms)
+  AssignmentsView.swift:126  getter for property 'body' took 208ms to type-check (limit: 150ms)
+  ReferenceDataV129.swift:149  expression took 194ms to type-check (limit: 100ms)
+  AppViews.swift:1146  getter for property 'body' took 180ms to type-check (limit: 150ms)
+  SettingsView.swift:436  expression took 179ms to type-check (limit: 100ms)
+  ReferenceDataV129.swift:2309  getter for property 'body' took 168ms to type-check (limit: 150ms)
+  AssignmentsView.swift:866  getter for property 'body' took 168ms to type-check (limit: 150ms)
+  AssignmentsView.swift:358  expression took 123ms to type-check (limit: 100ms)

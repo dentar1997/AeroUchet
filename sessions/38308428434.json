@@ -1,0 +1,131 @@
+{
+  "state": "ended",
+  "session_run_id": "38308428434",
+  "request_epoch": 1791839144,
+  "started_utc": "2026-10-12T21:05:44Z",
+  "local_build": true,
+  "prepare_status": "READY",
+  "prepare_timeline": [
+    {
+      "phase": "prepare.start",
+      "utc": "2026-10-12T21:05:44Z",
+      "epoch": 1791839144.2,
+      "since_t0_sec": 0.2,
+      "visual": true,
+      "settle": true
+    },
+    {
+      "phase": "prepare.device_selected",
+      "utc": "2026-10-12T21:05:51Z",
+      "epoch": 1791839151.5,
+      "since_t0_sec": 7.5,
+      "device": "iPad Pro (12.9-inch) (3rd generation)",
+      "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+      "how": "created"
+    },
+    {
+      "phase": "prepare.booted",
+      "utc": "2026-10-12T21:08:24Z",
+      "epoch": 1791839304.5,
+      "since_t0_sec": 160.5
+    },
+    {
+      "phase": "prepare.dark",
+      "utc": "2026-10-12T21:09:03Z",
+      "epoch": 1791839343.1,
+      "since_t0_sec": 199.1,
+      "appearance": "dark"
+    },
+    {
+      "phase": "prepare.gui_open",
+      "utc": "2026-10-12T21:09:06Z",
+      "epoch": 1791839346.1,
+      "since_t0_sec": 202.1
+    },
+    {
+      "phase": "prepare.rotate_requested",
+      "utc": "2026-10-12T21:09:13Z",
+      "epoch": 1791839353.1,
+      "since_t0_sec": 209.1,
+      "osascript_attempts": 1
+    },
+    {
+      "phase": "settle.base_checked_out",
+      "utc": "2026-10-12T21:09:14Z",
+      "epoch": 1791839354.5,
+      "since_t0_sec": 210.5,
+      "commit": "aa29669f7429"
+    },
+    {
+      "phase": "settle.base_built",
+      "utc": "2026-10-12T21:10:28Z",
+      "epoch": 1791839428.9,
+      "since_t0_sec": 284.9,
+      "kind": "ok",
+      "build_sec": 74.5
+    },
+    {
+      "phase": "settle.warm_app_installed",
+      "utc": "2026-10-12T21:11:16Z",
+      "epoch": 1791839476.8,
+      "since_t0_sec": 332.8,
+      "source": "prebuilt main"
+    },
+    {
+      "phase": "warmup.launched",
+      "utc": "2026-10-12T21:11:38Z",
+      "epoch": 1791839498.6,
+      "since_t0_sec": 354.6
+    },
+    {
+      "phase": "warmup.raw_ready",
+      "utc": "2026-10-12T21:11:57Z",
+      "epoch": 1791839517.3,
+      "since_t0_sec": 373.3,
+      "screenshot_sec": 15.0,
+      "red_level": 43.8
+    },
+    {
+      "phase": "warmup.done",
+      "utc": "2026-10-12T21:12:27Z",
+      "epoch": 1791839547.7,
+      "since_t0_sec": 403.7
+    },
+    {
+      "phase": "settle.second_screenshot",
+      "utc": "2026-10-12T21:12:31Z",
+      "epoch": 1791839551.9,
+      "since_t0_sec": 407.9,
+      "screenshot_sec": 4.2
+    },
+    {
+      "phase": "settle.done",
+      "utc": "2026-10-12T21:12:32Z",
+      "epoch": 1791839552.6,
+      "since_t0_sec": 408.6
+    },
+    {
+      "phase": "prepare.ready",
+      "utc": "2026-10-12T21:12:32Z",
+      "epoch": 1791839552.6,
+      "since_t0_sec": 408.6
+    }
+  ],
+  "orientation": {
+    "name": "warmup",
+    "args": [
+      "--aerouchet-ci-aircraft-tamm"
+    ],
+    "settle_sec": 2,
+    "raw_red_level": 43.8,
+    "rotation_repairs": 0,
+    "screenshot_sec": 15.0
+  },
+  "served": [],
+  "end_reason": "stop requested by run 38309227069",
+  "idle_minutes": 120.0,
+  "max_minutes": 330,
+  "kept_warm_beyond_25_min": 0,
+  "api_remaining": 4984,
+  "updated_utc": "2026-10-12T21:13:05Z"
+}

@@ -1,0 +1,19 @@
+[13:12:01] TIMELINE {"phase": "capture.start", "utc": "2026-10-13T13:12:01Z", "epoch": 1791897121.8, "since_t0_sec": 486.8, "mode": "warm", "sha": "cc7e90c88581"}
+[13:12:01] TIMELINE {"phase": "capture.unpacked", "utc": "2026-10-13T13:12:01Z", "epoch": 1791897121.8, "since_t0_sec": 486.8}
+[13:12:04] $ xcrun simctl terminate A517EEF8-1B68-46A6-8834-541825C72A4C local.aerouchet.simulator  [2.4s, rc=3]
+[13:12:15] $ xcrun simctl uninstall A517EEF8-1B68-46A6-8834-541825C72A4C local.aerouchet.simulator  [11.6s, rc=0]
+[13:12:26] $ xcrun simctl install A517EEF8-1B68-46A6-8834-541825C72A4C '/Users/runner/work/_temp/warm-ipad/shots/cc7e90c88581/out/_app/АэроУчёт.app'  [10.3s, rc=0]
+[13:12:26] TIMELINE {"phase": "capture.installed", "utc": "2026-10-13T13:12:26Z", "epoch": 1791897146.2, "since_t0_sec": 511.2}
+[13:12:29] $ xcrun simctl ui A517EEF8-1B68-46A6-8834-541825C72A4C appearance  [3.4s, rc=0]
+[13:12:29]   dark
+[13:12:32] $ xcrun simctl launch --terminate-running-process A517EEF8-1B68-46A6-8834-541825C72A4C local.aerouchet.simulator --aerouchet-ci-demo  [2.8s, rc=0]
+[13:12:32]   local.aerouchet.simulator: 10464
+[13:12:32] TIMELINE {"phase": "home.launched", "utc": "2026-10-13T13:12:32Z", "epoch": 1791897152.5, "since_t0_sec": 517.5}
+[13:12:39] $ xcrun simctl io A517EEF8-1B68-46A6-8834-541825C72A4C screenshot /Users/runner/work/_temp/warm-ipad/shots/cc7e90c88581/out/home-raw.png  [2.8s, rc=0]
+[13:12:39] TIMELINE {"phase": "home.raw_ready", "utc": "2026-10-13T13:12:39Z", "epoch": 1791897159.9, "since_t0_sec": 524.9, "screenshot_sec": 2.8, "red_level": 38.9}
+[13:12:40] $ sips --rotate 90 --out /Users/runner/work/_temp/warm-ipad/shots/cc7e90c88581/out/home.png /Users/runner/work/_temp/warm-ipad/shots/cc7e90c88581/out/home-raw.png  [0.6s, rc=0]
+[13:12:40] $ sips -s format jpeg -s formatOptions 80 /Users/runner/work/_temp/warm-ipad/shots/cc7e90c88581/out/home.png --out /Users/runner/work/_temp/warm-ipad/shots/cc7e90c88581/out/home.jpg  [0.3s, rc=0]
+[13:12:41] $ /opt/homebrew/opt/python@3.14/bin/python3.14 /Users/runner/work/AeroUchet/AeroUchet/Scripts/ui_layout.py /Users/runner/work/_temp/warm-ipad/shots/cc7e90c88581/out/home.png --json /Users/runner/work/_temp/warm-ipad/shots/cc7e90c88581/out/home-layout.json  [0.8s, rc=0]
+[13:12:42] $ xcrun simctl spawn A517EEF8-1B68-46A6-8834-541825C72A4C launchctl list  [1.0s, rc=0]
+[13:12:42] TIMELINE {"phase": "home.done", "utc": "2026-10-13T13:12:42Z", "epoch": 1791897162.6, "since_t0_sec": 527.6}
+[13:12:42] TIMELINE {"phase": "capture.end", "utc": "2026-10-13T13:12:42Z", "epoch": 1791897162.6, "since_t0_sec": 527.6, "status": "PASS"}

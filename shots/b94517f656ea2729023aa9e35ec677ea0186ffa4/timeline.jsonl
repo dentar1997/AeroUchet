@@ -1,0 +1,10 @@
+{"phase": "capture.start", "utc": "2026-10-13T12:57:48Z", "epoch": 1791896268.9, "since_t0_sec": 589.9, "mode": "warm", "sha": "b94517f656ea"}
+{"phase": "capture.unpacked", "utc": "2026-10-13T12:57:48Z", "epoch": 1791896268.9, "since_t0_sec": 589.9}
+{"phase": "capture.installed", "utc": "2026-10-13T12:58:26Z", "epoch": 1791896306.2, "since_t0_sec": 627.2}
+{"phase": "home.launched", "utc": "2026-10-13T12:58:30Z", "epoch": 1791896310.9, "since_t0_sec": 631.9}
+{"phase": "home.raw_ready", "utc": "2026-10-13T12:58:36Z", "epoch": 1791896316.3, "since_t0_sec": 637.3, "screenshot_sec": 1.1, "red_level": 38.9}
+{"phase": "home.done", "utc": "2026-10-13T12:58:37Z", "epoch": 1791896317.8, "since_t0_sec": 638.8}
+{"phase": "aircraft-tamm.launched", "utc": "2026-10-13T12:58:40Z", "epoch": 1791896320.0, "since_t0_sec": 641.0}
+{"phase": "aircraft-tamm.raw_ready", "utc": "2026-10-13T12:58:43Z", "epoch": 1791896323.9, "since_t0_sec": 644.9, "screenshot_sec": 1.4, "red_level": 43.8}
+{"phase": "aircraft-tamm.done", "utc": "2026-10-13T12:58:47Z", "epoch": 1791896327.1, "since_t0_sec": 648.1}
+{"phase": "capture.end", "utc": "2026-10-13T12:58:47Z", "epoch": 1791896327.1, "since_t0_sec": 648.1, "status": "PASS"}

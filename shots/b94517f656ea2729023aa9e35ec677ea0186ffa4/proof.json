@@ -1,0 +1,66 @@
+{
+  "status": "PASS",
+  "stage": "done",
+  "mode": "warm",
+  "pr_sha": "b94517f656ea2729023aa9e35ec677ea0186ffa4",
+  "pr_number": 212,
+  "head_ref": "fix/warm-any-branch-test-20261013",
+  "build_run_id": null,
+  "artifact_id": null,
+  "session_run_id": "38399943903",
+  "ci_run_created": "2026-10-13T12:57:32Z",
+  "source": "session-build",
+  "built_commit": "448e95101ca1846e051d49c6e7268a06ea3e6618",
+  "built_ref": "merge",
+  "build_sec": 16.7,
+  "target": "iPad Pro 12.9-inch, landscape, dark",
+  "shots": [
+    {
+      "name": "home",
+      "args": [
+        "--aerouchet-ci-demo"
+      ],
+      "settle_sec": 4,
+      "raw_red_level": 38.9,
+      "rotation_repairs": 0,
+      "screenshot_sec": 1.1,
+      "image": "home.jpg",
+      "layout": {
+        "rows": 14,
+        "column_checks": 1,
+        "off": [],
+        "worst_pt": 1.0
+      }
+    },
+    {
+      "name": "aircraft-tamm",
+      "args": [
+        "--aerouchet-ci-aircraft-tamm"
+      ],
+      "settle_sec": 2,
+      "raw_red_level": 43.8,
+      "rotation_repairs": 0,
+      "screenshot_sec": 1.4,
+      "image": "aircraft-tamm.jpg",
+      "layout": {
+        "rows": 6,
+        "column_checks": 1,
+        "off": [],
+        "worst_pt": 0.7
+      }
+    }
+  ],
+  "device": {
+    "name": "iPad Pro (12.9-inch) (3rd generation)",
+    "runtime": "com.apple.CoreSimulator.SimRuntime.iOS-26-5",
+    "how": "created"
+  },
+  "appearance": "dark",
+  "capture_sec": 58.3,
+  "shot_ready_utc": "2026-10-13T12:58:47Z",
+  "shot_ready_epoch": 1791896327.1,
+  "t0_to_shot_sec": 648.1,
+  "seen_to_shot_sec": 79.1,
+  "ci_run_id": 38401183827,
+  "ci_run_to_shot_sec": 75.1
+}
