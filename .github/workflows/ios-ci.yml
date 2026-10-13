@@ -40,8 +40,9 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             ARCHS=arm64 \
+            OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -debug-time-function-bodies -Xfrontend -warn-long-expression-type-checking=100 -Xfrontend -warn-long-function-bodies=150' \
             -showBuildTimingSummary \
-            build 2>&1 | tee "$RUNNER_TEMP/build.log"; then
+            build 2>&1 | tee "$RUNNER_TEMP/build.log" | grep -v -E '^[[:space:]]*[0-9.]+ms[[:space:]]'; then
             grep -E "error: " "$RUNNER_TEMP/build.log" | sort -u | head -40 | while IFS= read -r line; do
               echo "::error::$line"
             done
@@ -55,6 +56,23 @@ jobs:
           WALL="$(grep -Eo 'BUILD SUCCEEDED.*' "$RUNNER_TEMP/build.log" | tail -1)"
           echo "::notice title=Build timing (arm64)::${WALL} ${TIMING}"
           exit 0
+
+      - name: Compile profile → ci-shots (temporary diagnostic)
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 Scripts/compile_profile.py "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/compile-profile.txt"
+          python3 - <<'PYEOF'
+          import os, shutil, sys
+          sys.path.insert(0, "Scripts")
+          import ci_ipad
+          src = os.path.join(os.environ["RUNNER_TEMP"], "compile-profile.txt")
+          def mutate(work):
+              os.makedirs(os.path.join(work, "reports"), exist_ok=True)
+              shutil.copyfile(src, os.path.join(work, "reports", "compile-profile-" + os.environ["GITHUB_SHA"][:12] + ".txt"))
+          ci_ipad.update_shots_branch(os.environ["GITHUB_TOKEN"], "report: compile profile", mutate)
+          PYEOF
 
       - name: Package simulator app
         run: |
