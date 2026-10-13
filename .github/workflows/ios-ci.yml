@@ -31,6 +31,7 @@ jobs:
         run: |
           set -o pipefail
           TIMELINE="$RUNNER_TEMP/aerouchet-build-timeline.jsonl"
+          mkdir -p "$RUNNER_TEMP/swift-stats"
           echo "{\"phase\":\"build.compile_started\",\"utc\":\"$(date -u +%FT%TZ)\"}" >> "$TIMELINE"
           # Раннер и iPad Simulator — Apple Silicon: x86_64 не нужен и удваивал компиляцию.
           # Ошибки компилятора выводим аннотациями: их видно в PR без скачивания логов.
@@ -40,7 +41,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             ARCHS=arm64 \
-            OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -debug-time-function-bodies -Xfrontend -warn-long-expression-type-checking=100 -Xfrontend -warn-long-function-bodies=150' \
+            OTHER_SWIFT_FLAGS='$(inherited) -disable-batch-mode -Xfrontend -stats-output-dir -Xfrontend '"$RUNNER_TEMP"'/swift-stats' \
             -showBuildTimingSummary \
             build 2>&1 | tee "$RUNNER_TEMP/build.log" | grep -v -E '^[[:space:]]*[0-9.]+ms[[:space:]]'; then
             grep -E "error: " "$RUNNER_TEMP/build.log" | sort -u | head -40 | while IFS= read -r line; do
@@ -62,7 +63,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python3 Scripts/compile_profile.py "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/compile-profile.txt"
+          python3 Scripts/compile_stats.py "$RUNNER_TEMP/swift-stats" "$RUNNER_TEMP/build.log" "$RUNNER_TEMP/compile-profile.txt"
           python3 - <<'PYEOF'
           import os, shutil, sys
           sys.path.insert(0, "Scripts")
@@ -70,7 +71,7 @@ jobs:
           src = os.path.join(os.environ["RUNNER_TEMP"], "compile-profile.txt")
           def mutate(work):
               os.makedirs(os.path.join(work, "reports"), exist_ok=True)
-              shutil.copyfile(src, os.path.join(work, "reports", "compile-profile-" + os.environ["GITHUB_SHA"][:12] + ".txt"))
+              shutil.copyfile(src, os.path.join(work, "reports", "compile-stats-" + os.environ["GITHUB_SHA"][:12] + ".txt"))
           ci_ipad.update_shots_branch(os.environ["GITHUB_TOKEN"], "report: compile profile", mutate)
           PYEOF
 
