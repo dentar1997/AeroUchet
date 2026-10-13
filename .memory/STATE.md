@@ -1,12 +1,12 @@
 # Текущее состояние АэроУчёта
 
-**Обновлено:** 13.10 13:47 МСК · Claude. Денис: «Давай попробуем» — эксперимент «iPad из кэша GitHub» для ускорения прогрева (только CI), в работе. v188 ждёт проверки на iPad.
+**Обновлено:** 13.10 14:27 МСК · Claude. Эксперимент «iPad из кэша» закрыт: выигрыш 20–50 с, не внедряем — после любой загрузки iPad ~3–4 мин «приходит в себя». Предложено: тёплая сессия снимает и обычные PR. v188 ждёт проверки на iPad.
 
 
 ## Последние записи журнала
+- [2026-10-13_1427_claude_sim-cache-result.md](log/2026-10-13_1427_claude_sim-cache-result.md)
 - [2026-10-13_1347_claude_sim-cache-start.md](log/2026-10-13_1347_claude_sim-cache-start.md)
 - [2026-10-13_1342_claude_decisions-ci-time.md](log/2026-10-13_1342_claude_decisions-ci-time.md)
-- [2026-10-13_1215_claude_ci-screens-layout-result.md](log/2026-10-13_1215_claude_ci-screens-layout-result.md)
 
 ## CI / iPad Simulator
 - **PR #204** ✅ слит `a516d8f`, CI-only, **v187 без изменений**. **Тёплый iPad на всю задачу** (U53, P14): сессия `early-ipad-prewarm.yml` запускается в начале UI-задачи, собирает main, затем сама инкрементально собирает и снимает каждый новый SHA PR из `prewarm/*`; снимки — ветка `ci-shots` (`Scripts/ci_ipad.py fetch-shot`) и артефакт `ipad-shot` PR CI. Замеры: push → снимок у Claude **33–41 с**, CI-запуск → снимок 23–32 с (5 SHA, все PASS); готовность сессии 3:56–6:13; без сессии build job снимает сам за ~10 мин; метод А (обычные PR) 6:31. Подробнее log/2026-10-12_1308_claude_warm-ipad-result.md.
