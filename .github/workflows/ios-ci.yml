@@ -41,7 +41,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/AeroUchetDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             ARCHS=arm64 \
-            OTHER_SWIFT_FLAGS='$(inherited) -disable-batch-mode -Xfrontend -stats-output-dir -Xfrontend '"$RUNNER_TEMP"'/swift-stats' \
+            SWIFT_ENABLE_BATCH_MODE=NO OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -stats-output-dir -Xfrontend '"$RUNNER_TEMP"'/swift-stats' \
             -showBuildTimingSummary \
             build 2>&1 | tee "$RUNNER_TEMP/build.log" | grep -v -E '^[[:space:]]*[0-9.]+ms[[:space:]]'; then
             grep -E "error: " "$RUNNER_TEMP/build.log" | sort -u | head -40 | while IFS= read -r line; do

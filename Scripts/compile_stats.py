@@ -21,14 +21,20 @@ for path in glob.glob(os.path.join(stats_dir, "*.json")):
     for key, value in data.items():
         if not isinstance(value, (int, float)):
             continue
-        if key.startswith("time.swift.") and key.endswith(".wall"):
-            phase = key[len("time.swift."):-len(".wall")]
+        if key.startswith("time.") and key.endswith(".wall"):
+            phase = key[len("time."):-len(".wall")]
             phases[phase] = value
             keys[phase] += value
-        if key == "time.swift.Frontend.wall" or key.endswith("swift-frontend.wall"):
-            wall = max(wall, value)
-    if not wall and phases:
-        wall = max(phases.values())
+    # Total = sum of the top-level phases that do not nest: sema, SILGen, SIL opt, IRGen, LLVM.
+    top = [v for k, v in phases.items() if k in (
+        "swift.Type checking and Semantic analysis", "swift.SILGen", "swift.SIL optimization",
+        "swift.IRGen", "swift.LLVM pipeline", "swift.LLVM optimization", "swift.LLVM output",
+        "swift.Parsing", "swift.Import resolution", "swift.Serialization, swiftmodule",
+        "swift.SIL verification, pre-optimization", "swift.SIL verification, post-optimization")]
+    wall = sum(top) if top else (max(phases.values()) if phases else 0.0)
+    m2 = re.search(r"swift-frontend-([^-]+?)-all-", name)
+    if m2 and not m:
+        src = m2.group(1)
     rows.append((wall, src, phases, name))
 rows.sort(reverse=True)
 total = sum(r[0] for r in rows)
@@ -37,7 +43,7 @@ for wall, src, phases, name in rows:
     top = sorted(((v, k) for k, v in phases.items() if k != "Frontend"), reverse=True)[:4]
     lines.append(f"  {wall:6.2f} s {100*wall/total if total else 0:5.1f}%  {src:42s} " + ", ".join(f"{k} {v:.1f}" for v, k in top))
 lines += ["", "Phase totals across files:"]
-for k, v in keys.most_common(25):
+for k, v in keys.most_common(40):
     lines.append(f"  {v:7.1f} s  {k}")
 summary = [l for l in open(build_log, encoding="utf-8", errors="replace") if re.search(r"\| [0-9.]+ seconds", l) or "BUILD SUCCEEDED" in l or "BUILD FAILED" in l]
 lines += ["", "xcodebuild timing summary:"] + ["  " + l.strip() for l in summary[:15]]
