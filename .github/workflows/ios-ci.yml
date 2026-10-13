@@ -156,6 +156,7 @@ jobs:
           rc=$?
           if [ "$rc" -ne 3 ]; then exit "$rc"; fi
           echo "::warning::Тёплой сессии iPad нет — снимок делается здесь (холодный запуск, медленнее)"
+          python3 -m pip install --quiet pillow 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow || true
           STATE="$RUNNER_TEMP/ipad-state"
           python3 Scripts/ci_ipad.py prepare --state "$STATE" --visual
           python3 Scripts/ci_ipad.py capture --state "$STATE" \
@@ -196,6 +197,10 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+
+      - name: Pillow for the layout check (optional)
+        run: |
+          python3 -m pip install --quiet pillow 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow || echo 'no Pillow, layout check skipped'
 
       - name: Boot 12.9-inch iPad now (dark + rotation while the app compiles)
         run: |

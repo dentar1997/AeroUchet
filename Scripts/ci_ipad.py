@@ -73,13 +73,21 @@ BOT_NAME = "github-actions[bot]"
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 
 # Screens the app can open directly with a simulator-only launch argument.
+DEMO = "--aerouchet-ci-demo"   # simulator-only fictional flights (CIScreens.swift)
 SHOT_REGISTRY = {
     "main-screen": {"args": [], "settle": 5},
     "aircraft-tamm": {"args": ["--aerouchet-ci-aircraft-tamm"], "settle": 2},
+    "home": {"args": [DEMO], "settle": 4},
+    "calendar": {"args": [DEMO, "--aerouchet-ci-tab=calendar"], "settle": 4},
+    "assignments": {"args": [DEMO, "--aerouchet-ci-tab=assignments"], "settle": 4},
+    "accounting": {"args": [DEMO, "--aerouchet-ci-tab=accounting"], "settle": 4},
+    "more": {"args": [DEMO, "--aerouchet-ci-tab=more"], "settle": 3},
 }
 DEFAULT_WARM_SHOTS = "aircraft-tamm"
 SHOT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
-SHOT_ARG_RE = re.compile(r"^--aerouchet-ci-[a-z0-9-]{1,60}$")
+SHOT_ARG_RE = re.compile(r"^--aerouchet-ci-[a-z0-9-]{1,40}(?:=[a-z0-9-]{1,40})?$")
+MAX_SHOTS = 8
+TOOLING_FILES = {"Scripts/ci_ipad.py", "Scripts/ui_layout.py", ".github/workflows/early-ipad-prewarm.yml"}
 
 ROTATE_RIGHT = """tell application "Simulator" to activate
 tell application "System Events"
@@ -625,6 +633,25 @@ def normalize_raw(raw, png):
         raise CommandError("PROFILE_MISMATCH: expected a 2732x2048 landscape PNG")
 
 
+def layout_check(png, out, name):
+    """Scripts/ui_layout.py: text rows and column alignment in points (needs Pillow)."""
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui_layout.py")
+    report = os.path.join(out, f"{name}-layout.txt")
+    data = os.path.join(out, f"{name}-layout.json")
+    done = sh([sys.executable, script, png, "--json", data], check=False, quiet=True, timeout=120)
+    write_text(report, (done.stdout or done.stderr or "").strip() + "\n")
+    layout = read_json(data)
+    if not layout:
+        return {"skipped": (done.stdout or done.stderr or "").strip()[:200]}
+    checks = layout.get("column_checks") or []
+    return {
+        "rows": len(layout.get("bands", [])),
+        "column_checks": len(checks),
+        "off": [c for c in checks if not c.get("ok")],
+        "worst_pt": max((abs(c["worst_pt"]) for c in checks), default=None),
+    }
+
+
 def capture_one(udid, bundle, shot, out, timeline, export=True):
     name = shot["name"]
     launch_app(udid, bundle, shot["args"])
@@ -662,6 +689,7 @@ def capture_one(udid, bundle, shot, out, timeline, export=True):
         jpg = os.path.join(out, f"{name}.jpg")
         sh(["sips", "-s", "format", "jpeg", "-s", "formatOptions", str(JPEG_QUALITY), png, "--out", jpg], quiet=True, timeout=120)
         result["image"] = f"{name}.jpg"
+        result["layout"] = layout_check(png, out, name)
     if not app_alive(udid, bundle):
         raise CommandError(f"{name}: the application exited before verification")
     timeline.mark(f"{name}.done")
@@ -782,8 +810,8 @@ def build_shots(names=None, spec=None):
     shots = []
     if spec is not None:
         items = spec.get("shots") if isinstance(spec, dict) else spec
-        if not isinstance(items, list) or not 1 <= len(items) <= 4:
-            raise ValueError("shots spec must list 1-4 shots")
+        if not isinstance(items, list) or not 1 <= len(items) <= MAX_SHOTS:
+            raise ValueError(f"shots spec must list 1-{MAX_SHOTS} shots")
         for item in items:
             name = str(item.get("name", ""))
             if not SHOT_NAME_RE.match(name):
@@ -1133,7 +1161,7 @@ def publish_capture(token, out, sha, label):
         os.makedirs(target)
         for name in sorted(os.listdir(out)):
             path = os.path.join(out, name)
-            if os.path.isfile(path) and (name in ("proof.json", "timeline.jsonl") or name.endswith(".jpg") or name.endswith("-raw-top.png")):
+            if os.path.isfile(path) and (name in ("proof.json", "timeline.jsonl") or name.endswith((".jpg", "-raw-top.png", "-layout.txt"))):
                 shutil.copyfile(path, os.path.join(target, name))
         log_path = os.path.join(out, "capture.log")
         if os.path.exists(log_path):
@@ -1422,9 +1450,11 @@ def cmd_summarize(args):
         f"- PR head `{(proof.get('pr_sha') or '')[:12]}`, build run {proof.get('build_run_id')}, appearance {proof.get('appearance')}",
     ]
     for shot in proof.get("shots", []):
+        layout = shot.get("layout") or {}
+        columns = f", columns worst Δ {layout.get('worst_pt')} pt" if layout.get("column_checks") else ""
         lines.append(
             f"- `{shot['name']}`: red {shot['raw_red_level']}, rotation repairs {shot['rotation_repairs']}, "
-            f"screenshot {shot['screenshot_sec']} s"
+            f"screenshot {shot['screenshot_sec']} s{columns}"
         )
     if proof.get("ci_run_to_shot_sec") is not None:
         lines.append(f"- PR CI run created → shot ready: **{proof['ci_run_to_shot_sec']} s**")
@@ -1513,6 +1543,8 @@ class WarmSession:
         self.last_request = self.started
         self.end_reason = None
         self.prepare = None
+        self.announced = False
+        self.tooling_cache = {}
 
     def state_summary(self, state):
         prepare_lines = []
@@ -1572,6 +1604,11 @@ class WarmSession:
             if mode in ("restart", "stop"):
                 self.end_reason = f"{mode} requested by run {run['id']}"
                 return False
+            if self.changes_tooling(run.get("head_sha")):
+                # The new request carries its own version of these CI scripts: let it
+                # start a session with that code instead of being absorbed by this one.
+                self.end_reason = f"CI scripts changed on {run.get('head_branch')} (run {run['id']})"
+                return False
             try:
                 self.gh.post(f"/repos/{REPO}/actions/runs/{run['id']}/cancel")
                 self.last_request = time.time()
@@ -1581,6 +1618,21 @@ class WarmSession:
             except Exception as error:
                 log(f"cannot absorb run {run['id']}: {error}")
         return True
+
+    def changes_tooling(self, sha):
+        """True if that commit's branch develops the CI scripts (they differ from main)
+        AND they differ from the version this session runs. A branch merely based on
+        an older main does not restart the session; neither do pushes that leave the
+        scripts as this session already has them."""
+        own = os.environ.get("GITHUB_SHA")
+        if not sha or not own or sha == own:
+            return False
+        if sha not in self.tooling_cache:
+            def touched(base):
+                data = self.gh.get(f"/repos/{REPO}/compare/{base}...{sha}", cache=False) or {}
+                return {item.get("filename") for item in data.get("files", [])} & TOOLING_FILES
+            self.tooling_cache[sha] = bool(touched("main")) and bool(touched(own))
+        return self.tooling_cache[sha]
 
     def candidates(self):
         pulls = self.gh.get(f"/repos/{REPO}/pulls?state=open&per_page=50") or []
@@ -1652,6 +1704,7 @@ class WarmSession:
             "session_run_id": self.run_id, "t0": self.t0,
         }
         prepared = wait_state(self.state, "prepare.status", {"READY", "FAILED"}, 1500)
+        self.announce_ready()
         if prepared != "READY":
             log(f"prepare status {prepared}; capturing anyway")
         source = None
@@ -1715,18 +1768,24 @@ class WarmSession:
         self.timeline.mark("sha.published" if published else "sha.publish_failed", **record)
         return proof["status"] if proof.get("stage") != "build" else "COMPILE_ERROR"
 
+    def announce_ready(self):
+        if self.announced:
+            return
+        status = read_text(state_file(self.state, "prepare.status"))
+        if status in ("READY", "FAILED"):
+            self.announced = True
+            self.timeline.mark("session.ready", prepare_status=status)
+            self.publish_state("ready")
+
     def loop(self):
-        announced = False
         next_absorb = 0
+        self.publish_state("warming")
         while True:
             now = time.time()
             if now - self.started > self.args.max_minutes * 60:
                 self.end_reason = f"session time limit ({self.args.max_minutes:g} min)"
                 break
-            if not announced and read_text(state_file(self.state, "prepare.status")) in ("READY", "FAILED"):
-                announced = True
-                self.timeline.mark("session.ready", prepare_status=read_text(state_file(self.state, "prepare.status")))
-                self.publish_state("ready")
+            self.announce_ready()
             if now >= next_absorb:
                 next_absorb = now + 15
                 if not self.absorb_requests():
