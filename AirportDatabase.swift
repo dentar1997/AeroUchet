@@ -323,3 +323,4 @@ enum AirportDatabase {
             .uppercased()
     }
 }
+// замер тёплого iPad на ветке fix/ (тестовый PR, не сливать)
