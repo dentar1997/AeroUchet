@@ -9,7 +9,7 @@ Subcommands
                  landscape on real pixels and warms the screenshot path.
   capture        install a CI-built .app and take verified landscape screenshots.
   wait-artifact  wait for this run's AeroUchet-Simulator artifact and download it.
-  session        warm iPad session: serves every new head SHA of open prewarm/* PRs.
+  session        warm iPad session: serves every new head SHA of open PRs into main.
   publish        put a capture on the ci-shots branch (readable through plain git).
   verify-shot    PR build job: wait for this SHA's warm shot on ci-shots, re-check it.
   fetch-shot     assistants: wait for a shot on ci-shots and copy it locally (git only).
@@ -54,7 +54,6 @@ CI_WORKFLOW_NAME = "AeroUchet CI"
 BUILD_JOB_NAME = "Build iOS app"
 APP_ARTIFACT = "AeroUchet-Simulator"
 SHOTS_BRANCH = "ci-shots"
-WARM_BRANCH_PREFIX = "prewarm/"
 ACTIVE_RUN_STATES = ("queued", "in_progress", "waiting", "requested", "pending")
 WAITING_RUN_STATES = ("queued", "waiting", "requested", "pending")
 DEVICE_NAME = "AeroUchet iPad Pro 12.9 CI"
@@ -83,7 +82,7 @@ SHOT_REGISTRY = {
     "accounting": {"args": [DEMO, "--aerouchet-ci-tab=accounting"], "settle": 4},
     "more": {"args": [DEMO, "--aerouchet-ci-tab=more"], "settle": 3},
 }
-DEFAULT_WARM_SHOTS = "aircraft-tamm"
+DEFAULT_WARM_SHOTS = "home,aircraft-tamm"   # «Главная» + таблица ВС, как метод А
 SHOT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 SHOT_ARG_RE = re.compile(r"^--aerouchet-ci-[a-z0-9-]{1,40}(?:=[a-z0-9-]{1,40})?$")
 MAX_SHOTS = 8
@@ -1474,7 +1473,7 @@ def request_epoch(value):
     if value.isdigit():
         return int(value)
     if os.environ.get("GITHUB_EVENT_NAME") == "push":
-        # Only a fresh marker counts: since autostart, any push to prewarm/* starts
+        # Only a fresh marker counts: since autostart, any branch push starts
         # a session and an old request.json must not distort the timings.
         data = read_json(os.path.join(".github", "prewarm", "request.json")) or {}
         value = data.get("request_epoch")
@@ -1517,7 +1516,7 @@ def shots_for_sha(gh, sha):
 class WarmSession:
     """One warm iPad for the whole task.
 
-    For every new head SHA of an open prewarm/* PR: build the PR test-merge commit
+    For every new head SHA of an open PR into main: build the PR test-merge commit
     incrementally right here (warm DerivedData, no CI queue, no artifact round trip),
     install it on the already booted iPad and publish the verified shot to ci-shots.
     If the local build cannot run, the PR CI artifact of that SHA is used instead.
@@ -1639,8 +1638,7 @@ class WarmSession:
         result = []
         for pr in pulls:
             head = pr.get("head") or {}
-            if not head.get("ref", "").startswith(WARM_BRANCH_PREFIX):
-                continue
+            # Any PR into main from this repository (since 13.10, U55), not only prewarm/*.
             if (pr.get("base") or {}).get("ref") != "main" or (head.get("repo") or {}).get("full_name") != REPO:
                 continue
             result.append(pr)
