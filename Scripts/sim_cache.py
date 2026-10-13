@@ -23,7 +23,7 @@ import ci_ipad  # noqa: E402
 HOME = os.path.expanduser("~")
 DEVICES = os.path.join(HOME, "Library/Developer/CoreSimulator/Devices")
 CACHE_DIRS = [os.path.join(HOME, "Library/Developer/CoreSimulator/Caches")]
-CACHE_VERSION = "v1"
+CACHE_VERSION = "v2"
 
 
 def du(path):
@@ -59,6 +59,11 @@ def cmd_stage(args):
     if not udid:
         sys.exit("no prepared device in state")
     started = time.time()
+    # Cache the device WITHOUT the app: removing an installed app on a freshly
+    # booted device took ~3 min (experiment 13.10), a clean install does not.
+    bundle = ci_ipad.read_text(ci_ipad.state_file(args.state, "app-installed"))
+    if bundle:
+        ci_ipad.sh(["xcrun", "simctl", "uninstall", udid, bundle], check=False, timeout=300)
     ci_ipad.sh(["xcrun", "simctl", "shutdown", udid], check=False, timeout=300)
     shutil.rmtree(args.dest, ignore_errors=True)
     os.makedirs(args.dest)
@@ -98,8 +103,6 @@ def cmd_restore(args):
         return 0
     os.makedirs(args.state, exist_ok=True)
     ci_ipad.write_text(ci_ipad.state_file(args.state, "device-udid.txt"), udid)
-    # The cached device already has the app: install_app() must remove it first.
-    ci_ipad.write_text(ci_ipad.state_file(args.state, "app-installed"), "cached")
     ci_ipad.write_json(ci_ipad.state_file(args.state, "device.json"), dict(meta.get("device") or {}, how="restored from cache"))
     print(f"restored device {udid} in {time.time() - started:.1f} s")
     return 0
