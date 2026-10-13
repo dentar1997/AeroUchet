@@ -87,6 +87,7 @@ DEFAULT_WARM_SHOTS = "aircraft-tamm"
 SHOT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 SHOT_ARG_RE = re.compile(r"^--aerouchet-ci-[a-z0-9-]{1,40}(?:=[a-z0-9-]{1,40})?$")
 MAX_SHOTS = 8
+TOOLING_FILES = {"Scripts/ci_ipad.py", "Scripts/ui_layout.py", ".github/workflows/early-ipad-prewarm.yml"}
 
 ROTATE_RIGHT = """tell application "Simulator" to activate
 tell application "System Events"
@@ -1543,6 +1544,7 @@ class WarmSession:
         self.end_reason = None
         self.prepare = None
         self.announced = False
+        self.tooling_cache = {}
 
     def state_summary(self, state):
         prepare_lines = []
@@ -1602,6 +1604,11 @@ class WarmSession:
             if mode in ("restart", "stop"):
                 self.end_reason = f"{mode} requested by run {run['id']}"
                 return False
+            if self.changes_tooling(run.get("head_sha")):
+                # The new request carries its own version of these CI scripts: let it
+                # start a session with that code instead of being absorbed by this one.
+                self.end_reason = f"CI scripts changed on {run.get('head_branch')} (run {run['id']})"
+                return False
             try:
                 self.gh.post(f"/repos/{REPO}/actions/runs/{run['id']}/cancel")
                 self.last_request = time.time()
@@ -1611,6 +1618,21 @@ class WarmSession:
             except Exception as error:
                 log(f"cannot absorb run {run['id']}: {error}")
         return True
+
+    def changes_tooling(self, sha):
+        """True if that commit's branch develops the CI scripts (they differ from main)
+        AND they differ from the version this session runs. A branch merely based on
+        an older main does not restart the session; neither do pushes that leave the
+        scripts as this session already has them."""
+        own = os.environ.get("GITHUB_SHA")
+        if not sha or not own or sha == own:
+            return False
+        if sha not in self.tooling_cache:
+            def touched(base):
+                data = self.gh.get(f"/repos/{REPO}/compare/{base}...{sha}", cache=False) or {}
+                return {item.get("filename") for item in data.get("files", [])} & TOOLING_FILES
+            self.tooling_cache[sha] = bool(touched("main")) and bool(touched(own))
+        return self.tooling_cache[sha]
 
     def candidates(self):
         pulls = self.gh.get(f"/repos/{REPO}/pulls?state=open&per_page=50") or []
